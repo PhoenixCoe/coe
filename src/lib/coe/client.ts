@@ -1,4 +1,4 @@
-import { connection, CREATIVITY, type CoeSettings } from './settings';
+import { connection, CREATIVITY, modeOf, own, type CoeSettings } from './settings';
 import type { ModelKey } from './models';
 import { token } from './cloud';
 
@@ -15,27 +15,28 @@ const trim = (s: string) => s.trim().replace(/\/+$/, '');
 
 async function target(s: CoeSettings): Promise<{ url: string; headers: Record<string, string> }> {
   const h: Record<string, string> = { 'content-type': 'application/json' };
-  if (s.mode === 'server') {
+  if (modeOf(s) === 'server') {
     if (s.code.trim()) h['x-coe-code'] = s.code.trim();
     const t = await token(); if (t) h.authorization = `Bearer ${t}`;     // the server can ask for a signed-in account
     return { url: trim(s.serverUrl), headers: h };
   }
-  if (s.provider === 'anthropic') {
-    const base = trim(s.baseUrl) || 'https://api.anthropic.com';
-    Object.assign(h, { 'x-api-key': s.apiKey.trim(), 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' });
-    return { url: `${base}/v1/messages`, headers: h };
+  const o = own(s);
+  if (o.kind === 'anthropic') {
+    Object.assign(h, { 'x-api-key': o.key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' });
+    return { url: `${o.base}/v1/messages`, headers: h };
   }
-  h.authorization = `Bearer ${s.apiKey.trim()}`;
-  return { url: `${trim(s.baseUrl)}/chat/completions`, headers: h };
+  if (o.key) h.authorization = `Bearer ${o.key}`;
+  return { url: `${o.base}/chat/completions`, headers: h };
 }
 
 /** The Coe server speaks the OpenAI way. With your own key, it depends on the provider you chose. */
-const kindOf = (s: CoeSettings) => (s.mode === 'server' ? 'openai' : s.provider);
+const kindOf = (s: CoeSettings) => (modeOf(s) === 'server' ? 'openai' : own(s).kind);
 
 function body(s: CoeSettings, r: Request): string {
   // The server turns Swift, Core and Deep into real model names itself. With your own key, Settings says which is which.
-  const model = s.mode === 'server' ? r.model : s.models[r.model];
-  const openai = /api\.openai\.com/.test(s.baseUrl);
+  const server = modeOf(s) === 'server';
+  const model = server ? r.model : own(s).model(r.model);
+  const openai = server || /api\.openai\.com/.test(own(s).base);
   const temperature = CREATIVITY[s.creativity];
   const max = r.maxTokens ?? 2048;
   if (kindOf(s) === 'anthropic') {
@@ -48,7 +49,7 @@ function body(s: CoeSettings, r: Request): string {
     });
   }
   return JSON.stringify({
-    model, stream: true, stream_options: { include_usage: true }, ...(openai ? { max_completion_tokens: max } : { max_tokens: max }), ...(temperature !== undefined && !openai && s.mode !== 'server' ? { temperature } : {}),
+    model, stream: true, stream_options: { include_usage: true }, ...(openai ? { max_completion_tokens: max } : { max_tokens: max }), ...(temperature !== undefined && !openai ? { temperature } : {}),
     messages: [
       ...(r.system ? [{ role: 'system', content: r.system }] : []),
       ...r.messages.map((m) => ({

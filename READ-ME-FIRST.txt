@@ -1,0 +1,9 @@
+Update Coe on GitHub (no yap)
+
+1. Unzip this file. Open the coe-update folder.
+2. Go to github.com/PhoenixCoe/coe
+3. Press Add file > Upload files.
+4. Select everything inside coe-update EXCEPT this text file (the folders src, worker and the files README.md and DEPLOY.md). Drag them onto the GitHub page.
+5. Wait for the upload bars to finish. Press Commit changes.
+6. Press the Actions tab. Wait for the green tick (about 2 minutes).
+7. Open coe.pmcstudios.uk and refresh.

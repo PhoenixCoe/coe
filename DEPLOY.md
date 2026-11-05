@@ -12,9 +12,13 @@ Do parts 1 to 3 first. Part 4 (Stripe) can wait. Until it is done, Pro shows "No
 1. supabase.com > New project.
 2. SQL Editor > New query. Paste all of `supabase/setup.sql`. Run.
 3. Authentication > URL Configuration > Site URL: `https://coe.pmcstudios.uk`.
-4. Authentication > Email Templates > Magic Link: add `{{ .Token }}` to the text, so the email shows a 6 digit code.
-5. Project Settings > API. Copy the **Project URL** and the **anon public** key.
-6. GitHub repository > Settings > Secrets and variables > Actions > **Variables** tab. Add `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Push any change to rebuild.
+4. Supabase asks for your own email sender before it lets you edit emails. Do this once (free):
+   - resend.com > make an account > **Domains > Add domain**: `mail.pmcstudios.uk`. Add the DNS records it shows, exactly, then press **Verify**.
+   - Resend > **API Keys > Create API key** (Sending access). Copy it.
+   - Supabase > Authentication > **Emails > SMTP Settings** > turn on custom SMTP. Sender email `no-reply@mail.pmcstudios.uk`, sender name `Coe`, host `smtp.resend.com`, port `465`, username `resend`, password = the Resend API key. Save.
+5. Authentication > Emails > Templates (older dashboard: Email Templates). Open **Confirm sign up**, then **Magic link**. In each one, add a line `Your code: {{ .Token }}` to the message and Save. The email then shows a 6 digit code.
+6. Project Settings > API. Copy the **Project URL** and the **anon public** key.
+7. GitHub repository > Settings > Secrets and variables > Actions > **Variables** tab. Add `SUPABASE_URL` and `SUPABASE_ANON_KEY`. Push any change to rebuild.
 
 ## 3. The server (Cloudflare Worker)
 1. Cloudflare > Workers & Pages > Create > Worker. Name it `coe-server`. Deploy.
@@ -25,9 +29,9 @@ Do parts 1 to 3 first. Part 4 (Stripe) can wait. Until it is done, Pro shows "No
 | --- | --- | --- |
 | `API_KEY` | Secret | your OpenAI key |
 | `ALLOWED_ORIGINS` | Text | `https://coe.pmcstudios.uk` |
-| `MODEL_SWIFT` | Text | an OpenAI model name from your account |
-| `MODEL_CORE` | Text | an OpenAI model name from your account |
-| `MODEL_DEEP` | Text | your strongest OpenAI model name |
+| `MODEL_SWIFT` | Text | optional. Leave empty to use `gpt-6-luna` |
+| `MODEL_CORE` | Text | optional. Leave empty to use `gpt-6.1-terra` |
+| `MODEL_DEEP` | Text | optional. Leave empty to use `gpt-6.1-sol` |
 | `SUPABASE_URL` | Text | the Project URL from part 2 |
 | `SUPABASE_ANON_KEY` | Text | the anon key from part 2 |
 | `SUPABASE_SERVICE_KEY` | Secret | Supabase > Project Settings > API > **service_role** key |
@@ -60,7 +64,7 @@ Use Stripe's **test mode** first. Switch to live at the end.
 8. Go live: repeat steps 2 to 6 with live mode keys and ids.
 
 ## Handy switches (Worker variables, all optional)
-- `PRO_EMAILS`: emails that get Pro without paying, comma separated. For you and testers.
+- `PRO_EMAILS`: emails that get Pro without paying, comma separated. For you and testers. Put your own email here: Pro is what unlocks "My own key" in Settings > Your AI.
 - `FREE_DAILY` (30), `PRO_DAILY` (300): credits a day.
 - `REQUIRE_SIGNIN`: set to `1` so only signed-in people can chat.
 - `ACCESS_CODE` (Secret): people need this word to use the server.
@@ -68,6 +72,7 @@ Use Stripe's **test mode** first. Switch to live at the end.
 ## How it works
 - No account: Free. Credits are counted on that device.
 - Signed in: credits are counted by the Worker, per account. Swift and Core cost 1. Deep costs 3. They reset at midnight UTC.
+- Own key (Settings > Your AI): Pro only. Everyone else uses Coe's key from the Worker.
 - Pro: only from paying (or `PRO_EMAILS`). Stripe tells the Worker, the Worker saves it, the site reads it.
 - "Wrong? Redo free" costs nothing, up to 10 a day on Free and 30 on Pro.
 - Past chats: on the device by default. Signed in: also saved in the account, so they follow you.

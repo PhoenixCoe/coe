@@ -8,14 +8,15 @@ import { COE_MODELS, MAX_REPLY, canUse, modelByKey, type ModelKey } from '@/lib/
 import { applyCredits, counted, creditsNow, onStatus, planInfo, planNow, refreshStatus, status } from '@/lib/coe/account';
 import { explain as describeErr, type ErrAct } from '@/lib/coe/errors';
 import { ErrorBox } from './ErrorBox';
-import { connection, loadSettings, saveSettings, type CoeSettings } from '@/lib/coe/settings';
+import { isOwner } from '@/lib/coe/owner';
+import { modeOf, connection, loadSettings, saveSettings, type CoeSettings } from '@/lib/coe/settings';
 import { toImg } from './images';
 import { renderMarkdown } from './markdown';
 import { Check } from './Check';
 import { Account } from './Account';
 import { cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
 import { BASE_COE, REDO_NOTE, STARTERS, greeting } from './prompts';
-import { Modal, SettingsPanel, Upgrade } from './Panels';
+import { Modal, SettingsPanel, Upgrade, type Tab } from './Panels';
 import { bucket, countMessage, dataUrl, deleteAll, deleteConv, exportAll, importAll, loadConv, loadIndex, saveConv, titleFrom, toMarkdown, uid, usage, type Conv, type ConvMeta, type Img, type Msg } from './store';
 
 const CONTEXT_LIMIT = 80000;           // characters sent with each message; older ones are left out
@@ -75,7 +76,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [titling, setTitling] = useState(false);                     // the name in the header
   const [picker, setPicker] = useState(false);
   const [panel, setPanel] = useState<null | 'settings'>(() => { try { return new URLSearchParams(location.search).get('settings') !== null ? 'settings' : null; } catch { return null; } });   // ?settings opens Settings, so other tools can point here
-  const [tab, setTab] = useState<'connect' | 'chat' | 'data'>('connect');
+  const [tab, setTab] = useState<Tab>('chat');
+  const owner = isOwner();
+  const openSetup = (why?: string) => { if (modeOf(loadSettings()) === 'key') { setTab('ai'); setPanel('settings'); if (why) say(why); } else if (owner) { setTab('connect'); setPanel('settings'); if (why) say(why); } else say('Coe is not switched on yet. Try again later.'); };
   const [upgrade, setUpgrade] = useState('');
   const [big, setBig] = useState<Img | null>(null);
   const [drop, setDrop] = useState(false);
@@ -102,12 +105,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const say = useCallback((t: string) => { setToast(t); window.setTimeout(() => setToast((x) => (x === t ? '' : x)), 2600); }, []);
   const doSync = useCallback(async () => { try { if (await cloudSync()) await refreshList(); } catch { /* offline: this device keeps its own copy */ } }, [refreshList]);
 
-  useEffect(() => { void refreshStatus(settings); }, [me, settings.mode, settings.serverUrl, settings.code]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void refreshStatus(settings); }, [me, settings.serverUrl, settings.code]);   // eslint-disable-line react-hooks/exhaustive-deps
   const plan = planInfo(settings);
   const cr = creditsNow(settings);
   const usedNow = cr ? cr.used : use.today;
   const perDay = cr ? cr.limit : plan.perDay;
-  const planName = settings.mode === 'key' ? 'Own key' : plan.name;
+  const keyOn = modeOf(settings) === 'key';
+  const planName = keyOn ? 'Own key' : plan.name;
   const conn = connection(settings);
   const model = modelByKey(conv.model);
   const left = Math.max(0, perDay - usedNow);
@@ -164,9 +168,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const s = loadSettings();
     const pn = planNow(s), pl = planInfo(s);
     const c0 = connection(s);
-    if (!c0.ok) { setTab('connect'); setPanel('settings'); say(c0.why); return; }
+    if (!c0.ok) { openSetup(c0.why); return; }
     if (!canUse(pn, base.model)) { setUpgrade(`${modelByKey(base.model).name} needs the Pro plan.`); return; }
-    if (!opts.free && !counted(s) && usage().today >= pl.perDay) { setUpgrade(`That was all ${pl.perDay} messages for today on ${pl.name}.`); return; }
+    if (!opts.free && modeOf(s) !== 'key' && !counted(s) && usage().today >= pl.perDay) { setUpgrade(`You have used all ${pl.perDay} credits for today on ${pl.name}. They come back at midnight (UTC).`); return; }
 
     const { list: sent, trimmed } = context(base.messages);
     setNote(trimmed ? 'This chat is long, so the oldest messages were left out of this reply.' : '');
@@ -216,7 +220,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     if (busy) return;
     const body = text.trim();
     if (!body && !pics.length) return;
-    if (!connection(settings).ok) { setTab('connect'); setPanel('settings'); return; }
+    if (!connection(settings).ok) { openSetup(); return; }
     const c = convRef.current;
     const msg: Msg = { id: uid(), role: 'user', text: body, images: pics.length ? pics : undefined, ts: Date.now() };
     const title = c.messages.length ? c.title : titleFrom(body || (pics[0]?.name ?? 'Picture'));
@@ -227,9 +231,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
   const errAct = (a: ErrAct) => {
     if (a === 'retry') retry();
-    else if (a === 'settings') { setTab('connect'); setPanel('settings'); }
+    else if (a === 'settings') openSetup();
     else if (a === 'plans') window.location.href = '/plans/';
-    else if (cloudOn) setAcct(true); else { setTab('connect'); setPanel('settings'); }
+    else setAcct(true);
   };
   const retry = useCallback(() => {
     if (busy) return;
@@ -358,7 +362,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
   const empty = conv.messages.length === 0;
   const lastUser = [...conv.messages].reverse().find((m) => m.role === 'user')?.id;
-  const full = left <= 0;
+  const full = !keyOn && left <= 0;
   const canSend = !busy && !full && (text.trim().length > 0 || pics.length > 0);
 
   return (
@@ -398,15 +402,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         </nav>
         <div className="cx-side-foot">
           <div className="cx-plan-row">
-            <span className="d cx-plan-name">{planName}</span><span className="tx cx-small">{usedNow} of {perDay} credits today</span>
+            <span className="d cx-plan-name">{planName}</span><span className="tx cx-small">{keyOn ? 'No daily limit' : `${usedNow} of ${perDay} credits today`}</span>
           </div>
-          <div className="cx-meter" role="img" aria-label={`${usedNow} of ${perDay} credits used today`}><i style={{ width: `${Math.min(100, (usedNow / perDay) * 100)}%` }} /></div>
-          {cloudOn
-            ? <button type="button" className="cx-acct tx" onClick={() => setAcct(true)}>{me ? <>Saved to <b>{me}</b></> : <>Saved on this device. <u>Sign in</u> to keep them in an account.</>}</button>
-            : <p className="cx-acct tx">Chats are saved on this device.</p>}
+          {!keyOn && <div className="cx-meter" role="img" aria-label={`${usedNow} of ${perDay} credits used today`}><i style={{ width: `${Math.min(100, (usedNow / perDay) * 100)}%` }} /></div>}
+          <button type="button" className="cx-acct tx" onClick={() => setAcct(true)}>{me ? <>Saved to <b>{me}</b></> : <>Saved on this device. <u>Sign in</u> to keep them in an account.</>}</button>
           <div className="cx-foot-btns">
             <a className="btn small" href="/plans/"><UiIcon name="card" size={15} />Plans</a>
-            <button type="button" className="btn small" onClick={() => { setTab(conn.ok ? 'chat' : 'connect'); setPanel('settings'); }}><UiIcon name="gear" size={15} />Settings</button>
+            <button type="button" className="btn small" onClick={() => { setTab('ai'); setPanel('settings'); }}><UiIcon name="gear" size={15} />Settings</button>
           </div>
         </div>
       </aside>
@@ -438,7 +440,10 @@ export function Chat({ initialList, initialConv }: ChatProps) {
             )}
           </div>
           <button type="button" className="cx-ib" aria-label="Save this chat as a file" title="Save this chat as a file" disabled={empty} onClick={exportOne}><UiIcon name="copy" size={20} /></button>
-          <button type="button" className={`cx-chip${conn.ok ? ' on' : ''}`} onClick={() => { setTab('connect'); setPanel('settings'); }}>{conn.ok ? 'Ready' : 'Not connected'}</button>
+          {owner && <button type="button" className={`cx-chip${conn.ok ? ' on' : ''}`} onClick={() => { setTab(keyOn ? 'ai' : 'connect'); setPanel('settings'); }}>{conn.ok ? 'Ready' : 'Not set up'}</button>}
+          {me
+            ? <button type="button" className="cx-me" aria-label={`Account: ${me}`} title={me} onClick={() => setAcct(true)}>{me.slice(0, 1).toUpperCase()}</button>
+            : <button type="button" className="btn small gold cx-signin" onClick={() => setAcct(true)}>Sign in</button>}
         </header>
 
         <div className="cx-scroll" ref={scroller} onScroll={onScroll} onClick={onMessages}>
@@ -446,10 +451,10 @@ export function Chat({ initialList, initialConv }: ChatProps) {
             <div className="cx-empty">
               <CoeWordmark height={72} live={busy} className="cx-hero" />
               <h2 className="d">{greeting(settings.name, new Date().getHours(), hello)}</h2>
-              {!conn.ok && (
+              {!conn.ok && owner && (
                 <div className="cx-connect">
-                  <p className="tx"><b className="d">Not connected yet.</b> {conn.why}</p>
-                  <button type="button" className="btn gold" onClick={() => { setTab('connect'); setPanel('settings'); }}>Connect Coe</button>
+                  <p className="tx"><b className="d">Not set up yet.</b> {conn.why}</p>
+                  <button type="button" className="btn gold" onClick={() => { setTab(keyOn ? 'ai' : 'connect'); setPanel('settings'); }}>Set up Coe</button>
                 </div>
               )}
               <div className="cx-starters">
@@ -478,14 +483,14 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                       : (m.text ? <Rich text={m.text} /> : live && !m.error ? <p className="cx-think tx" role="status">Thinking<span className="cx-dots"><i /><i /><i /></span></p> : null)}
                     {live && m.text && <span className="cx-cursor" aria-hidden />}
                     {m.error && (
-                      <ErrorBox kind={m.errKind} text={m.error} canRetry={lastOne && !busy} onAct={errAct} />
+                      <ErrorBox own={keyOn} kind={m.errKind} text={m.error} canRetry={lastOne && !busy} onAct={errAct} />
                     )}
                     {m.role === 'assistant' && (m.stopped || m.cut) && !m.error && <p className="cx-flag tx">{m.stopped ? 'You stopped this reply.' : 'This reply reached its length limit. Say “continue” to carry on.'}</p>}
                     {!live && (
                       <div className="cx-acts">
                         {m.role === 'assistant' && m.text && <button type="button" className="cx-act" onClick={() => copyMsg(m)}><UiIcon name="copy" size={14} />Copy</button>}
                         {m.role === 'assistant' && lastOne && !m.error && !busy && <button type="button" className="cx-act" onClick={retry}><UiIcon name="refresh" size={14} />Again</button>}
-                        {m.role === 'assistant' && lastOne && !m.error && !busy && m.text && <button type="button" className="cx-act free" onClick={redo} title="Wrong? Ask again. It costs nothing."><UiIcon name="wand" size={14} />Wrong? Redo free</button>}
+                        {m.role === 'assistant' && lastOne && !m.error && !busy && m.text && <button type="button" className="cx-act free" onClick={redo} title="Wrong? Redo it free"><UiIcon name="wand" size={14} />Wrong? Redo free</button>}
                         {m.role === 'user' && m.id === lastUser && !busy && <button type="button" className="cx-act" onClick={() => edit(m.id)}><UiIcon name="edit" size={14} />Edit</button>}
                         {m.role === 'assistant' && m.outTokens ? <span className="cx-tok tx">{m.outTokens} tokens</span> : null}
                       </div>
@@ -526,7 +531,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         {toolSeen && (
           <div className="cd-over" role="dialog" aria-label="Code check" hidden={!tool}>
             <header className="cd-over-head"><h2 className="d">Code check</h2><span className="cx-grow" /><button type="button" className="btn small" onClick={() => setTool(false)}><UiIcon name="close" size={15} />Close</button></header>
-            <Check settings={settings} onUsed={() => setUse(usage())} onSettings={() => { setTool(false); setTab('connect'); setPanel('settings'); }} onUpgrade={setUpgrade} say={say} />
+            <Check settings={settings} onUsed={() => setUse(usage())} onSettings={() => { setTool(false); openSetup(); }} onUpgrade={setUpgrade} say={say} />
           </div>
         )}
         {drop && <div className="cx-drop" aria-hidden><b className="d">Drop pictures to add them</b></div>}
@@ -557,7 +562,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
       {acct && <Account onClose={() => setAcct(false)} onChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} />}
       {upgrade && <Upgrade note={upgrade} onClose={() => setUpgrade('')} />}
-      {panel === 'settings' && <SettingsPanel settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
+      {panel === 'settings' && <SettingsPanel owner={owner} settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
       {big && <Modal title={big.name} onClose={() => setBig(null)} wide><img className="cx-big" src={dataUrl(big)} alt={big.name} /></Modal>}
     </div>
   );

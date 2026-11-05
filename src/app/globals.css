@@ -245,6 +245,8 @@ textarea { resize: vertical; min-height: 160px; line-height: 1.5; }
 .cx-fr { display: grid; gap: 6px; }
 .cx .cx-in { width: 100%; border: 3px solid var(--ink); background: var(--paper); color: var(--ink); padding: 10px 12px; font-family: var(--t); text-transform: none; font-size: 1rem; line-height: 1.4; border-radius: 0; outline: none; }
 .cx .cx-in:focus { box-shadow: 5px 5px 0 var(--g1); }
+.cx .select.cx-in, .cx select.cx-in { appearance: auto; cursor: pointer; }
+.cx-lock { border: 3px solid var(--ink); background: var(--paper); padding: 14px 16px; display: grid; gap: 8px; border-left: 8px solid var(--g1); }
 .cx-modal .cx-in.tall { min-height: 120px; resize: vertical; }
 .cx-pw { display: flex; gap: 10px; align-items: stretch; }
 .cx-pw .btn { align-self: stretch; }
@@ -523,3 +525,8 @@ button.cx-acct:hover { color: var(--g1); }
 .cx-side .btn.gold { color: #fff; }
 .cx-side .btn:hover { color: var(--ink); }
 .cx-side .btn:disabled { color: var(--cream); }
+.ld-quiet { position: fixed; inset: 0; background: var(--ink); }
+.cx-signin { flex: none; }
+.cx-me { flex: none; width: 40px; height: 40px; display: grid; place-items: center; background: var(--g1); color: #fff; border: 3px solid var(--ink); font-family: var(--d); font-size: 1.4rem; line-height: 1; box-shadow: 3px 3px 0 var(--ink); }
+.cx-me:hover { background: var(--ink); }
+@media (max-width: 520px) { .cx-signin { padding: 6px 9px; } }

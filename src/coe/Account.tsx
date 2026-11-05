@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Modal } from './Panels';
-import { sendCode, session, signOut, verifyCode } from '@/lib/coe/cloud';
+import { cloudOn, sendCode, session, signOut, verifyCode } from '@/lib/coe/cloud';
 
 /** Sign in with an email: Coe sends a code (and a link). The chats then follow the person to any device. */
 export function Account({ onClose, onChange }: { onClose: () => void; onChange: (signedIn: boolean) => void }) {
@@ -13,6 +13,14 @@ export function Account({ onClose, onChange }: { onClose: () => void; onChange: 
   const [err, setErr] = useState('');
   const go = async (f: () => Promise<void>) => { setBusy(true); setErr(''); try { await f(); } catch (e) { setErr((e as Error).message || 'Something went wrong.'); } finally { setBusy(false); } };
 
+  if (!cloudOn) {
+    return (
+      <Modal title="Sign in" onClose={onClose}>
+        <p className="tx">Sign in is not switched on yet. Your chats are saved on this device.</p>
+        <div className="cx-actions"><button type="button" className="btn" onClick={onClose}>OK</button></div>
+      </Modal>
+    );
+  }
   if (me) {
     return (
       <Modal title="Account" onClose={onClose}>

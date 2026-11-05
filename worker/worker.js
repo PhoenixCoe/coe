@@ -4,7 +4,7 @@
 // 2. Settings > Variables and Secrets, add:
 //      API_KEY                (secret)  your OpenAI key
 //      ALLOWED_ORIGINS        (text)    https://coe.pmcstudios.uk
-//      MODEL_SWIFT / MODEL_CORE / MODEL_DEEP  (text, optional)  default gpt-5-mini / gpt-5 / gpt-5
+//      MODEL_SWIFT / MODEL_CORE / MODEL_DEEP  (text, optional)  default gpt-6-luna / gpt-6.1-terra / gpt-6.1-sol
 //      ACCESS_CODE            (secret, optional)  people without it are turned away
 //    For accounts, credits and Pro (all optional, see DEPLOY.md):
 //      SUPABASE_URL, SUPABASE_ANON_KEY   (text)
@@ -21,7 +21,7 @@ const MOST = 8192;               // the longest reply it will ever ask for
 const EXTRA = 1500;              // room for the model's own thinking, which counts against the limit
 const BIGGEST = 4000000;         // the largest request it will read, in bytes
 const TIERS = { swift: "MODEL_SWIFT", core: "MODEL_CORE", deep: "MODEL_DEEP" };
-const DEFAULTS = { swift: "gpt-5-mini", core: "gpt-5", deep: "gpt-5" };
+const DEFAULTS = { swift: "gpt-6-luna", core: "gpt-6.1-terra", deep: "gpt-6.1-sol" };
 const COST = { swift: 1, core: 1, deep: 3 };          // credits a message costs
 const REPLY = { free: 2048, pro: 8192 };              // longest reply by plan
 const REDO = { free: 10, pro: 30 };                   // free "wrong? redo" a day
