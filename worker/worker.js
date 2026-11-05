@@ -7,7 +7,7 @@
 //      MODEL_SWIFT / MODEL_CORE / MODEL_DEEP  (text, optional)  default gpt-6-luna / gpt-6.1-terra / gpt-6.1-sol
 //      ACCESS_CODE            (secret, optional)  people without it are turned away
 //    For accounts, credits and Pro (all optional, see DEPLOY.md):
-//      SUPABASE_URL, SUPABASE_ANON_KEY   (text)
+//      SUPABASE_URL, SUPABASE_ANON_KEY   (text)   the anon key or the newer publishable key
 //      SUPABASE_SERVICE_KEY              (secret)  lets the Worker count credits. Never put this in the site.
 //      STRIPE_SECRET_KEY                 (secret)
 //      STRIPE_WEBHOOK_SECRET             (secret)
@@ -53,7 +53,9 @@ export default {
     // ---- the database (Supabase), reached with the service key, only from here
     const sbUrl = (env.SUPABASE_URL || "").replace(/\/+$/, "");
     const billing = !!(sbUrl && env.SUPABASE_SERVICE_KEY);
-    const sb = (p, init = {}) => fetch(sbUrl + p, { ...init, headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: "Bearer " + env.SUPABASE_SERVICE_KEY, "content-type": "application/json", ...(init.headers || {}) } });
+    // Old-style keys (long, with dots) go in both headers. New "sb_secret_" keys are not tokens, so they go in apikey only.
+    const sbKey = (env.SUPABASE_SERVICE_KEY || "").trim();
+    const sb = (p, init = {}) => fetch(sbUrl + p, { ...init, headers: { apikey: sbKey, ...(sbKey.startsWith("sb_") ? {} : { authorization: "Bearer " + sbKey }), "content-type": "application/json", ...(init.headers || {}) } });
     const limits = { free: num(env.FREE_DAILY, 30), pro: num(env.PRO_DAILY, 300), anon: num(env.ANON_IP_DAILY, 500) };
     const stripeBase = env.STRIPE_URL || "https://api.stripe.com";
     const stripe = (p, form, method = "POST") => fetch(stripeBase + p, {

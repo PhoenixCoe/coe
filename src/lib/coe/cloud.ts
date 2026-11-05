@@ -36,7 +36,8 @@ export function takeLink(): boolean {
   } catch { return false; }
 }
 
-const head = (extra: Record<string, string> = {}, bearer = KEY) => ({ apikey: KEY, authorization: `Bearer ${bearer}`, 'content-type': 'application/json', ...extra });
+// A newer "sb_publishable_" key is not a token, so on its own it goes in apikey only. A signed-in person's token goes in authorization.
+const head = (extra: Record<string, string> = {}, bearer = KEY) => ({ apikey: KEY, ...(bearer.startsWith('sb_') ? {} : { authorization: `Bearer ${bearer}` }), 'content-type': 'application/json', ...extra });
 const fail = async (r: Response) => { let m = ''; try { const j = await r.json(); m = j.msg || j.message || j.error_description || j.error || ''; } catch { /* no body */ } return new Error(m || `Request failed (${r.status})`); };
 
 export async function sendCode(email: string) {
