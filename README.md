@@ -1,0 +1,27 @@
+# Coe (coe.pmcstudios.uk)
+
+One chat. It helps with study questions, checks code, and keeps your past chats in the sidebar.
+Next.js 15, React 19, TypeScript, built as a static site. Part of PMC Studios, with its own colours.
+
+## Look at it on your computer
+Needs Node.js 20 or newer.
+
+```bash
+npm install
+npm run dev
+```
+Open http://localhost:3000. For the built site: `npm run build:static`, then `npx serve out`.
+
+## What runs where
+- **Code check** runs on the visitor's device for JavaScript, TypeScript, JSON, HTML, CSS, Python and SQL. No key, no connection.
+- **Chat and "Ask Coe"** use OpenAI through a small Cloudflare Worker that holds the key (see DEPLOY.md). The key is never in this site.
+- **Past chats** are saved on the device by default. If Supabase is set up, people can sign in with an email code and their chats follow them.
+- **Credits and Pro** are counted by the Worker per account. Pro is bought with Stripe. With no account, a visitor is on Free. See DEPLOY.md.
+
+## Files
+- `src/coe/` the screens (chat, Code check, account, plans, settings)
+- `src/check/` the Code check engine
+- `src/lib/coe/` models, plans, settings, the server connection and `cloud.ts` (Supabase)
+- `worker/worker.js` the Cloudflare Worker (key, credits, Stripe)
+- `supabase/setup.sql` the database tables
+- `src/ui/Mark.tsx` the logo: wordmark and the spinning star
