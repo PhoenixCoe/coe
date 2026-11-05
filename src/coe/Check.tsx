@@ -5,8 +5,9 @@ import { copyText } from '@/lib/copy';
 import { COE_MODELS, canUse, modelByKey, type ModelKey } from '@/lib/coe/models';
 import { applyCredits, counted, planInfo, planNow, refreshStatus } from '@/lib/coe/account';
 import { ErrorBox } from './ErrorBox';
+import { isOwner } from '@/lib/coe/owner';
 import type { ErrAct } from '@/lib/coe/errors';
-import { connection, type CoeSettings } from '@/lib/coe/settings';
+import { connection, modeOf, type CoeSettings } from '@/lib/coe/settings';
 import type { CoeError } from '@/lib/coe/client';
 import { countMessage, usage } from './store';
 import { applyFix, check, detect, shift, LANGS, langName, type Finding, type Lang, type Severity } from '@/check';
@@ -98,7 +99,7 @@ export function Check({ settings, onUsed, onSettings, onUpgrade, say }: { settin
     if (!conn.ok) { onSettings(); say(conn.why); return; }
     const pl = planInfo(settings);
     if (!canUse(planNow(settings), model)) { onUpgrade(`${modelByKey(model).name} needs the Pro plan.`); return; }
-    if (!counted(settings) && usage().today >= pl.perDay) { onUpgrade(`That was all ${pl.perDay} messages for today on ${pl.name}.`); return; }
+    if (modeOf(settings) !== 'key' && !counted(settings) && usage().today >= pl.perDay) { onUpgrade(`You have used all ${pl.perDay} credits for today on ${pl.name}. They come back at midnight (UTC).`); return; }
     if (lines.length > MAX_LINES) { setErr(`Coe can read ${MAX_LINES} lines at a time. Cut it down to the part that goes wrong.`); return; }
     const ctl = new AbortController(); abort.current = ctl; setBusy(true); setErr('');
     const snapshot = code;
@@ -175,7 +176,7 @@ export function Check({ settings, onUsed, onSettings, onUpgrade, say }: { settin
             {COE_MODELS.map((m) => <option key={m.key} value={m.key}>{m.name.replace(/^Coe /, '')}{canUse(planNow(settings), m.key) ? '' : ' (Pro)'}</option>)}
           </select>
           <span className="cx-grow" />
-          {!conn.ok && <span className="tx cd-fine">Not connected. <button type="button" className="cx-link" onClick={onSettings}>Connect</button></span>}
+          {!conn.ok && <span className="tx cd-fine">{modeOf(settings) === 'key' ? conn.why.replace(/ in Settings\.?$/, '.') : 'Coe is not switched on yet.'} {(isOwner() || modeOf(settings) === 'key') && <button type="button" className="cx-link" onClick={onSettings}>Open Settings</button>}</span>}
         </div>
       </section>
 
@@ -191,7 +192,7 @@ export function Check({ settings, onUsed, onSettings, onUpgrade, say }: { settin
           ))}
         </div>
         <div className="cd-list cx-scroll">
-          {err && (err.kind ? <ErrorBox kind={err.kind} text={err.text} canRetry={false} onAct={(a: ErrAct) => { if (a === 'settings') onSettings(); else if (a === 'plans') window.location.href = '/plans/'; else if (a === 'signin') onUpgrade('Sign in from the sidebar, then try again.'); }} /> : <div className="cd-note bad tx" role="alert"><UiIcon name="alert" size={18} /><span>{err.text}</span></div>)}
+          {err && (err.kind ? <ErrorBox own={modeOf(settings) === 'key'} kind={err.kind} text={err.text} canRetry={false} onAct={(a: ErrAct) => { if (a === 'settings') onSettings(); else if (a === 'plans') window.location.href = '/plans/'; else if (a === 'signin') onUpgrade('Sign in from the sidebar, then try again.'); }} /> : <div className="cd-note bad tx" role="alert"><UiIcon name="alert" size={18} /><span>{err.text}</span></div>)}
           {stale && <div className="cd-note tx"><UiIcon name="info" size={18} /><span>You changed the code since Coe looked. Its notes may be out of date.</span><button type="button" className="btn small" onClick={ask}>Ask again</button></div>}
           {summary && !err && <div className="cd-note coe tx"><span className="cd-src d">Coe</span><span>{summary}</span></div>}
           {busy && <div className="cd-note tx"><span className="cx-dots" aria-hidden="true"><i /><i /><i /></span><span>Coe is reading your code…</span></div>}

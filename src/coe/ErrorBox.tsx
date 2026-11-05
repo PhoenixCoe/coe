@@ -1,9 +1,10 @@
 'use client';
 import { explain as shown, type ErrAct } from '@/lib/coe/errors';
+import { isOwner } from '@/lib/coe/owner';
 
 /** A problem, said plainly, with the button that fixes it. */
-export function ErrorBox({ kind, text, canRetry, onAct }: { kind?: string; text: string; canRetry: boolean; onAct: (a: ErrAct) => void }) {
-  const e = shown(kind as never, text);
+export function ErrorBox({ kind, text, canRetry, onAct, own }: { own?: boolean; kind?: string; text: string; canRetry: boolean; onAct: (a: ErrAct) => void }) {
+  const e = shown(kind as never, text, isOwner() || !!own, !!own);
   const label: Record<ErrAct, string> = { retry: 'Try again', settings: 'Open Settings', plans: 'See plans', signin: 'Sign in' };
   const acts = e.acts.filter((a) => a !== 'retry' || canRetry);
   return (

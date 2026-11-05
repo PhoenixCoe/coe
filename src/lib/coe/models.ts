@@ -12,12 +12,12 @@ export const COE_MODELS: CoeModel[] = [
 export const modelByKey = (k: ModelKey) => COE_MODELS.find((m) => m.key === k) ?? COE_MODELS[1];
 
 /** What each model is called at the provider, until Settings says otherwise. */
-export const DEFAULT_MODEL_IDS: Record<ModelKey, string> = { swift: 'gpt-5-mini', core: 'gpt-5', deep: 'gpt-5' };
+export const DEFAULT_MODEL_IDS: Record<ModelKey, string> = { swift: 'gpt-6-luna', core: 'gpt-6.1-terra', deep: 'gpt-6.1-sol' };
 
 export interface Plan { key: PlanKey; name: string; monthly: number; yearly: number; perDay: number; images: number; points: string[] }
 export const PLANS: Plan[] = [
   { key: 'free', name: 'Free', monthly: 0, yearly: 0, perDay: 30, images: 3, points: ['30 credits a day', 'Coe Swift and Coe Core: 1 credit a message', 'Step-by-step study help', 'Code check', '3 pictures in each message'] },
-  { key: 'pro', name: 'Pro', monthly: 10, yearly: 110, perDay: 300, images: 10, points: ['300 credits a day', 'Adds Coe Deep: 3 credits a message', 'Longer replies', '10 pictures in each message', 'Everything in Free'] },
+  { key: 'pro', name: 'Pro', monthly: 10, yearly: 110, perDay: 300, images: 10, points: ['300 credits a day', 'Adds Coe Deep: 3 credits a message', 'Longer replies', '10 pictures in each message', 'Use your own AI key: OpenAI, Anthropic, Google and more', 'Everything in Free'] },
 ];
 export const planByKey = (k: string) => PLANS.find((p) => p.key === k) ?? PLANS[0];
 /** The longest reply asked for, by plan. */

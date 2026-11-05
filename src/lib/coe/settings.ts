@@ -1,9 +1,10 @@
-import { DEFAULT_MODEL_IDS, type ModelKey } from './models';
+import { type ModelKey } from './models';
+import { providerById } from './providers';
 
 /**
  * How Coe reaches a model. Two ways, and neither puts a key in the site's code:
- *  - "server": a small Cloudflare Worker you own holds the key as a secret. This page only knows the Worker's address.
- *  - "key": your own key, kept in this browser only. For you alone, on a device you trust.
+ *  - "server": Coe's own server. Its key is a secret in Cloudflare. Everyone can use this.
+ *  - "key": a key of your own, kept in this browser only. Pro only.
  */
 export interface CoeSettings {
   mode: 'server' | 'key';
@@ -11,12 +12,14 @@ export interface CoeSettings {
   serverUrl: string;
   /** An optional code the Worker asks for, so only people who know it can use it. */
   code: string;
-  /** Which way the model's API is spoken. */
-  provider: 'anthropic' | 'openai';
-  /** The API address (mode: key). */
-  baseUrl: string;
-  apiKey: string;
-  models: Record<ModelKey, string>;
+  /** Which company's AI is used with your own key (an id from providers.ts). */
+  provider: string;
+  /** One key per company, so switching does not lose the others. */
+  keys: Record<string, string>;
+  /** An API address of your own, per company. Empty means the usual one. */
+  bases: Record<string, string>;
+  /** Model names of your own, per company. Empty means the usual ones. */
+  models: Record<string, Partial<Record<ModelKey, string>>>;
   /** Standing instructions added to every conversation. */
   system: string;
   /** How adventurous replies are. 'default' leaves it to the model. */
@@ -28,7 +31,7 @@ export interface CoeSettings {
 }
 
 export const DEFAULTS: CoeSettings = {
-  mode: 'server', serverUrl: (process.env.NEXT_PUBLIC_COE_SERVER ?? '').trim().replace(/\/+$/, ''), code: '', provider: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: '', models: { ...DEFAULT_MODEL_IDS },
+  mode: 'server', serverUrl: (process.env.NEXT_PUBLIC_COE_SERVER ?? '').trim().replace(/\/+$/, ''), code: '', provider: 'openai', keys: {}, bases: {}, models: {},
   system: '', creativity: 'default', name: '', size: 'normal', enter: 'send',
 };
 export const CREATIVITY: Record<CoeSettings['creativity'], number | undefined> = { default: undefined, precise: 0.2, balanced: 0.7, creative: 1 };
@@ -37,16 +40,43 @@ const KEY = 'pmc:coe:settings';
 export function loadSettings(): CoeSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || 'null');
-    if (raw && typeof raw === 'object') return { ...DEFAULTS, ...raw, serverUrl: String(raw.serverUrl || '').trim() || DEFAULTS.serverUrl, models: { ...DEFAULTS.models, ...(raw.models ?? {}) } };
+    if (raw && typeof raw === 'object') {
+      const s: CoeSettings = { ...DEFAULTS, ...raw, serverUrl: String(raw.serverUrl || '').trim() || DEFAULTS.serverUrl, keys: { ...(raw.keys ?? {}) }, bases: { ...(raw.bases ?? {}) }, models: {} };
+      if (typeof raw.provider !== 'string' || !raw.provider) s.provider = 'openai';
+      // Older versions kept one key and one set of model names.
+      if (typeof raw.apiKey === 'string' && raw.apiKey && !Object.keys(s.keys).length) { s.keys[s.provider] = raw.apiKey; if (raw.baseUrl) s.bases[s.provider] = String(raw.baseUrl); }
+      if (raw.models && typeof raw.models === 'object') for (const [k, v] of Object.entries(raw.models)) { if (v && typeof v === 'object') s.models[k] = v as Partial<Record<ModelKey, string>>; }
+      const old = { apiKey: 1, baseUrl: 1 } as Record<string, 1>; for (const k of Object.keys(old)) delete (s as any)[k];
+      if (s.mode !== 'key') s.mode = 'server';
+      return s;
+    }
   } catch { /* storage blocked or damaged */ }
-  return { ...DEFAULTS, models: { ...DEFAULTS.models } };
+  return { ...DEFAULTS, keys: {}, bases: {}, models: {} };
 }
 export function saveSettings(s: CoeSettings) { try { localStorage.setItem(KEY, JSON.stringify(s)); window.dispatchEvent(new Event('pmc:coe-settings')); } catch { /* storage blocked */ } }
 
+/** May your own key be used right now? Only for Pro members. The account page sets this once the server has said who is signed in. */
+let keyAllowed = false;
+export const allowOwnKey = (yes: boolean) => { keyAllowed = yes; };
+/** The way in use: your own key only when you chose it and Pro allows it. Otherwise Coe's own server. */
+export const modeOf = (s: CoeSettings): 'server' | 'key' => (s.mode === 'key' && keyAllowed ? 'key' : 'server');
+
+/** Everything needed to reach the company chosen for your own key. */
+export function own(s: CoeSettings) {
+  const p = providerById(s.provider);
+  const m = s.models[p.id] ?? {};
+  return {
+    p, kind: p.kind, base: (s.bases[p.id] || p.base).trim().replace(/\/+$/, ''), key: (s.keys[p.id] ?? '').trim(),
+    model: (k: ModelKey) => (m[k] || '').trim() || p.models[k],
+  };
+}
+
 /** Is there somewhere to send a message? When not, says what is missing in plain words. */
 export function connection(s: CoeSettings): { ok: true } | { ok: false; why: string } {
-  if (s.mode === 'server') return s.serverUrl.trim() ? { ok: true } : { ok: false, why: 'Add the address of your Coe server in Settings.' };
-  if (!s.apiKey.trim()) return { ok: false, why: 'Add your key in Settings.' };
-  if (s.provider === 'openai' && !s.baseUrl.trim()) return { ok: false, why: 'Add the API address in Settings.' };
+  if (modeOf(s) === 'server') return s.serverUrl.trim() ? { ok: true } : { ok: false, why: 'Add the address of your Coe server in Settings.' };
+  const o = own(s);
+  if (!o.key && o.p.id !== 'ollama') return { ok: false, why: `Add your ${o.p.name} key in Settings.` };
+  if (!o.base) return { ok: false, why: 'Add the API address in Settings.' };
+  if (!o.model('core')) return { ok: false, why: 'Add the model names in Settings.' };
   return { ok: true };
 }

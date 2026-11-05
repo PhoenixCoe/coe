@@ -15,6 +15,6 @@ async function call<T>(s: CoeSettings, path: string, init: RequestInit = {}): Pr
   if (!r.ok) throw new Error(j?.error?.message || 'The server could not do that.');
   return j as T;
 }
-export const getMe = (s: CoeSettings) => (s.mode === 'server' && s.serverUrl.trim() ? call<Me>(s, '/me').catch(() => null) : Promise.resolve(null));
+export const getMe = (s: CoeSettings) => (s.serverUrl.trim() ? call<Me>(s, '/me').catch(() => null) : Promise.resolve(null));
 export const startCheckout = (s: CoeSettings, period: 'month' | 'year') => call<{ url: string }>(s, '/checkout', { method: 'POST', body: JSON.stringify({ period, back: location.origin }) }).then((r) => r.url);
 export const openPortal = (s: CoeSettings) => call<{ url: string }>(s, '/portal', { method: 'POST', body: JSON.stringify({ back: location.origin }) }).then((r) => r.url);
