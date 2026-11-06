@@ -1,6 +1,7 @@
 import { getMe } from './billing';
 import { PLANS, QUOTAS, planByKey, type Plan, type PlanKey, type QuotaKey } from './models';
 import { allowOwnKey, modeOf, type CoeSettings } from './settings';
+import { countMessage } from '@/coe/store';
 
 /** What the server last said about this person. Without an account it stays on Free. */
 export interface Status { billing: boolean; signedIn: boolean; canBuy: boolean; plan: PlanKey; given?: boolean; used: number; limit: number; email?: string; renews?: string; quotas?: Record<string, { used: number; limit: number }>; week?: { day: string; used: number }[] }
@@ -17,6 +18,29 @@ export const counted = (s: CoeSettings) => modeOf(s) === 'server' && cur.billing
 export const planNow = (s: CoeSettings): PlanKey => (modeOf(s) === 'key' ? 'pro' : counted(s) ? cur.plan : 'free');
 export const planInfo = (s: CoeSettings): Plan => planByKey(planNow(s));
 export const creditsNow = (s: CoeSettings) => (counted(s) ? { used: cur.used, limit: cur.limit } : null);
+/**
+ * The daily limit that applies right now. Where the server keeps the count (signed in) or has said what a signed-out visitor gets, that is its number.
+ * Otherwise it is the plan's.
+ */
+export const limitNow = (s: CoeSettings): number => (modeOf(s) === 'server' && cur.billing && cur.limit > 0 ? cur.limit : planInfo(s).perDay);
+
+/**
+ * A finished reply. Signed in: the server's total replaces ours. Everyone else (signed out, no accounts on the server) is counted on this device,
+ * using what the server charged when it said (it knows Deep counts double, and that a redo or a double-check is free), or a guess from the words.
+ */
+export function countReply(s: CoeSettings, credits: { used: number; limit: number; plan: string; tokens?: number } | undefined, guess: () => number, skip = false): void {
+  if (credits) applyCredits(credits);
+  if (counted(s) || skip) return;
+  const paid = credits?.tokens;
+  if (paid === 0) return;
+  countMessage(paid ?? guess());
+  tell();
+}
+/** A web search or a picture costs tokens on the server. Signed in: fetch the server's total again. Everyone else: add it to the count kept here. */
+export function countOther(s: CoeSettings, tokens: number): void {
+  if (counted(s)) { void refreshStatus(s); return; }
+  countMessage(tokens); tell();
+}
 
 export async function refreshStatus(s: CoeSettings): Promise<Status> {
   const me = await getMe(s);

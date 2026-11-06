@@ -6,7 +6,7 @@ import { UiIcon } from '@/ui/icons';
 import { PLANS, fmtTok } from '@/lib/coe/models';
 import { loadSettings } from '@/lib/coe/settings';
 import { openPortal, startCheckout } from '@/lib/coe/billing';
-import { onStatus, refreshStatus, status, type Status } from '@/lib/coe/account';
+import { limitNow, onStatus, refreshStatus, status, type Status } from '@/lib/coe/account';
 import { cloudOn, session } from '@/lib/coe/cloud';
 import { Account } from './Account';
 import { usage } from './store';
@@ -97,7 +97,7 @@ export default function Plans() {
         {soon && <p className="pl-note">Pro is not on sale yet. Check back soon.</p>}
         {signedIn && st.billing
           ? <p>Today: <b>{fmtTok(st.used)}</b> of {fmtTok(st.limit)} tokens used. Tokens reset at midnight UTC.{pro && st.renews ? ` Pro renews ${new Date(st.renews).toLocaleDateString()}.` : ''}</p>
-          : <p>Today: <b>{fmtTok(local)}</b> of {fmtTok(PLANS[0].perDay)} tokens used on this device. {signedIn ? '' : 'Sign in to keep your plan and tokens with your account.'}</p>}
+          : <p>Today: <b>{fmtTok(local)}</b> of {fmtTok(limitNow(loadSettings()))} tokens used on this device. {signedIn ? '' : 'Sign in to keep your plan and tokens with your account.'}</p>}
         {!signedIn && cloudOn && <p><button type="button" className="btn small" onClick={() => setAcct(true)}>Sign in</button></p>}
       </footer>
       {acct && <Account onClose={() => setAcct(false)} onChange={() => { void load(); }} />}

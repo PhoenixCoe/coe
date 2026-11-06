@@ -12,7 +12,6 @@ const UI: Record<string, string> = {
   wave: 'M3 12h2M7 8v8M11 4v16M15 8v8M19 6v12',
   language: 'M3 5h10M8 3v2M5 5c1 4 3 7 7 9M11 5c-1 4-4 8-8 10M13 21l4-10 4 10M14.5 18h5',
   qr: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM19 14h2M14 19h2M18 18h3v3',
-  bulb: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.4.4.5.8.5 1.1h6c0-.3.1-.7.5-1.1A6 6 0 0 0 12 3z',
   text: 'M4 6V4h16v2M12 4v16M9 20h6',
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
   infinity: 'M7 8a4 4 0 1 0 0 8c4 0 6-8 10-8a4 4 0 1 1 0 8c-4 0-6-8-10-8z',

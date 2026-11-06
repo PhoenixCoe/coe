@@ -1,7 +1,7 @@
 'use client';
 /**
  * Coe turns into the thing it is doing: the star squashes down, a symbol pops out (a pencil that writes,
- * a scanner that sweeps, a magnifier that searches...), and after a few seconds the star comes back.
+ * a scanner that sweeps, a magnifier that searches...). Thinking has no symbol: the star just moves its own way. After a few seconds the star comes back.
  */
 import type { ReactNode } from 'react';
 import { CoeStar, type Phase } from './Mark';
@@ -12,11 +12,6 @@ const GLYPH: Partial<Record<Phase, ReactNode>> = {
   write: (<g {...g}>
     <path className="cw-line" d="M5 27H27" strokeDasharray="22" />
     <g className="cw-pencil"><path d="M21 5l5 5L12 24l-6 1 1-6z" fill="var(--tint)" /><path d="M18 8l5 5" /></g>
-  </g>),
-  think: (<g {...g}>
-    <path className="cw-bulb" d="M16 4a8 8 0 0 0-4.5 14.6V22h9v-3.4A8 8 0 0 0 16 4z" fill="var(--tint)" />
-    <path d="M12.5 26h7M14 29.2h4" />
-    <path className="cw-ray" d="M16 0.5v0M3 10l-2-1M29 10l2-1M5 3l-1.5-1.5M27 3l1.5-1.5" />
   </g>),
   search: (<g {...g} className="cw-orbit"><circle cx="13" cy="13" r="8" fill="var(--tint)" /><path d="M19 19l9 9" strokeWidth="3.6" /><path className="cw-glint" d="M9 11a4.5 4.5 0 0 1 3-2.5" strokeWidth="1.8" /></g>),
   read: (<g {...g}>

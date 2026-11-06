@@ -116,7 +116,7 @@ export async function stream(s: CoeSettings, r: Request, onText?: (soFar: string
     for await (const d of lines(res)) {
       if (d === '[DONE]') break;
       let j: any; try { j = JSON.parse(d); } catch { continue; }
-      if (j.coe_usage) { credits = { used: Number(j.coe_usage.used) || 0, limit: Number(j.coe_usage.limit) || 0, plan: String(j.coe_usage.plan || 'free'), tokens: Number(j.coe_usage.tokens) || 0 }; continue; }
+      if (j.coe_usage) { credits = { used: Number(j.coe_usage.used) || 0, limit: Number(j.coe_usage.limit) || 0, plan: String(j.coe_usage.plan || 'free'), tokens: j.coe_usage.tokens === undefined ? undefined : Number(j.coe_usage.tokens) || 0 }; continue; }
       if (kindOf(s) === 'anthropic') {
         if (j.type === 'content_block_delta' && j.delta?.type === 'text_delta') { text += j.delta.text; onText?.(text); }
         else if (j.type === 'message_start') inTokens = j.message?.usage?.input_tokens;

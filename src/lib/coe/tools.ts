@@ -12,8 +12,8 @@
 import type { Img, ToolOut, ToolRun } from '@/coe/store';
 import { serverPost } from './billing';
 import { lookupPlaces } from './places';
-import { bumpQuota, quotaLeft } from './account';
-import { QUOTAS, type PlanKey, type QuotaKey } from './models';
+import { bumpQuota, countOther, quotaLeft } from './account';
+import { COST_IMAGE, COST_SEARCH, QUOTAS, type PlanKey, type QuotaKey } from './models';
 import type { CoeSettings } from './settings';
 import { googleNow, links, memory, remember } from './links';
 import { runJs } from './sandbox';
@@ -120,14 +120,14 @@ async function toolMaths(c: Call): Promise<Done> {
 async function toolSearch(c: Call, x: Ctx): Promise<Done> {
   const q = str(c.q, 600).trim(); if (!q) return fail('Say what to search for.');
   const r = await serverPost<{ text: string; sources: { title: string; url: string }[] }>(x.settings, '/search', { q });
-  bumpQuota('search');
+  bumpQuota('search'); countOther(x.settings, COST_SEARCH);
   return { status: 'ok', result: `Web search for "${q}":\n${r.text}\n\nSources:\n${r.sources.map((s) => `- ${s.title}: ${s.url}`).join('\n') || '(none given)'}\n\nAnswer from this, name the sources you use, and say if the results do not settle the question.`, out: { kind: 'search', text: r.text, sources: r.sources } };
 }
 
 async function toolImage(c: Call, x: Ctx): Promise<Done> {
   const prompt = str(c.prompt, 4000).trim(); if (!prompt) return fail('Say what to draw.');
   const r = await serverPost<{ data: string; type: string }>(x.settings, '/image', { prompt });
-  bumpQuota('image');
+  bumpQuota('image'); countOther(x.settings, COST_IMAGE);
   const ext = r.type.split('/')[1]?.replace('svg+xml', 'svg').replace('jpeg', 'jpg') || 'png';
   return { status: 'ok', result: 'The picture was made and is now shown to the person under your message. You cannot see it, so do not describe details you cannot know. Ask if they want changes.', out: { kind: 'image', img: { name: `picture.${ext}`, type: r.type, data: r.data } } };
 }

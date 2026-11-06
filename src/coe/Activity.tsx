@@ -77,7 +77,7 @@ export function Activity({ steps, live, phaseNote }: { steps: Step[]; live: bool
   return (
     <div className={`act${live ? ' live' : ''}${isOpen ? ' open' : ''}`}>
       <button type="button" className="act-head" aria-expanded={isOpen} onClick={() => setOpen(!isOpen)}>
-        <span className="act-ic" aria-hidden><UiIcon name={running?.icon ?? (live ? 'bulb' : 'list')} size={16} /></span>
+        <span className="act-ic" aria-hidden><UiIcon name={running?.icon ?? (live ? 'sparkle' : 'list')} size={16} /></span>
         <span className="act-t d">{head}</span>
         <UiIcon name="down" size={15} className="act-chev" />
       </button>

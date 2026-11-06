@@ -7,7 +7,7 @@ import { UiIcon } from '@/ui/icons';
 import { downloadText } from '@/ui/copy';
 import { CoeError, stream, type ChatMsg } from '@/lib/coe/client';
 import { COE_MODELS, FILE_TEXT, MAX_REPLY, MAX_WORK, QUOTAS, canUse, fmtTok, modelByKey, type ModelKey } from '@/lib/coe/models';
-import { applyCredits, bumpQuota, counted, creditsNow, onStatus, planInfo, planNow, quotaLeft, refreshStatus, status } from '@/lib/coe/account';
+import { applyCredits, bumpQuota, countReply, counted, creditsNow, limitNow, onStatus, planInfo, planNow, quotaLeft, refreshStatus, status } from '@/lib/coe/account';
 import { explain as describeErr, type ErrAct } from '@/lib/coe/errors';
 import { ErrorBox } from './ErrorBox';
 import { isOwner } from '@/lib/coe/owner';
@@ -51,7 +51,7 @@ import { redoLeft, redoUsed } from '@/lib/coe/redo';
 import { Feedback } from './Feedback';
 import { AnswerInfo } from './AnswerInfo';
 import { feedbackDue, feedbackLater, feedbackShown, noteReply, sendFeedback } from '@/lib/coe/feedback';
-import { bucket, countMessage, dataUrl, deleteAll, deleteConv, exportAll, importAll, loadConv, loadIndex, saveConv, titleFrom, toMarkdown, uid, usage, type Attach, type Conv, type ConvMeta, type Img, type Msg, type ToolRun } from './store';
+import { bucket, dataUrl, deleteAll, fillToday, deleteConv, exportAll, importAll, loadConv, loadIndex, saveConv, titleFrom, toMarkdown, uid, usage, type Attach, type Conv, type ConvMeta, type Img, type Msg, type ToolRun } from './store';
 
 const PICTURE_COST = 1600;             // a picture counts as this many characters when trimming
 const CONTEXT = { free: 80000, pro: 600000 };   // characters sent with each message; older ones are left out
@@ -191,7 +191,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   }, []);
 
   const [, bump] = useState(0);
-  useEffect(() => onStatus(() => bump((n) => n + 1)), []);
+  useEffect(() => onStatus(() => { setUse(usage()); bump((n) => n + 1); }), []);
 
   const abort = useRef<AbortController | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
@@ -209,14 +209,16 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const plan = planInfo(settings);
   const cr = creditsNow(settings);
   const usedNow = cr ? cr.used : use.today;
-  const perDay = cr ? cr.limit : plan.perDay;
+  const perDay = limitNow(settings);
   const keyOn = modeOf(settings) === 'key';
   const planName = keyOn ? 'Own key' : plan.name;
   const conn = connection(settings);
   const model = modelByKey(conv.model);
   const left = Math.max(0, perDay - usedNow);
   // A live guess while a reply is being written (about four letters to a token); the exact count replaces it when the reply ends.
-  const streamed = busy ? Math.round((conv.messages[conv.messages.length - 1]?.text.length ?? 0) / 4) : 0;
+  const [settled, setSettled] = useState<{ id: string; n: number }>({ id: '', n: 0 });
+  const lastMsg = conv.messages[conv.messages.length - 1], liveChars = busy ? (lastMsg?.text.length ?? 0) : 0;
+  const streamed = busy ? Math.round(Math.max(0, liveChars - (settled.id === lastMsg?.id && liveChars >= settled.n ? settled.n : 0)) / 4) : 0;   // text already counted is not counted twice
   const livePct = perDay > 0 ? Math.min(100, Math.floor(((usedNow + streamed) / perDay) * 100)) : 0;
   const [usageOff, setUsageOff] = useState(false);
   useEffect(() => { if (livePct >= 100) setUsageOff(false); }, [livePct >= 100]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -327,7 +329,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const model: ModelKey = opts.work ? 'deep' : base.model;
     if (!opts.work && !canUse(pn, base.model)) { setUpgrade(`${modelByKey(base.model).name} needs the Pro plan.`); return; }
     if (opts.work && pn !== 'pro' && quotaLeft('work', s).left <= 0) { setUpgrade('Deep Work is part of Pro. Free includes one run a day, and today\'s is used.'); return; }
-    if (!opts.free && modeOf(s) !== 'key' && !counted(s) && usage().today >= pl.perDay) { setUpgrade(`You have used all ${fmtTok(pl.perDay)} tokens for today on ${pl.name}. They come back at midnight (UTC).`); return; }
+    if (!opts.free && modeOf(s) !== 'key' && !counted(s) && usage().today >= limitNow(s)) { setUpgrade(`You have used all ${fmtTok(limitNow(s))} tokens for today on ${pl.name}. They come back at midnight (UTC).`); return; }
 
     const mine = base.id, active = () => convRef.current.id === mine;
     let work: Conv = base;
@@ -368,7 +370,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         const found = findTool(r.text);
         const text = found ? r.text.slice(0, found.end) : r.text;
         patch({ text, stopped: (userStopped && r.stopped) || undefined, cut: r.cut || undefined, inTokens: r.inTokens, outTokens: r.outTokens });
-        if (r.credits) applyCredits(r.credits); else if ((!r.stopped || r.text) && !(opts.free && step === 0) && !counted(s)) setUse(countMessage((r.inTokens ?? Math.ceil(JSON.stringify(sent).length / 4) + 700) + (r.outTokens ?? Math.ceil(r.text.length / 4))));
+        countReply(s, r.credits, () => (r.inTokens ?? Math.ceil(JSON.stringify(sent).length / 4) + 700) + (r.outTokens ?? Math.ceil(r.text.length / 4)), !r.credits && ((r.stopped && !r.text) || (!!opts.free && step === 0)));
+        setUse(usage()); setSettled({ id: holder.id, n: text.length });
         if (step === 0 && opts.work) bumpQuota('work');
         if (userStopped && !r.text) { commit({ ...work, messages: work.messages.filter((m) => m.id !== holder.id) }); return false; }
         if (userStopped) return false;
@@ -416,6 +419,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         let why = err.message || '';
         if (err.kind === 'bad' && base.messages.some((m) => m.images?.length)) why = (why ? why + ' ' : '') + 'If the model cannot read pictures, take the pictures out or pick another model.';
         patch({ text: latest, error: why || describeErr(err.kind, '').text, errKind: err.kind }); sfx.error();
+        if (err.kind === 'credits' && modeOf(s) === 'server' && !counted(s)) { fillToday(limitNow(s)); setUse(usage()); }   // turned away for tokens: this device's count agrees
         if (err.kind === 'credits' || err.kind === 'plan' || err.kind === 'signin') void refreshStatus(s);
         return false;
       } finally { ctl.signal.removeEventListener('abort', link); }
@@ -871,6 +875,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         <div className="cx-scroll" ref={scroller} onScroll={onScroll} onClick={onMessages}>
           {empty ? (
             <div className="cx-empty home">
+              <CoeWordmark className="home-logo" height={84} />
               <h2 className="home-h d">{greeting(settings.name, new Date().getHours(), hello)}</h2>
               <p className="home-lead tx">Ask anything, add a picture, or start from a block.</p>
               {!conn.ok && owner && (
@@ -879,23 +884,19 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                   <button type="button" className="btn gold" onClick={() => { setTab(keyOn ? 'ai' : 'connect'); setPanel('settings'); }}>Set up Coe</button>
                 </div>
               )}
-              <div className="plates">
+              <div className="hbs" role="group" aria-label="Start from a block">
                 {(moreStarters ? STARTERS : STARTERS.slice(0, 9)).map((s, i) => (
-                  <button key={s.title} type="button" className={`plate c${i % 5}${i % 4 === 1 ? ' cut' : ''}`} style={{ animationDelay: `${i * 55}ms` }}
+                  <button key={s.title} type="button" className="hb" title={s.hint} style={{ animationDelay: `${i * 40}ms` }}
                     onClick={() => { if (s.tool === 'code') { setTool(true); return; } setText(s.text ?? ''); box.current?.focus(); if (s.pic) (canCamera() ? setCapture('camera') : fileIn.current?.click()); }}>
-                    <UiIcon name={s.icon} size={30} />
-                    <b className="plate-t d">{s.title}</b>
-                    <span className="plate-h tx">{s.hint}</span>
+                    <UiIcon name={s.icon} size={18} />
+                    <b className="d">{s.title}</b>
                   </button>
                 ))}
-                {!moreStarters && STARTERS.length > 9 && <button type="button" className="plate more" onClick={() => setMoreStarters(true)}><b className="plate-t d">{STARTERS.length - 9} more</b><span className="plate-h tx">Show every block</span></button>}
+                {!moreStarters && STARTERS.length > 9 && <button type="button" className="hb more" onClick={() => setMoreStarters(true)}><b className="d">{STARTERS.length - 9} more</b></button>}
               </div>
               <div className="home-strip">
                 <button type="button" className="strip-b" onClick={() => setStudyOpen(true)}><UiIcon name="flame" size={22} /><b className="d">{days}</b><span className="tx">day streak</span></button>
                 <button type="button" className="strip-b" onClick={() => setStudyOpen(true)}><UiIcon name="study" size={22} /><b className="d">{due}</b><span className="tx">cards due</span></button>
-                <div className="strip-look" role="group" aria-label="Colour">
-                  {LEADS.map((l) => <button key={l.id} type="button" className={`sw sw-${l.id}`} aria-label={`${l.name} colour`} aria-pressed={lead === l.id} title={l.name} onClick={() => pickLead(l.id)} />)}
-                </div>
                 <span className="strip-cr tx">{keyOn ? 'No daily limit' : `${fmtTok(Math.max(0, left))} tokens left today`}</span>
               </div>
             </div>
