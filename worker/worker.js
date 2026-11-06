@@ -204,13 +204,14 @@ export default {
     try {
       upstream = await fetch(env.OPENAI_URL || "https://api.openai.com/v1/chat/completions", {
         method: "POST",
-        headers: { "content-type": "application/json", "authorization": "Bearer " + env.API_KEY },
+        headers: { "content-type": "application/json", "authorization": "Bearer " + String(env.API_KEY || "").trim().replace(/^["']|["']$/g, "") },
         body: JSON.stringify(out),
       });
     } catch (e) { upstream = null; }
     if (!upstream || !upstream.ok) {
       if (billing && cost > 0) await spend(subject, -cost, limit + cost).catch(() => {});   // a reply that never came costs nothing
       if (!upstream) return fail(502, "The model could not be reached. Try again in a moment.");
+      if (upstream.status === 401 || upstream.status === 403) return fail(503, "Coe's AI key was not accepted. The owner needs to check the API_KEY variable in Cloudflare.");
     }
     const credit = billing && who ? { "x-coe-used": String(upstream.ok ? used : Math.max(0, used - cost)), "x-coe-limit": String(limit), "x-coe-plan": plan } : {};
     return new Response(upstream.body, { status: upstream.status, headers: { ...cors, ...credit, "content-type": upstream.headers.get("content-type") || "application/json" } });
