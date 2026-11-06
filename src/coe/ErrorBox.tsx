@@ -8,7 +8,7 @@ export function ErrorBox({ kind, text, canRetry, onAct, own }: { own?: boolean; 
   const label: Record<ErrAct, string> = { retry: 'Try again', settings: 'Open Settings', plans: 'See plans', signin: 'Sign in' };
   const acts = e.acts.filter((a) => a !== 'retry' || canRetry);
   return (
-    <div className={`cx-err${e.soft ? ' warn' : ''}`} role="alert">
+    <div className={`cx-err ${e.level}`} role="alert">
       <span className="cx-err-i" aria-hidden>!</span>
       <h4 className="d">{e.title}</h4>
       <p className="tx">{e.text}</p>

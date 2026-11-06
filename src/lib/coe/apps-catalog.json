@@ -1,0 +1,1013 @@
+[
+ {
+  "slug": "asset-shrinker",
+  "cat": "file-media",
+  "title": "Asset Shrinker",
+  "tagline": "Make files smaller",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "colours",
+    "init": "128"
+   },
+   {
+    "key": "scale",
+    "init": "100"
+   },
+   {
+    "key": "webp",
+    "init": "false"
+   },
+   {
+    "key": "quality",
+    "init": "85"
+   },
+   {
+    "key": "precision",
+    "init": "2"
+   }
+  ]
+ },
+ {
+  "slug": "audio-trimmer-looper",
+  "cat": "file-media",
+  "title": "Audio Trimmer & Looper",
+  "tagline": "Cut and loop audio",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": []
+ },
+ {
+  "slug": "background-remover",
+  "cat": "file-media",
+  "title": "Background Remover",
+  "tagline": "Remove backgrounds",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": []
+ },
+ {
+  "slug": "base64-studio",
+  "cat": "developer-data",
+  "title": "Base64 Studio",
+  "tagline": "Encode and decode Base64",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "mode",
+    "init": "'encode'"
+   },
+   {
+    "key": "text",
+    "init": "'Hello, PMC!'"
+   },
+   {
+    "key": "urlsafe",
+    "init": "false"
+   },
+   {
+    "key": "wrap",
+    "init": "false"
+   }
+  ]
+ },
+ {
+  "slug": "block-coder",
+  "cat": "developer-data",
+  "title": "Block Coder",
+  "tagline": "Build with blocks",
+  "mode": "local",
+  "fullscreen": true,
+  "files": true,
+  "keys": []
+ },
+ {
+  "slug": "case-converter",
+  "cat": "text-formatting",
+  "title": "Case Converter",
+  "tagline": "Change text case",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "code-formatter",
+  "cat": "text-formatting",
+  "title": "Code Formatter",
+  "tagline": "Tidy up code",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "code-minifier-diff",
+  "cat": "text-formatting",
+  "title": "Code Minifier & Diff",
+  "tagline": "Shrink code, compare changes",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "code-snapshot-studio",
+  "cat": "developer-data",
+  "title": "Code Snapshot Studio",
+  "tagline": "Code as a picture",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "settings",
+    "init": "DEF"
+   },
+   {
+    "key": "code",
+    "init": "SAMPLE"
+   }
+  ]
+ },
+ {
+  "slug": "color-palette-extractor",
+  "cat": "file-media",
+  "title": "Color & Palette Extractor",
+  "tagline": "Colours from an image",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "count",
+    "init": "6"
+   },
+   {
+    "key": "format",
+    "init": "'hex'"
+   }
+  ]
+ },
+ {
+  "slug": "color-system-generator",
+  "cat": "business-web",
+  "title": "Color System Generator",
+  "tagline": "Colour scales from one hex",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "ramps",
+    "init": "[{ name: 'brand', hex: '#337957' }, { name: 'accen"
+   },
+   {
+    "key": "sat",
+    "init": "100"
+   },
+   {
+    "key": "neutral",
+    "init": "true"
+   }
+  ]
+ },
+ {
+  "slug": "cron-schedule-helper",
+  "cat": "developer-data",
+  "title": "Cron Schedule Helper",
+  "tagline": "Build cron schedules",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "mode",
+    "init": "'easy'"
+   },
+   {
+    "key": "builder",
+    "init": "DEFB"
+   },
+   {
+    "key": "expression",
+    "init": "'0 9 * * 1-5'"
+   }
+  ]
+ },
+ {
+  "slug": "email-signature-designer",
+  "cat": "productivity-student",
+  "title": "Email Signature Designer",
+  "tagline": "Design an email signature",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "signature",
+    "init": "DEF"
+   }
+  ]
+ },
+ {
+  "slug": "encrypted-scratchpad",
+  "cat": "productivity-student",
+  "title": "Encrypted Scratchpad",
+  "tagline": "Locked notes",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": []
+ },
+ {
+  "slug": "env-file-validator",
+  "cat": "developer-data",
+  "title": "Env File Validator",
+  "tagline": "Check .env files",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "env",
+    "init": "SAMPLE"
+   },
+   {
+    "key": "example",
+    "init": "''"
+   },
+   {
+    "key": "tidy",
+    "init": "{ dedupe: true, sort: false, trim: true }"
+   }
+  ]
+ },
+ {
+  "slug": "faq-schema-builder",
+  "cat": "business-web",
+  "title": "FAQ Schema Builder",
+  "tagline": "FAQ markup builder",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "list",
+    "init": "START"
+   }
+  ]
+ },
+ {
+  "slug": "favicon-generator",
+  "cat": "file-media",
+  "title": "Favicon Generator",
+  "tagline": "Make a favicon set",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "settings",
+    "init": "DEF"
+   }
+  ]
+ },
+ {
+  "slug": "flashcard-revision-studio",
+  "cat": "productivity-student",
+  "title": "Flashcard Revision Studio",
+  "tagline": "Flashcards to revise",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "decks",
+    "init": "[]"
+   },
+   {
+    "key": "current",
+    "init": "null"
+   }
+  ]
+ },
+ {
+  "slug": "gif-animation-builder",
+  "cat": "file-media",
+  "title": "GIF & Animation Builder",
+  "tagline": "Make GIFs",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "width",
+    "init": "480"
+   },
+   {
+    "key": "colours",
+    "init": "128"
+   },
+   {
+    "key": "delay",
+    "init": "100"
+   },
+   {
+    "key": "loops",
+    "init": "0"
+   },
+   {
+    "key": "fps",
+    "init": "8"
+   }
+  ]
+ },
+ {
+  "slug": "git-license-generator",
+  "cat": "business-web",
+  "title": "Git & License Generator",
+  "tagline": ".gitignore and licences",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "id",
+    "init": "'mit'"
+   },
+   {
+    "key": "name",
+    "init": "''"
+   }
+  ]
+ },
+ {
+  "slug": "github-readme-studio",
+  "cat": "developer-data",
+  "title": "GitHub README Studio",
+  "tagline": "Build a README",
+  "mode": "local",
+  "fullscreen": true,
+  "files": false,
+  "keys": [
+   {
+    "key": "blocks",
+    "init": "START"
+   }
+  ]
+ },
+ {
+  "slug": "global-time-zone-sync",
+  "cat": "productivity-student",
+  "title": "Global Time Zone Sync",
+  "tagline": "Compare time zones",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "zones",
+    "init": "[]"
+   },
+   {
+    "key": "day",
+    "init": "''"
+   },
+   {
+    "key": "hour",
+    "init": "10"
+   },
+   {
+    "key": "from",
+    "init": "9"
+   },
+   {
+    "key": "to",
+    "init": "17"
+   }
+  ]
+ },
+ {
+  "slug": "habit-heatmap-tracker",
+  "cat": "productivity-student",
+  "title": "Habit Heatmap Tracker",
+  "tagline": "Track habits",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "habits",
+    "init": "[]"
+   }
+  ]
+ },
+ {
+  "slug": "http-protocol-reference",
+  "cat": "business-web",
+  "title": "HTTP Protocol Reference & Checker",
+  "tagline": "HTTP status codes",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "image-resizer",
+  "cat": "file-media",
+  "title": "Image Resizer",
+  "tagline": "Resize many images",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": []
+ },
+ {
+  "slug": "invoice-builder",
+  "cat": "productivity-student",
+  "title": "Invoice Builder",
+  "tagline": "Make an invoice PDF",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": []
+ },
+ {
+  "slug": "json-formatter-repair",
+  "cat": "text-formatting",
+  "title": "JSON Formatter & Repair",
+  "tagline": "Format and fix JSON",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "jwt-inspector",
+  "cat": "developer-data",
+  "title": "JWT Inspector",
+  "tagline": "Read JWT tokens",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "token",
+    "init": "SAMPLE"
+   }
+  ]
+ },
+ {
+  "slug": "list-cleaner-deduplicator",
+  "cat": "text-formatting",
+  "title": "List Cleaner & Deduplicator",
+  "tagline": "Remove duplicate lines",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "lorem-generator",
+  "cat": "text-formatting",
+  "title": "Lorem Generator",
+  "tagline": "Placeholder text",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "markdown-studio",
+  "cat": "text-formatting",
+  "title": "Markdown Studio",
+  "tagline": "Write Markdown, see it live",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "media-converter",
+  "cat": "file-media",
+  "title": "Media Converter",
+  "tagline": "Convert images and audio",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "image",
+    "init": "'webp'"
+   },
+   {
+    "key": "audio",
+    "init": "'mp3'"
+   },
+   {
+    "key": "quality",
+    "init": "90"
+   },
+   {
+    "key": "kbps",
+    "init": "192"
+   }
+  ]
+ },
+ {
+  "slug": "mock-rest-api-studio",
+  "cat": "developer-data",
+  "title": "Mock REST API Studio",
+  "tagline": "Fake API endpoints",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "endpoints",
+    "init": "START"
+   }
+  ]
+ },
+ {
+  "slug": "modular-type-scale-calculator",
+  "cat": "business-web",
+  "title": "Modular Type Scale Calculator",
+  "tagline": "Type size scales",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "base",
+    "init": "16"
+   },
+   {
+    "key": "ratio",
+    "init": "1.25"
+   },
+   {
+    "key": "down",
+    "init": "2"
+   },
+   {
+    "key": "up",
+    "init": "6"
+   }
+  ]
+ },
+ {
+  "slug": "multi-hash-calculator",
+  "cat": "developer-data",
+  "title": "Multi-Hash Calculator",
+  "tagline": "Hash text and files",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "text",
+    "init": "'Hello, PMC!'"
+   },
+   {
+    "key": "upper",
+    "init": "false"
+   }
+  ]
+ },
+ {
+  "slug": "multi-tally-counter",
+  "cat": "productivity-student",
+  "title": "Multi-Tally Counter",
+  "tagline": "Count with hotkeys",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "log",
+    "init": "[]"
+   },
+   {
+    "key": "sound",
+    "init": "true"
+   },
+   {
+    "key": "keys",
+    "init": "true"
+   }
+  ]
+ },
+ {
+  "slug": "password-engine",
+  "cat": "productivity-student",
+  "title": "Password Engine",
+  "tagline": "Make strong passwords",
+  "mode": "network",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "options",
+    "init": "defaultGen"
+   }
+  ]
+ },
+ {
+  "slug": "pdf-page-manager",
+  "cat": "file-media",
+  "title": "PDF Page Manager",
+  "tagline": "Reorder and split PDFs",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": []
+ },
+ {
+  "slug": "pixel-art-maker",
+  "cat": "file-media",
+  "title": "Pixel Art Maker",
+  "tagline": "Draw pixel sprites",
+  "mode": "local",
+  "fullscreen": true,
+  "files": true,
+  "keys": []
+ },
+ {
+  "slug": "pomodoro-focus-studio",
+  "cat": "productivity-student",
+  "title": "Pomodoro & Focus Studio",
+  "tagline": "Focus and break timer",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "settings",
+    "init": "DEF"
+   },
+   {
+    "key": "log",
+    "init": "[]"
+   },
+   {
+    "key": "task",
+    "init": "''"
+   }
+  ]
+ },
+ {
+  "slug": "privacy-policy-generator",
+  "cat": "business-web",
+  "title": "Privacy Policy Generator",
+  "tagline": "Draft a privacy policy",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "form",
+    "init": "START"
+   }
+  ]
+ },
+ {
+  "slug": "regex-sandbox",
+  "cat": "text-formatting",
+  "title": "RegEx Sandbox",
+  "tagline": "Test regular expressions",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "screen-aspect-ratio-matrix",
+  "cat": "business-web",
+  "title": "Screen & Aspect Ratio Matrix",
+  "tagline": "Scale screen sizes",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "w",
+    "init": "1920"
+   },
+   {
+    "key": "h",
+    "init": "1080"
+   },
+   {
+    "key": "target",
+    "init": "800"
+   }
+  ]
+ },
+ {
+  "slug": "screenshot-framer",
+  "cat": "file-media",
+  "title": "Screenshot Framer",
+  "tagline": "Put screenshots in frames",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "settings",
+    "init": "DEF"
+   }
+  ]
+ },
+ {
+  "slug": "slug-generator",
+  "cat": "text-formatting",
+  "title": "Slug Generator",
+  "tagline": "Make URL slugs",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "social-meta-tag-previewer",
+  "cat": "business-web",
+  "title": "Social Meta Tag Previewer",
+  "tagline": "Preview social cards",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "fields",
+    "init": "START"
+   }
+  ]
+ },
+ {
+  "slug": "student-deadline-grade-planner",
+  "cat": "productivity-student",
+  "title": "Student Deadline & Grade Planner",
+  "tagline": "Plan deadlines and grades",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "tasks",
+    "init": "[]"
+   },
+   {
+    "key": "modules",
+    "init": "[]"
+   }
+  ]
+ },
+ {
+  "slug": "svg-vector-studio",
+  "cat": "file-media",
+  "title": "SVG Vector Studio",
+  "tagline": "Clean up SVG",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "input",
+    "init": "SAMPLE"
+   },
+   {
+    "key": "options",
+    "init": "defaultSvg"
+   }
+  ]
+ },
+ {
+  "slug": "table-converter",
+  "cat": "text-formatting",
+  "title": "Table Converter",
+  "tagline": "CSV to Markdown or HTML",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "terminal-pastebin",
+  "cat": "developer-data",
+  "title": "Terminal Pastebin",
+  "tagline": "Share text as a link",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "pastes",
+    "init": "[]"
+   }
+  ]
+ },
+ {
+  "slug": "terms-of-service-builder",
+  "cat": "business-web",
+  "title": "Terms of Service Builder",
+  "tagline": "Build terms of service",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "form",
+    "init": "START"
+   }
+  ]
+ },
+ {
+  "slug": "text-diff-inspector",
+  "cat": "text-formatting",
+  "title": "Text Diff Inspector",
+  "tagline": "Compare two texts",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ },
+ {
+  "slug": "unit-currency-matrix",
+  "cat": "productivity-student",
+  "title": "Unit & Currency Matrix",
+  "tagline": "Convert units and money",
+  "mode": "network",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "cat",
+    "init": "'length'"
+   },
+   {
+    "key": "value",
+    "init": "'1'"
+   },
+   {
+    "key": "cur",
+    "init": "'GBP'"
+   }
+  ]
+ },
+ {
+  "slug": "utm-link-builder",
+  "cat": "business-web",
+  "title": "UTM Link Builder",
+  "tagline": "Add UTM tags to links",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "fields",
+    "init": "START"
+   },
+   {
+    "key": "history",
+    "init": "[]"
+   }
+  ]
+ },
+ {
+  "slug": "uuid-ulid-generator",
+  "cat": "developer-data",
+  "title": "UUID & ULID Generator",
+  "tagline": "Make UUIDs and ULIDs",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "kind",
+    "init": "'v7'"
+   },
+   {
+    "key": "count",
+    "init": "10"
+   },
+   {
+    "key": "out",
+    "init": "'lines'"
+   },
+   {
+    "key": "format",
+    "init": "{ upper: false, hyphens: true, braces: false }"
+   }
+  ]
+ },
+ {
+  "slug": "vector-qr-maker",
+  "cat": "productivity-student",
+  "title": "Vector QR Maker",
+  "tagline": "Make QR codes",
+  "mode": "local",
+  "fullscreen": false,
+  "files": true,
+  "keys": [
+   {
+    "key": "kind",
+    "init": "'text'"
+   },
+   {
+    "key": "text",
+    "init": "'https://pmcstudios.uk'"
+   },
+   {
+    "key": "wifi",
+    "init": "{ ssid: '', pass: '', sec: 'WPA' }"
+   },
+   {
+    "key": "mail",
+    "init": "{ to: '', subject: '' }"
+   },
+   {
+    "key": "phone",
+    "init": "''"
+   },
+   {
+    "key": "options",
+    "init": "defaultQr"
+   }
+  ]
+ },
+ {
+  "slug": "visual-sitemap-planner",
+  "cat": "business-web",
+  "title": "Visual Sitemap Planner",
+  "tagline": "Plan a site map",
+  "mode": "local",
+  "fullscreen": true,
+  "files": false,
+  "keys": [
+   {
+    "key": "pages",
+    "init": "START"
+   },
+   {
+    "key": "base",
+    "init": "'https://www.example.com'"
+   }
+  ]
+ },
+ {
+  "slug": "wcag-contrast-studio",
+  "cat": "business-web",
+  "title": "WCAG Contrast Studio",
+  "tagline": "Check colour contrast",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "fg",
+    "init": "'#171717'"
+   },
+   {
+    "key": "bg",
+    "init": "'#f2e4ce'"
+   }
+  ]
+ },
+ {
+  "slug": "webhook-inspector-replayer",
+  "cat": "developer-data",
+  "title": "Webhook Inspector & Replayer",
+  "tagline": "Inspect and resend webhooks",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": [
+   {
+    "key": "raw",
+    "init": "SAMPLE"
+   },
+   {
+    "key": "history",
+    "init": "[]"
+   }
+  ]
+ },
+ {
+  "slug": "word-readability-analyzer",
+  "cat": "text-formatting",
+  "title": "Word & Readability Analyzer",
+  "tagline": "Count words, score reading",
+  "mode": "local",
+  "fullscreen": false,
+  "files": false,
+  "keys": []
+ }
+]

@@ -4,12 +4,12 @@ import { token } from './cloud';
 
 export interface Pic { type: string; data: string }   // data is base64, with no "data:" front
 export interface ChatMsg { role: 'user' | 'assistant'; text: string; images?: Pic[] }
-export interface Reply { text: string; inTokens?: number; outTokens?: number; stopped: boolean; cut: boolean; credits?: { used: number; limit: number; plan: string } }
+export interface Reply { text: string; inTokens?: number; outTokens?: number; stopped: boolean; cut: boolean; credits?: { used: number; limit: number; plan: string; tokens?: number } }
 
 export type ErrorKind = 'setup' | 'refused' | 'limit' | 'credits' | 'plan' | 'signin' | 'network' | 'server' | 'bad';
 export class CoeError extends Error { constructor(public kind: ErrorKind, message: string) { super(message); } }
 
-interface Request { model: ModelKey; system?: string; messages: ChatMsg[]; maxTokens?: number; signal?: AbortSignal; redo?: boolean }
+interface Request { model: ModelKey; system?: string; messages: ChatMsg[]; maxTokens?: number; signal?: AbortSignal; redo?: boolean; work?: boolean; step?: boolean; check?: boolean }
 
 const trim = (s: string) => s.trim().replace(/\/+$/, '');
 
@@ -35,7 +35,7 @@ const kindOf = (s: CoeSettings) => (modeOf(s) === 'server' ? 'openai' : own(s).k
 function body(s: CoeSettings, r: Request): string {
   // The server turns Swift, Core and Deep into real model names itself. With your own key, Settings says which is which.
   const server = modeOf(s) === 'server';
-  const model = server ? r.model : own(s).model(r.model);
+  const model = server ? r.model : own(s).model(r.work ? 'deep' : r.model);
   const openai = server || /api\.openai\.com/.test(own(s).base);
   const temperature = CREATIVITY[s.creativity];
   const max = r.maxTokens ?? 2048;
@@ -49,7 +49,7 @@ function body(s: CoeSettings, r: Request): string {
     });
   }
   return JSON.stringify({
-    model, stream: true, stream_options: { include_usage: true }, ...(openai ? { max_completion_tokens: max } : { max_tokens: max }), ...(temperature !== undefined && !openai ? { temperature } : {}),
+    model, stream: true, stream_options: { include_usage: true }, ...(server && r.work ? { work: true } : {}), ...(openai ? { max_completion_tokens: max } : { max_tokens: max }), ...(temperature !== undefined && !openai ? { temperature } : {}),
     messages: [
       ...(r.system ? [{ role: 'system', content: r.system }] : []),
       ...r.messages.map((m) => ({
@@ -99,7 +99,7 @@ async function explain(res: Response): Promise<CoeError> {
 export async function stream(s: CoeSettings, r: Request, onText?: (soFar: string) => void): Promise<Reply> {
   const c = connection(s);
   if (!c.ok) throw new CoeError('setup', c.why);
-  const { url, headers } = await target(s); if (r.redo) headers['x-coe-redo'] = '1';
+  const { url, headers } = await target(s); if (r.redo) headers['x-coe-redo'] = '1'; if (r.step) headers['x-coe-step'] = '1'; if (r.check) headers['x-coe-check'] = '1';
   let res: Response;
   try { res = await fetch(url, { method: 'POST', headers, body: body(s, r), signal: r.signal }); }
   catch (e) {
@@ -108,7 +108,7 @@ export async function stream(s: CoeSettings, r: Request, onText?: (soFar: string
   }
   if (!res.ok) throw await explain(res);
   const hu = res.headers.get('x-coe-used'), hl = res.headers.get('x-coe-limit');
-  const credits = hu !== null && hl !== null ? { used: Number(hu), limit: Number(hl), plan: res.headers.get('x-coe-plan') || 'free' } : undefined;
+  let credits: Reply['credits'] = hu !== null && hl !== null ? { used: Number(hu), limit: Number(hl), plan: res.headers.get('x-coe-plan') || 'free' } : undefined;
   if (!res.body) throw new CoeError('server', 'The server sent nothing back.');
 
   let text = '', inTokens: number | undefined, outTokens: number | undefined, cut = false;
@@ -116,6 +116,7 @@ export async function stream(s: CoeSettings, r: Request, onText?: (soFar: string
     for await (const d of lines(res)) {
       if (d === '[DONE]') break;
       let j: any; try { j = JSON.parse(d); } catch { continue; }
+      if (j.coe_usage) { credits = { used: Number(j.coe_usage.used) || 0, limit: Number(j.coe_usage.limit) || 0, plan: String(j.coe_usage.plan || 'free'), tokens: Number(j.coe_usage.tokens) || 0 }; continue; }
       if (kindOf(s) === 'anthropic') {
         if (j.type === 'content_block_delta' && j.delta?.type === 'text_delta') { text += j.delta.text; onText?.(text); }
         else if (j.type === 'message_start') inTokens = j.message?.usage?.input_tokens;

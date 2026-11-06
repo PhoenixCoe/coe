@@ -28,11 +28,38 @@ export interface CoeSettings {
   name: string;
   size: 'normal' | 'large';
   enter: 'send' | 'newline';
+  /** Look at its own answer before finishing, and fix mistakes. */
+  check: 'off' | 'smart' | 'always';
+  /** How long answers should be, unless you ask for something else. */
+  length: 'short' | 'balanced' | 'detailed';
+  /** How Coe sounds. */
+  tone: 'friendly' | 'neutral' | 'formal' | 'playful';
+  /** How much you already know, so explanations start at the right place. */
+  level: 'auto' | 'simple' | 'standard' | 'expert';
+  /** The language of replies. Empty means the one you write in. */
+  replyLang: string;
+  /** Headings, centred text and animated words in answers. */
+  effects: boolean;
+  /** How often Coe asks you a question while it works. */
+  asks: 'rarely' | 'sometimes' | 'often';
+  /** Animation across the whole site. */
+  motion: 'full' | 'calm' | 'off';
+  /** Text size as a percentage. */
+  scale: number;
+  /** Tighter spacing in the chat. */
+  compact: boolean;
+  /** Roomier, easier-to-read spacing. */
+  easy: boolean;
+  /** Study cards you want to review a day. */
+  goal: number;
+  /** What happens when you send a message while Coe is still replying. */
+  whileBusy: 'queue' | 'interrupt';
 }
 
 export const DEFAULTS: CoeSettings = {
   mode: 'server', serverUrl: (process.env.NEXT_PUBLIC_COE_SERVER ?? '').trim().replace(/\/+$/, ''), code: '', provider: 'openai', keys: {}, bases: {}, models: {},
   system: '', creativity: 'default', name: '', size: 'normal', enter: 'send',
+  check: 'smart', length: 'balanced', tone: 'friendly', level: 'auto', replyLang: '', effects: true, asks: 'sometimes', motion: 'full', scale: 100, compact: false, easy: false, goal: 10, whileBusy: 'queue',
 };
 export const CREATIVITY: Record<CoeSettings['creativity'], number | undefined> = { default: undefined, precise: 0.2, balanced: 0.7, creative: 1 };
 
@@ -48,6 +75,10 @@ export function loadSettings(): CoeSettings {
       if (raw.models && typeof raw.models === 'object') for (const [k, v] of Object.entries(raw.models)) { if (v && typeof v === 'object') s.models[k] = v as Partial<Record<ModelKey, string>>; }
       const old = { apiKey: 1, baseUrl: 1 } as Record<string, 1>; for (const k of Object.keys(old)) delete (s as any)[k];
       if (s.mode !== 'key') s.mode = 'server';
+      // The old two-step text size became a slider.
+      if (raw.size === 'large' && raw.scale === undefined) { s.scale = 115; s.size = 'normal'; }
+      s.scale = Math.min(150, Math.max(80, Number(s.scale) || 100));
+      delete (s as any).tips;
       return s;
     }
   } catch { /* storage blocked or damaged */ }

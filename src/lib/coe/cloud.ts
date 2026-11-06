@@ -5,13 +5,18 @@
  */
 import type { Conv } from '@/coe/store';
 import { deleteConv, loadConv, loadIndex, saveConv } from '@/coe/store';
+import { memory, setMemory } from './links';
+import { mergeStudy, snapshotStudy, type StudyData } from './study';
+import { mergeStyles, stylesOut } from './personas';
 
 const URL_ = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const cloudOn = !!(URL_ && KEY);
 
 export interface Session { access: string; refresh: string; exp: number; email: string; uid: string }
-const SKEY = 'pmc:coe:session', SYNCED = 'pmc:coe:synced';
+const SKEY = 'pmc:coe:session', SYNCED = 'pmc:coe:synced', ERRKEY = 'pmc:coe:autherr';
+/** If coming back from a provider failed, the reason (once). */
+export function takeAuthError(): string { try { const e = sessionStorage.getItem(ERRKEY) || ''; sessionStorage.removeItem(ERRKEY); return e; } catch { return ''; } }
 
 const payload = (jwt: string): { sub?: string; email?: string; exp?: number } => {
   try { return JSON.parse(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch { return {}; }
@@ -30,6 +35,8 @@ export function takeLink(): boolean {
   try {
     const h = new URLSearchParams(location.hash.replace(/^#/, ''));
     const a = h.get('access_token'), r = h.get('refresh_token');
+    const bad = h.get('error_description') || new URLSearchParams(location.search).get('error_description');
+    if (bad) { try { sessionStorage.setItem(ERRKEY, bad.replace(/\+/g, ' ')); } catch { /* ignore */ } history.replaceState(null, '', location.pathname); }
     if (!a || !r) return false;
     history.replaceState(null, '', location.pathname + location.search);
     return !!keep(a, r);
@@ -39,6 +46,21 @@ export function takeLink(): boolean {
 // A newer "sb_publishable_" key is not a token, so on its own it goes in apikey only. A signed-in person's token goes in authorization.
 const head = (extra: Record<string, string> = {}, bearer = KEY) => ({ apikey: KEY, ...(bearer.startsWith('sb_') ? {} : { authorization: `Bearer ${bearer}` }), 'content-type': 'application/json', ...extra });
 const fail = async (r: Response) => { let m = ''; try { const j = await r.json(); m = j.msg || j.message || j.error_description || j.error || ''; } catch { /* no body */ } return new Error(m || `Request failed (${r.status})`); };
+
+export type Provider = 'google' | 'azure' | 'github';
+let enabled: Promise<Provider[]> | null = null;
+/** Which sign-in providers are switched on in Supabase. Empty when it cannot tell, so no dead buttons are shown. */
+export function providers(): Promise<Provider[]> {
+  if (!cloudOn) return Promise.resolve([]);
+  return (enabled ??= fetch(`${URL_}/auth/v1/settings`, { headers: { apikey: KEY } })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((j) => (['google', 'azure', 'github'] as Provider[]).filter((p) => j?.external?.[p] === true))
+    .catch(() => []));
+}
+/** Leaves for the provider's own sign-in page. It brings the person back here, signed in. */
+export function startProvider(p: Provider) {
+  location.assign(`${URL_}/auth/v1/authorize?provider=${p}&redirect_to=${encodeURIComponent(location.origin + '/')}`);
+}
 
 export async function sendCode(email: string) {
   const r = await fetch(`${URL_}/auth/v1/otp?redirect_to=${encodeURIComponent(location.origin + '/')}`, { method: 'POST', headers: head(), body: JSON.stringify({ email, create_user: true }) });
@@ -74,7 +96,16 @@ const ids = (): Set<string> => { try { return new Set(JSON.parse(localStorage.ge
 const setIds = (s: Set<string>) => { try { localStorage.setItem(SYNCED, JSON.stringify([...s])); } catch { /* ignore */ } };
 
 /** Pictures stay on the device: a database row is for text. */
-const textOnly = (c: Conv): Conv => ({ ...c, messages: c.messages.map((m) => (m.images?.length ? { ...m, images: undefined } : m)) });
+const textOnly = (c: Conv): Conv => ({
+  ...c,
+  messages: c.messages.map((m) => {
+    const lean = { ...m };
+    if (m.images?.length) lean.images = undefined;
+    if (m.attach?.length) lean.attach = m.attach.map((a) => ({ ...a, text: a.text.slice(0, 2000) }));
+    if (m.runs?.length) lean.runs = m.runs.map((r) => ({ ...r, out: r.out && (r.out.kind === 'image' || r.out.kind === 'files') ? undefined : r.out }));
+    return lean;
+  }),
+});
 
 export async function put(c: Conv) {
   const s = session(); if (!s) return;
@@ -89,6 +120,27 @@ export async function remove(id: string) {
 export async function removeAll() {
   const s = session(); if (!s) return;
   await rest(`chats?user_id=eq.${s.uid}`, { method: 'DELETE' }); setIds(new Set());
+}
+
+// ---------------------------------------------------------------- the person's own notes follow the account
+/** The study decks go with the account too, but only once there is something in them. */
+const studyOut = (): StudyData | undefined => { const d = snapshotStudy(); return d.cards.length || d.xp ? d : undefined; };
+export async function pushProfile() {
+  const s = session(); if (!s) return;
+  await rest('profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, data: { memory: memory(), study: studyOut(), styles: stylesOut() }, updated: new Date().toISOString() }) });
+}
+async function syncProfile() {
+  const rows: { data?: { memory?: unknown; study?: StudyData; styles?: unknown } }[] = await (await rest('profiles?select=data')).json();
+  const theirs = Array.isArray(rows[0]?.data?.memory) ? (rows[0].data!.memory as unknown[]).filter((x): x is string => typeof x === 'string') : [];
+  const mine = memory(), merged = setMemory([...theirs, ...mine]);
+  const theirStudy = rows[0]?.data?.study;
+  if (theirStudy && Array.isArray(theirStudy.cards) && Array.isArray(theirStudy.decks)) mergeStudy(theirStudy);
+  const now = studyOut();
+  const studyChanged = !!now && JSON.stringify(now) !== JSON.stringify(theirStudy ?? null);
+  mergeStyles(rows[0]?.data?.styles);
+  const styNow = stylesOut();
+  const stylesChanged = !!styNow && JSON.stringify(styNow) !== JSON.stringify(rows[0]?.data?.styles ?? null);
+  if (merged.length !== theirs.length || merged.some((m, i) => m !== theirs[i]) || studyChanged || stylesChanged) await pushProfile();
 }
 
 /** Brings this device and the account to the same list. Returns how many chats changed on this device. */
@@ -106,7 +158,7 @@ export async function sync(): Promise<number> {
       if (d && Array.isArray(d.messages)) {
         // Keep pictures this device already has for messages that are unchanged.
         const mine = l ? await loadConv(r.id) : undefined;
-        const merged = mine ? { ...d, messages: d.messages.map((m) => { const o = mine.messages.find((x) => x.id === m.id); return o?.images?.length ? { ...m, images: o.images } : m; }) } : d;
+        const merged = mine ? { ...d, messages: d.messages.map((m) => { const o = mine.messages.find((x) => x.id === m.id); return o ? { ...m, ...(o.images?.length ? { images: o.images } : {}), ...(o.attach?.length ? { attach: o.attach } : {}), ...(o.runs?.length ? { runs: o.runs } : {}) } : m; }) } : d;
         await saveConv(merged); changed++;
       }
     }
@@ -119,6 +171,7 @@ export async function sync(): Promise<number> {
     } else if (l.updated > r.updated) { const c = await loadConv(l.id); if (c) { await put(c); } }
   }
   setIds(now);
+  try { await syncProfile(); } catch { /* notes are best effort; chats are what matter */ }
   return changed;
 }
 
@@ -128,4 +181,43 @@ export async function signOut() {
   for (const m of await loadIndex()) await deleteConv(m.id);
   try { localStorage.removeItem(SKEY); localStorage.removeItem(SYNCED); } catch { /* ignore */ }
   return true;
+}
+
+
+// ---------------------------------------------------------------- sharing a chat as a read-only link
+/** What a shared page holds: words only. No pictures, files or tool results, and nothing about the person. */
+export interface Shared { title: string; ts: number; messages: { role: 'user' | 'assistant'; text: string }[] }
+const SHARES = 'pmc:coe:shares';
+const MAX_SHARE = 400_000;
+const shareMap = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(SHARES) || '{}'); } catch { return {}; } };
+const setShareMap = (m: Record<string, string>) => { try { localStorage.setItem(SHARES, JSON.stringify(m)); } catch { /* storage blocked */ } };
+export const sharedId = (convId: string): string => shareMap()[convId] ?? '';
+const newShareId = () => { const a = new Uint8Array(16); crypto.getRandomValues(a); const c = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(a, (x) => c[x % c.length]).join(''); };
+const forShare = (c: Conv): Shared => ({
+  title: c.title.slice(0, 120), ts: Date.now(),
+  messages: c.messages.filter((m) => !m.hidden && m.text.trim() && !m.error).map((m) => ({ role: m.role, text: m.text.replace(/```coe-(?:tool|plan)[\s\S]*?```/g, '').trim().slice(0, 60_000) })).filter((m) => m.text),
+});
+/** Makes (or refreshes) the link for a chat. Returns the id that goes after the # in the address. */
+export async function shareChat(c: Conv): Promise<string> {
+  const s = session(); if (!s) throw new Error('Sign in to share a link.');
+  const data = forShare(c);
+  if (!data.messages.length) throw new Error('There is nothing in this chat to share yet.');
+  if (JSON.stringify(data).length > MAX_SHARE) throw new Error('This chat is too long to share as one link. Share a shorter one.');
+  const m = shareMap(), id = m[c.id] || newShareId();
+  await rest('shares?on_conflict=id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ id, user_id: s.uid, data }) });
+  m[c.id] = id; setShareMap(m); return id;
+}
+export async function unshareChat(convId: string) {
+  const m = shareMap(), id = m[convId]; if (!id) return;
+  if (session()) await rest(`shares?id=eq.${encodeURIComponent(id)}`, { method: 'DELETE' });
+  delete m[convId]; setShareMap(m);
+}
+/** Reads a shared chat. Anyone with the link can; no sign-in. Null when it does not exist or was withdrawn. */
+export async function readShare(id: string): Promise<Shared | null> {
+  if (!cloudOn || !/^[A-Za-z0-9]{12,40}$/.test(id)) return null;
+  const r = await fetch(`${URL_}/rest/v1/rpc/get_share`, { method: 'POST', headers: head(), body: JSON.stringify({ share_id: id }) });
+  if (!r.ok) throw await fail(r);
+  const j = await r.json();
+  if (!j || !Array.isArray(j.messages)) return null;
+  return { title: String(j.title ?? 'A chat with Coe').slice(0, 120), ts: Number(j.ts) || 0, messages: j.messages.filter((m: { role?: string; text?: unknown }) => (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string').slice(0, 400).map((m: { role: 'user' | 'assistant'; text: string }) => ({ role: m.role, text: m.text })) };
 }

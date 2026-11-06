@@ -9,15 +9,21 @@ import { PROVIDERS, providerById } from '@/lib/coe/providers';
 import { canOwnKey, onStatus, status } from '@/lib/coe/account';
 import { connection, modeOf, own, type CoeSettings } from '@/lib/coe/settings';
 import { WORKER_CODE } from '@/lib/coe/worker';
+import { You } from './You';
+import { Select } from '@/ui/Controls';
+import { AboutTab, ChatTab, LearnTab, LookTab } from './SettingsTabs';
+import { VoiceFields } from './VoiceFields';
 
 /** A window over the chat: a dark veil, a boxed card, Escape to close. */
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  const card = useRef<HTMLDivElement>(null);
+  const card = useRef<HTMLDivElement>(null), close = useRef(onClose);
+  close.current = onClose;
+  // Focus the window once when it opens. (Doing it again on every change would pull the cursor out of a box you are typing in.)
+  useEffect(() => { card.current?.focus(); }, []);
   useEffect(() => {
-    card.current?.focus();
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') { if (document.activeElement?.getAttribute('aria-expanded') === 'true') return; e.stopPropagation(); close.current(); } };
     window.addEventListener('keydown', key, true); return () => window.removeEventListener('keydown', key, true);
-  }, [onClose]);
+  }, []);
   return (
     <div className="cx-veil" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={card} className={`cx-modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
@@ -39,7 +45,11 @@ export function Upgrade({ note, onClose }: { note: string; onClose: () => void }
 }
 
 // ---------------------------------------------------------------- settings
-export type Tab = 'connect' | 'ai' | 'chat' | 'data';
+export type Tab = 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'about';
+const TABS: { id: Tab; name: string; icon: Parameters<typeof UiIcon>[0]['name'] }[] = [
+  { id: 'look', name: 'Look', icon: 'theme' }, { id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice', icon: 'wave' },
+  { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'you', name: 'You', icon: 'user' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'about', name: 'About', icon: 'info' },
+];
 export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCount, onExport, onImport, onDeleteAll, onClose }: {
   owner: boolean; settings: CoeSettings; set: (s: CoeSettings) => void; tab: Tab; setTab: (t: Tab) => void; convCount: number;
   onExport: () => void; onImport: (f: File) => void; onDeleteAll: () => void; onClose: () => void;
@@ -70,7 +80,12 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
 
   return (
     <Modal title="Settings" onClose={onClose} wide>
-      <Seg label="Settings" value={tab} onChange={setTab} options={[{ value: 'ai' as Tab, label: 'Your AI' }, { value: 'chat' as Tab, label: 'Chat' }, { value: 'data' as Tab, label: 'Your data' }, ...(owner ? [{ value: 'connect' as Tab, label: 'Server' }] : [])]} />
+      <nav className="set-tabs" role="tablist" aria-label="Settings">
+        {[...TABS, ...(owner ? [{ id: 'connect' as Tab, name: 'Server', icon: 'cloud' as const }] : [])].map((t) => (
+          <button key={t.id} type="button" role="tab" id={`set-t-${t.id}`} aria-selected={tab === t.id} aria-controls="set-panel" className="set-tab" onClick={() => setTab(t.id)}><UiIcon name={t.icon} size={18} /><span>{t.name}</span></button>
+        ))}
+      </nav>
+      <div id="set-panel" role="tabpanel" aria-labelledby={`set-t-${tab}`} className="set-body">
 
       {tab === 'connect' && (
         <div className="cx-form">
@@ -114,9 +129,7 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
           ) : (
             <>
               <div className="cx-fr"><label className="label" htmlFor="cx-prov">Company</label>
-                <select id="cx-prov" className="cx-in" value={settings.provider} onChange={(e) => { up({ provider: e.target.value }); setTest({ state: 'idle', text: '' }); }}>
-                  {PROVIDERS.map((p) => <option key={p.id} value={p.id}>{p.name}{settings.keys[p.id] ? '  \u2713 key saved' : ''}</option>)}
-                </select></div>
+                <Select id="cx-prov" label="Company" value={settings.provider} onChange={(v) => { up({ provider: v }); setTest({ state: 'idle', text: '' }); }} options={PROVIDERS.map((p) => ({ value: p.id, label: p.name, badge: settings.keys[p.id] ? 'key saved' : undefined }))} /></div>
               {o.p.note && <p className="tx cx-small">{o.p.note}</p>}
               <div className="cx-fr"><label className="label" htmlFor="cx-key">{o.p.id === 'ollama' ? 'Key (not needed)' : o.p.id === 'custom' ? 'Your key' : `Your ${o.p.name} key`}</label>
                 <span className="cx-pw"><input id="cx-key" className="cx-in" type={show ? 'text' : 'password'} value={o.key} spellCheck={false} autoComplete="off" onChange={(e) => setKey(e.target.value)} />
@@ -143,20 +156,13 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
         </div>
       )}
 
-      {tab === 'chat' && (
-        <div className="cx-form">
-          <div className="cx-fr"><label className="label" htmlFor="cx-name">What should Coe call you?</label>
-            <input id="cx-name" className="cx-in" type="text" maxLength={30} value={settings.name} placeholder="Your first name" autoComplete="off" onChange={(e) => up({ name: e.target.value })} /></div>
-          <div className="cx-fr"><label className="label" htmlFor="cx-sys">Standing instructions</label>
-            <textarea id="cx-sys" className="cx-in tall" rows={5} value={settings.system} placeholder="For example: Keep answers short. I am learning to code." onChange={(e) => up({ system: e.target.value })} /></div>
-          <div className="cx-fr"><span className="label" id="cx-cr">Creativity</span>
-            <Seg labelledBy="cx-cr" value={settings.creativity} onChange={(creativity) => up({ creativity })} options={[{ value: 'default', label: 'Usual' }, { value: 'precise', label: 'Precise' }, { value: 'balanced', label: 'Balanced' }, { value: 'creative', label: 'Creative' }]} /></div>
-          <div className="cx-fr"><span className="label" id="cx-en">Enter key</span>
-            <Seg labelledBy="cx-en" value={settings.enter} onChange={(enter) => up({ enter })} options={[{ value: 'send', label: 'Sends' }, { value: 'newline', label: 'New line' }]} /></div>
-          <div className="cx-fr"><span className="label" id="cx-sz">Text size</span>
-            <Seg labelledBy="cx-sz" value={settings.size} onChange={(size) => up({ size })} options={[{ value: 'normal', label: 'Normal' }, { value: 'large', label: 'Large' }]} /></div>
-        </div>
-      )}
+      {tab === 'look' && <LookTab s={settings} up={up} />}
+      {tab === 'chat' && <ChatTab s={settings} up={up} />}
+      {tab === 'learn' && <LearnTab s={settings} up={up} />}
+      {tab === 'voice' && <VoiceFields settings={settings} />}
+      {tab === 'about' && <AboutTab />}
+
+      {tab === 'you' && <You pro={pro || st.plan === 'pro'} signedIn={st.signedIn} />}
 
       {tab === 'data' && (
         <div className="cx-form">
@@ -174,6 +180,7 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
           </div>
         </div>
       )}
+      </div>
     </Modal>
   );
 }

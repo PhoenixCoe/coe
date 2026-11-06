@@ -52,7 +52,7 @@ export function checkPython(c: Ctx): Finding[] {
   const attrDefs = new Set<string>();
   const decl = (re: RegExp, group = 1) => { let x: RegExpExecArray | null; while ((x = re.exec(m))) x[group]?.split(',').forEach((n) => { const w = n.trim().replace(/^\*+/, '').replace(/[:=].*$/, '').trim(); if (/^[A-Za-z_]\w*$/.test(w)) defined.add(w); }); };
   decl(/^[ \t]*(?:async\s+)?def\s+(\w+)/gm); decl(/^[ \t]*class\s+(\w+)/gm);
-  decl(/^[ \t]*([A-Za-z_][\w, \t*]*?)\s*(?::[^=\n]+)?(?<![=!<>])=(?!=)/gm);
+  decl(/^[ \t]*([A-Za-z_][\w, \t*]*?)\s*(?::[^=\n]*[^=!<>\n])?=(?!=)/gm);
   decl(/\bfor\s+([\w, \t()*]+?)\s+in\b/g); decl(/\bas\s+(\w+)/g);
   decl(/^[ \t]*import\s+([\w., \t]+)/gm); decl(/^[ \t]*from\s+[\w.]+\s+import\s+([\w, \t*]+)/gm);
   decl(/\bdef\s+\w+\s*\(([^)]*)\)/g); decl(/\blambda\s+([^:]*):/g);
@@ -114,13 +114,14 @@ export function checkPython(c: Ctx): Finding[] {
 
     // words from other languages
     const other: [RegExp, string, string][] = [
-      [/&&/, 'and', '&&'], [/\|\|/, 'or', '||'], [/(?<![=!<>])!(?!=)\s*\w/, 'not', '!'],
+      [/&&/, 'and', '&&'], [/\|\|/, 'or', '||'], [/(^|[^=!<>])!(?!=)\s*\w/, 'not', '!'],
       [/\btrue\b/, 'True', 'true'], [/\bfalse\b/, 'False', 'false'], [/\bnull\b/, 'None', 'null'],
     ];
     for (const [re, good, bad] of other) {
       const x = re.exec(t); if (!x) continue;
+      const at = bad === '!' ? x[1].length : 0;   // that rule also matches the one character before the !
       const fix = bad === '!' ? undefined : lineFix(c, line, (s) => s.replace(new RegExp(re.source.replace(/\\b/g, '\\b'), 'g'), (hit) => hit.replace(bad, good)));
-      out.push(finding(c, c.st[n] + x.index, 'error', `${bad} is not Python`, { why: `Python writes this as ${good}.`, idea: `Use ${good}.`, fix: bad === '!' ? undefined : fix }));
+      out.push(finding(c, c.st[n] + x.index + at, 'error', `${bad} is not Python`, { why: `Python writes this as ${good}.`, idea: `Use ${good}.`, fix: bad === '!' ? undefined : fix }));
     }
     const pp = /\b([A-Za-z_]\w*)\s*(\+\+|--)\s*$/.exec(t);
     if (pp) out.push(finding(c, c.st[n] + pp.index, 'error', `${pp[2]} does not exist in Python`, { why: 'Python has no ++ or --.', idea: `Write ${pp[1]} ${pp[2] === '++' ? '+=' : '-='} 1.`, fix: lineFix(c, line, (x) => x.replace(/(\w+)\s*(\+\+|--)\s*$/, (_a, v, o) => `${v} ${o === '++' ? '+=' : '-='} 1`)) }));
@@ -138,12 +139,12 @@ export function checkPython(c: Ctx): Finding[] {
   if (wasTab.size && wasSpace.size && !out.some((f) => /Tabs and spaces/.test(f.title))) out.push(atLine([...wasTab][0], 'warning', 'Tabs and spaces are both used', { why: 'Some lines indent with tabs and some with spaces. Python 3 can refuse to run this.', idea: 'Pick one. Four spaces is the usual choice.' }));
 
   // names that look like typos of something defined or built in
-  const re = /(?<![.\w'"])([A-Za-z_]\w{2,})\b(?!\s*=(?!=))/g; let x: RegExpExecArray | null;
+  const re = /(^|[^.\w'"])([A-Za-z_]\w{2,})\b(?!\s*=(?!=))/g; let x: RegExpExecArray | null;
   const seenName = new Set<string>(), pool = [...defined, ...KEYWORDS];
   while ((x = re.exec(m))) {
-    const w = x[1];
+    const w = x[2];
     if (defined.has(w) || KEYWORDS.has(w) || seenName.has(w) || /^(true|false|null|nil|undefined)$/.test(w)) continue;
-    const pos = x.index;
+    const pos = x.index + x[1].length;
     if (/^[\w"'x]$/.test(m[pos - 1] ?? '')) continue;
     // inside quotes? the mask leaves x there, so words in strings are already x-runs
     if (/^x+$/.test(w)) continue;

@@ -1,8 +1,9 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { UiIcon } from '@/ui/icons';
+import { Select } from '@/ui/Controls';
 import { copyText } from '@/lib/copy';
-import { COE_MODELS, canUse, modelByKey, type ModelKey } from '@/lib/coe/models';
+import { COE_MODELS, canUse, fmtTok, modelByKey, type ModelKey } from '@/lib/coe/models';
 import { applyCredits, counted, planInfo, planNow, refreshStatus } from '@/lib/coe/account';
 import { ErrorBox } from './ErrorBox';
 import { isOwner } from '@/lib/coe/owner';
@@ -99,13 +100,13 @@ export function Check({ settings, onUsed, onSettings, onUpgrade, say }: { settin
     if (!conn.ok) { onSettings(); say(conn.why); return; }
     const pl = planInfo(settings);
     if (!canUse(planNow(settings), model)) { onUpgrade(`${modelByKey(model).name} needs the Pro plan.`); return; }
-    if (modeOf(settings) !== 'key' && !counted(settings) && usage().today >= pl.perDay) { onUpgrade(`You have used all ${pl.perDay} credits for today on ${pl.name}. They come back at midnight (UTC).`); return; }
+    if (modeOf(settings) !== 'key' && !counted(settings) && usage().today >= pl.perDay) { onUpgrade(`You have used all ${fmtTok(pl.perDay)} tokens for today on ${pl.name}. They come back at midnight (UTC).`); return; }
     if (lines.length > MAX_LINES) { setErr(`Coe can read ${MAX_LINES} lines at a time. Cut it down to the part that goes wrong.`); return; }
     const ctl = new AbortController(); abort.current = ctl; setBusy(true); setErr('');
     const snapshot = code;
     try {
       const r = await askCoe(settings, { code: snapshot, lang: eff, notes, known: local, model, signal: ctl.signal });
-      setCoe(r.findings); setCoeFor(snapshot); setSummary(r.summary); if (r.credits) applyCredits(r.credits); else if (!counted(settings)) countMessage(); onUsed();
+      setCoe(r.findings); setCoeFor(snapshot); setSummary(r.summary); if (r.credits) applyCredits(r.credits); else if (!counted(settings)) countMessage(r.tokens ?? Math.ceil(snapshot.length / 4) + 600); onUsed();
       if (!r.findings.length && !r.summary) setSummary('Coe found nothing to change.');
     } catch (e) {
       if ((e as Error).name !== 'AbortError') { const k = (e as CoeError).kind; setErr({ kind: k, text: (e as CoeError).message || '' }); if (k === 'credits' || k === 'plan' || k === 'signin') void refreshStatus(settings); }
@@ -136,11 +137,8 @@ export function Check({ settings, onUsed, onSettings, onUpgrade, say }: { settin
       {/* ------------------------------------------------ the code */}
       <section className="cd-pane" aria-label="Your code">
         <div className="cd-bar">
-          <label className="cd-lang"><span className="d">Language</span>
-            <select className="cd-sel" value={pick} onChange={(e) => setPick(e.target.value as Pick)} aria-label="Language">
-              <option value="auto">Auto{!empty ? ` (${langName(eff)})` : ''}</option>
-              {LANGS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
-            </select></label>
+          <div className="cd-lang"><span className="d">Language</span>
+            <Select small block={false} label="Language" value={pick} onChange={(v) => setPick(v as Pick)} options={[{ value: 'auto', label: `Auto${!empty ? ` (${langName(eff)})` : ''}` }, ...LANGS.map((l) => ({ value: l.value as string, label: l.label }))]} /></div>
           <span className="cx-grow" />
           <input ref={file} type="file" hidden accept=".js,.mjs,.cjs,.jsx,.ts,.tsx,.json,.html,.htm,.css,.py,.sql,.txt" onChange={(e) => { onFile(e.target.files?.[0]); e.target.value = ''; }} />
           <button type="button" className="btn small" onClick={() => file.current?.click()}><UiIcon name="attach" size={15} />Open file</button>
@@ -172,9 +170,7 @@ export function Check({ settings, onUsed, onSettings, onUpgrade, say }: { settin
         <input className="cx-in cd-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What goes wrong? (optional)" maxLength={600} aria-label="What goes wrong" onKeyDown={(e) => { if (e.key === 'Enter') void ask(); }} />
         <div className="cd-actions">
           <button type="button" className={`btn gold${busy ? ' busy' : ''}`} onClick={ask}>{busy ? <><UiIcon name="stop" size={16} />Stop</> : <><UiIcon name="wand" size={18} />Ask Coe</>}</button>
-          <select className="cd-sel cd-model" value={model} onChange={(e) => setModel(e.target.value as ModelKey)} aria-label="Model" disabled={busy}>
-            {COE_MODELS.map((m) => <option key={m.key} value={m.key}>{m.name.replace(/^Coe /, '')}{canUse(planNow(settings), m.key) ? '' : ' (Pro)'}</option>)}
-          </select>
+          <Select small block={false} label="Model" value={model} disabled={busy} onChange={(v) => setModel(v as ModelKey)} options={COE_MODELS.map((m) => ({ value: m.key, label: m.name.replace(/^Coe /, ''), hint: canUse(planNow(settings), m.key) ? undefined : 'Needs Pro' }))} />
           <span className="cx-grow" />
           {!conn.ok && <span className="tx cd-fine">{modeOf(settings) === 'key' ? conn.why.replace(/ in Settings\.?$/, '.') : 'Coe is not switched on yet.'} {(isOwner() || modeOf(settings) === 'key') && <button type="button" className="cx-link" onClick={onSettings}>Open Settings</button>}</span>}
         </div>

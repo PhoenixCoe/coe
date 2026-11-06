@@ -3,13 +3,21 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CoeWordmark } from '@/ui/Mark';
 import { UiIcon } from '@/ui/icons';
-import { PLANS } from '@/lib/coe/models';
+import { PLANS, fmtTok } from '@/lib/coe/models';
 import { loadSettings } from '@/lib/coe/settings';
 import { openPortal, startCheckout } from '@/lib/coe/billing';
 import { onStatus, refreshStatus, status, type Status } from '@/lib/coe/account';
 import { cloudOn, session } from '@/lib/coe/cloud';
 import { Account } from './Account';
 import { usage } from './store';
+
+type PIcon = Parameters<typeof UiIcon>[0]['name'];
+const POINT_ICONS: [RegExp, PIcon][] = [
+  [/tokens a day/i, 'chart'], [/Deep Work/i, 'list'], [/taste of the big stuff/i, 'sparkle'], [/Coe Deep|Coe Swift|Coe Core/i, 'bolt'], [/study|Code check/i, 'graduate'],
+  [/Charts|diagrams|previews/i, 'deck'], [/pictures in each|Make pictures/i, 'image'], [/longer replies/i, 'text'], [/Search the web/i, 'search'], [/PMC App/i, 'apps'],
+  [/Google/i, 'cloud'], [/GitHub/i, 'branch'], [/Big files/i, 'file'], [/own AI key/i, 'lock'], [/Everything in Free/i, 'check'],
+];
+const iconFor = (t: string): PIcon => POINT_ICONS.find(([r]) => r.test(t))?.[1] ?? 'check';
 
 /** Two plain boxes side by side on black. Your plan comes from your account. Without one, you are on Free. */
 export default function Plans() {
@@ -73,12 +81,12 @@ export default function Plans() {
           const on = p.key === 'free' ? !pro : pro;
           return (
             <article key={p.key} className={`pl-box${p.key === 'pro' ? ' pro' : ''}`} aria-label={`${p.name} plan`}>
-              <h2 className="d">{p.name}</h2>
+              <h2 className="d"><span className="pl-sym" aria-hidden><UiIcon name={p.key === 'pro' ? 'medal' : 'sparkle'} size={26} /></span>{p.name}</h2>
               <p className="pl-price"><b className="d">${price}</b><span className="tx">{p.key === 'free' ? 'always' : yearly ? 'a year' : 'a month'}</span></p>
               {p.key === 'free'
                 ? <button type="button" className="btn" disabled>{on ? 'Your plan' : 'Included'}</button>
                 : <button type="button" className={`btn${pro ? '' : ' gold'}`} disabled={busy || !canBuy} onClick={() => (pro ? void go(() => openPortal(loadSettings())) : choosePro())}>{proLabel}</button>}
-              <ul>{p.points.map((x) => <li key={x} className="tx"><span className="pl-tick" aria-hidden><UiIcon name="check" size={14} strokeWidth={3.2} /></span>{x}</li>)}</ul>
+              <ul>{p.points.map((x) => <li key={x} className="tx"><span className="pl-tick" aria-hidden><UiIcon name={iconFor(x)} size={15} strokeWidth={2.6} /></span>{x}</li>)}</ul>
             </article>
           );
         })}
@@ -88,8 +96,8 @@ export default function Plans() {
         {st.given && <p className="pl-note">Pro is on for this account.</p>}
         {soon && <p className="pl-note">Pro is not on sale yet. Check back soon.</p>}
         {signedIn && st.billing
-          ? <p>Today: <b>{st.used}</b> of {st.limit} credits used. Credits reset at midnight UTC.{pro && st.renews ? ` Pro renews ${new Date(st.renews).toLocaleDateString()}.` : ''}</p>
-          : <p>Today: <b>{local}</b> of {PLANS[0].perDay} credits used on this device. {signedIn ? '' : 'Sign in to keep your plan and credits with your account.'}</p>}
+          ? <p>Today: <b>{fmtTok(st.used)}</b> of {fmtTok(st.limit)} tokens used. Tokens reset at midnight UTC.{pro && st.renews ? ` Pro renews ${new Date(st.renews).toLocaleDateString()}.` : ''}</p>
+          : <p>Today: <b>{fmtTok(local)}</b> of {fmtTok(PLANS[0].perDay)} tokens used on this device. {signedIn ? '' : 'Sign in to keep your plan and tokens with your account.'}</p>}
         {!signedIn && cloudOn && <p><button type="button" className="btn small" onClick={() => setAcct(true)}>Sign in</button></p>}
       </footer>
       {acct && <Account onClose={() => setAcct(false)} onChange={() => { void load(); }} />}
