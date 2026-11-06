@@ -4,13 +4,13 @@ import { UiIcon } from '@/ui/icons';
 import { Select } from '@/ui/Controls';
 import { copyText } from '@/lib/copy';
 import { COE_MODELS, canUse, fmtTok, modelByKey, type ModelKey } from '@/lib/coe/models';
-import { applyCredits, counted, planInfo, planNow, refreshStatus } from '@/lib/coe/account';
+import { counted, countReply, limitNow, planInfo, planNow, refreshStatus } from '@/lib/coe/account';
 import { ErrorBox } from './ErrorBox';
 import { isOwner } from '@/lib/coe/owner';
 import type { ErrAct } from '@/lib/coe/errors';
 import { connection, modeOf, type CoeSettings } from '@/lib/coe/settings';
 import type { CoeError } from '@/lib/coe/client';
-import { countMessage, usage } from './store';
+import { usage } from './store';
 import { applyFix, check, detect, shift, LANGS, langName, type Finding, type Lang, type Severity } from '@/check';
 import { askCoe } from '@/check/coe';
 import { EXAMPLES, langFromName } from '@/check/examples';
@@ -100,13 +100,13 @@ export function Check({ settings, onUsed, onSettings, onUpgrade, say }: { settin
     if (!conn.ok) { onSettings(); say(conn.why); return; }
     const pl = planInfo(settings);
     if (!canUse(planNow(settings), model)) { onUpgrade(`${modelByKey(model).name} needs the Pro plan.`); return; }
-    if (modeOf(settings) !== 'key' && !counted(settings) && usage().today >= pl.perDay) { onUpgrade(`You have used all ${fmtTok(pl.perDay)} tokens for today on ${pl.name}. They come back at midnight (UTC).`); return; }
+    if (modeOf(settings) !== 'key' && !counted(settings) && usage().today >= limitNow(settings)) { onUpgrade(`You have used all ${fmtTok(limitNow(settings))} tokens for today on ${pl.name}. They come back at midnight (UTC).`); return; }
     if (lines.length > MAX_LINES) { setErr(`Coe can read ${MAX_LINES} lines at a time. Cut it down to the part that goes wrong.`); return; }
     const ctl = new AbortController(); abort.current = ctl; setBusy(true); setErr('');
     const snapshot = code;
     try {
       const r = await askCoe(settings, { code: snapshot, lang: eff, notes, known: local, model, signal: ctl.signal });
-      setCoe(r.findings); setCoeFor(snapshot); setSummary(r.summary); if (r.credits) applyCredits(r.credits); else if (!counted(settings)) countMessage(r.tokens ?? Math.ceil(snapshot.length / 4) + 600); onUsed();
+      setCoe(r.findings); setCoeFor(snapshot); setSummary(r.summary); countReply(settings, r.credits, () => r.tokens ?? Math.ceil(snapshot.length / 4) + 600); onUsed();
       if (!r.findings.length && !r.summary) setSummary('Coe found nothing to change.');
     } catch (e) {
       if ((e as Error).name !== 'AbortError') { const k = (e as CoeError).kind; setErr({ kind: k, text: (e as CoeError).message || '' }); if (k === 'credits' || k === 'plan' || k === 'signin') void refreshStatus(settings); }

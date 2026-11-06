@@ -7,7 +7,7 @@ import type { UiIcon } from '@/ui/icons';
 type IconName = Parameters<typeof UiIcon>[0]['name'];
 export const PHASES: Record<Exclude<Phase, 'rest'>, { label: string; icon: IconName }> = {
   idle: { label: 'Ready', icon: 'check' },
-  think: { label: 'Thinking', icon: 'bulb' },
+  think: { label: 'Thinking', icon: 'sparkle' },
   write: { label: 'Writing', icon: 'edit' },
   search: { label: 'Searching the web', icon: 'globe' },
   code: { label: 'Running code', icon: 'code' },

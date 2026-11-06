@@ -28,7 +28,7 @@ const R: Row[] = [
   ['chat', 'target', 'Clear first', 'Answers lead with the point, in short plain sentences, with an example when an idea is hard.', 'free'],
   ['chat', 'text', 'Big headings, centred text and animated words', 'For long pieces like essays and plans, and to make one key point impossible to miss. Plain for everything else.', 'free'],
   ['chat', 'layers', 'Callout boxes', 'Key point, warning, step-by-step reveal and more, built into answers.', 'free'],
-  ['chat', 'bulb', 'Select words to ask about them', 'Highlight part of an answer, then explain it, simplify it, see an example or be quizzed on it.', 'free', true],
+  ['chat', 'graduate', 'Select words to ask about them', 'Highlight part of an answer, then explain it, simplify it, see an example or be quizzed on it.', 'free', true],
   ['chat', 'edit', 'Edit a message and go again', 'Change something you sent and Coe answers the new version.', 'free'],
   ['chat', 'refresh', 'Again and Redo', 'Ask for another go, or tell Coe it was wrong. Redo has a daily cap so tokens are never drained.', 'free'],
   ['chat', 'info', 'About this answer', 'One button shows the tools used, sources, places and how the answer was made.', 'free'],

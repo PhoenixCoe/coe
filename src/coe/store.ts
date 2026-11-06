@@ -83,7 +83,8 @@ export async function importAll(list: unknown): Promise<number> {
 // ---------------------------------------------------------------- how much has been used (kept as plain numbers, in this browser)
 const USAGE = 'pmc:coe:usage';
 interface Use { day: string; today: number; month: string; thisMonth: number }
-const stamp = () => { const d = new Date(), p = (n: number) => String(n).padStart(2, '0'); return { day: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`, month: `${d.getFullYear()}-${p(d.getMonth() + 1)}` }; };
+// Days start at midnight UTC, the same as the server's, so a count kept on this device resets when the server's does.
+const stamp = () => { const iso = new Date().toISOString(); return { day: iso.slice(0, 10), month: iso.slice(0, 7) }; };
 export function usage(): Use {
   const t = stamp();
   let u: Use = { day: t.day, today: 0, month: t.month, thisMonth: 0 };
@@ -94,6 +95,8 @@ export function usage(): Use {
 }
 /** Adds the tokens a reply really used (words in plus words out). */
 export function countMessage(tokens = 0): Use { const u = usage(); const n = Math.max(1, Math.round(tokens) || 1); u.today += n; u.thisMonth += n; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }
+/** The server turned a message away because the day's tokens are gone (for example on a shared network), so this device's count says so too. */
+export function fillToday(limit: number) { const u = usage(); if (u.today < limit) { u.today = limit; u.thisMonth += 0; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } } return u; }
 export function resetToday() { const u = usage(); u.today = 0; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }
 
 // ---------------------------------------------------------------- words

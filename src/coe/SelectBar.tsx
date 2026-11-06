@@ -40,7 +40,7 @@ export function SelectBar({ onAsk, onQuote }: { onAsk: (text: string) => void; o
   );
   return (
     <div className="selbar" role="toolbar" aria-label="Ask about the selected words" style={{ left: p.x, top: p.y, transform: touch ? 'translate(-50%, 0)' : 'translate(-50%, -100%)' }}>
-      <B icon="bulb" label="Explain" run={() => go('Explain this part of your answer more clearly:')} />
+      <B icon="graduate" label="Explain" run={() => go('Explain this part of your answer more clearly:')} />
       <B icon="wand" label="Simpler" run={() => go('Say this part again in simpler words:')} />
       <B icon="sigma" label="Example" run={() => go('Give me a worked example of this:')} />
       <B icon="cards" label="Quiz me" run={() => go('Quiz me with one question about this part, then mark my answer:')} />

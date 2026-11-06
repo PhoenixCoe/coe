@@ -25,6 +25,8 @@ export const PLANS: Plan[] = [
     'Big files in: PDF, Word, Excel, PowerPoint, zip and whole code folders', '10 pictures in each message', 'Use your own AI key: OpenAI, Anthropic, Google and more', 'Everything in Free'] },
 ];
 /** Tokens in a short form people can read: 950, 12.4k, 3.2M. */
+/** What a web search and a picture cost, in tokens. The server charges the same (see worker/worker.js). */
+export const COST_SEARCH = 18000, COST_IMAGE = 30000;
 export function fmtTok(n: number): string {
   const v = Math.max(0, Math.round(n));
   if (v < 1000) return String(v);
