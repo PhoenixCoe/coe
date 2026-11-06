@@ -1,0 +1,6 @@
+Coe sign-in email (no yap)
+
+Subject heading (both templates):  {{ .Token }} is your Coe code
+Message body (both templates):     paste all of login-code.html
+Templates:                         Confirm sign up, and Magic link or OTP
+The pictures load from https://coe.pmcstudios.uk/email/ (logo.png, title.png, pmc.png), so upload the site first.
