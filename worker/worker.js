@@ -178,7 +178,7 @@ export default {
         const r = await sb("/rest/v1/usage?select=day,used&subject=eq." + encodeURIComponent(who.id) + "&day=gte." + since + "&order=day.asc");
         if (r.ok) week = await r.json();
       }
-      return reply(200, { billing: true, canBuy: !!env.STRIPE_SECRET_KEY, signedIn: !!who, email: who?.email, plan, given: !!pl.given, used: who ? await usedToday(who.id) : 0, limit: limits[plan] + (await bonusToday()), renews: pl.sub && plan === "pro" ? pl.sub.period_end : undefined, quotas: q, week });
+      return reply(200, { billing: true, canBuy: !!env.STRIPE_SECRET_KEY, signedIn: !!who, email: who?.email, plan, given: !!pl.given, used: who ? await usedToday(who.id) : 0, limit: (who ? limits[plan] : limits.anon) + (await bonusToday()), renews: pl.sub && plan === "pro" ? pl.sub.period_end : undefined, quotas: q, week });
     }
 
     if (request.method === "POST" && path === "/checkout") {
