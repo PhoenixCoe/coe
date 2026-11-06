@@ -48,3 +48,31 @@ begin
   return coalesce(n, -1);
 end $$;
 revoke all on function spend(text, int, int) from public, anon, authenticated;
+
+
+-- 4. What Coe remembers about the person (notes they can edit in Coe), so it follows their account
+create table if not exists profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  data jsonb not null default '{}'::jsonb,
+  updated timestamptz not null default now()
+);
+alter table profiles enable row level security;
+drop policy if exists "own profile" on profiles;
+create policy "own profile" on profiles for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- Shared chats: a read-only link to a copy of one chat. The owner can make and withdraw their own links.
+-- Nobody can list the table: the shared page reads one row, by its long random id, through get_share().
+create table if not exists shares (
+  id text primary key check (char_length(id) between 12 and 40),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  data jsonb not null check (octet_length(data::text) < 800000),
+  created timestamptz not null default now()
+);
+alter table shares enable row level security;
+drop policy if exists "own shares" on shares;
+create policy "own shares" on shares for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create or replace function get_share(share_id text) returns jsonb
+  language sql security definer set search_path = public stable
+  as $$ select data from shares where id = share_id limit 1 $$;
+revoke all on function get_share(text) from public;
+grant execute on function get_share(text) to anon, authenticated;

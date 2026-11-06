@@ -1,6 +1,6 @@
 # Setting up Coe
 
-Do parts 1 to 3 first. Part 4 (Stripe) can wait. Until it is done, Pro shows "Not on sale yet" and everyone is on Free.
+Do parts 1 to 3 first. Already set up from an earlier zip? You only need to upload the files (part 1, step 1) and paste `worker/worker.js` into the Worker again (part 3, step 2). Part 4 (Stripe) can wait. Until it is done, Pro shows "Not on sale yet" and everyone is on Free.
 
 ## 1. Put the site online (GitHub Pages)
 1. Make a new GitHub repository. Upload this folder to it.
@@ -15,7 +15,7 @@ Do parts 1 to 3 first. Part 4 (Stripe) can wait. Until it is done, Pro shows "No
 4. Supabase will only send sign-in emails from your own sender. Make one (free):
    - resend.com > **Domains** > add `mail.pmcstudios.uk`. Add the DNS records it shows, exactly, then press Verify.
    - Resend > **API keys** > create a key (name `Coe`, permission: sending access). Copy it now. It is only shown once.
-5. Supabase > **Authentication > Notifications > Email > SMTP Settings**. Turn on custom SMTP. Sender email `no-reply@mail.pmcstudios.uk`, sender name `Coe`, host `smtp.resend.com`, port `465`, username `resend`, password = the Resend key. Save.
+5. Supabase > **Authentication > Notifications > Email > SMTP Settings**. Turn on custom SMTP. Sender email `coe@mail.pmcstudios.uk` (not no-reply: Resend flags no-reply addresses), sender name `Coe`, host `smtp.resend.com`, port `465`, username `resend`, password = the Resend key. Save.
 6. Supabase > **Authentication > Email Templates**. Do this for **Confirm sign up**, then **Magic link or OTP**: set the **Subject heading** to `{{ .Token }} is your Coe code`, delete the message, paste in everything from `email/login-code.html`, and Save. The email then shows the PMC-style card with the 6 digit code. The pictures load from `https://coe.pmcstudios.uk/email/`, so deploy the site first.
    - Stop the emails landing in spam: in Resend, turn **open and click tracking off** for the domain. Add a DNS TXT record named `_dmarc` on `pmcstudios.uk` with the value `v=DMARC1; p=none;` (skip it if a `_dmarc` record is already there). Mark the first email **Not spam** once. New sending domains start with no reputation, so it settles after a few days.
 7. Supabase > **Settings > API Keys**. Copy the **publishable key** (starts `sb_publishable_`). The Project URL is `https://` + your project's reference ID + `.supabase.co`. The reference ID is the text after `/project/` in the dashboard's address bar (also under Project Settings > General > Reference ID). (If you only see the old keys, the **anon** key works the same.)
@@ -36,6 +36,12 @@ Do parts 1 to 3 first. Part 4 (Stripe) can wait. Until it is done, Pro shows "No
 | `SUPABASE_URL` | Text | the Project URL from part 2 |
 | `SUPABASE_ANON_KEY` | Text | the publishable (or anon) key from part 2 |
 | `SUPABASE_SERVICE_KEY` | Secret | Supabase > Settings > API Keys > the **secret key** (starts `sb_secret_`), or the old **service_role** key. Never put it in GitHub. |
+| `MODEL_SEARCH` | Text | optional. The model that does web searches. Leave empty to use the Core model |
+| `MODEL_IMAGE` | Text | optional. Leave empty to use `gpt-image-2.5-flare` |
+| `MODEL_TRANSCRIBE` | Text | optional. Voice in (and audio or video files). Leave empty to use `gpt-transcribe` (it falls back to `gpt-4o-mini-transcribe`) |
+| `MODEL_SPEECH` | Text | optional. Voice out. Leave empty to use `gpt-4o-mini-tts` (see the note under How it works) |
+| `MODEL_AUDIO` | Text | optional. The model that listens in the Sound lab and names instruments and noises. Leave empty to use `gpt-audio-mini` |
+| `GOOGLE_PLACES_KEY` | Secret | optional. Adds photos, ratings, phone numbers and websites to the business cards on maps. See part 9. Without it, maps still work through OpenStreetMap |
 
 4. Copy the Worker address (like `https://coe-server.yourname.workers.dev`). GitHub repository > Settings > Secrets and variables > Actions > **Variables** > add `COE_SERVER` with that address. Then Actions > Deploy to GitHub Pages > **Run workflow**. Visitors never have to paste it.
 5. OpenAI dashboard: set a monthly spending limit.
@@ -64,18 +70,97 @@ Use Stripe's **test mode** first. Switch to live at the end.
 7. Test: sign in on the site > Plans > Get Pro > card `4242 4242 4242 4242`, any future date, any CVC. Pro turns on within a few seconds.
 8. Go live: repeat steps 2 to 6 with live mode keys and ids.
 
+## 5. Sign in with Google, Microsoft or GitHub (optional)
+The buttons only appear for providers you switch on. Do any, or none. The email code keeps working either way.
+All three need the same callback address from Supabase: `https://<your-project-ref>.supabase.co/auth/v1/callback`. Supabase shows it (with a Copy button) on each provider's page: Supabase > **Authentication > Sign In / Providers**.
+
+**Google**
+1. console.cloud.google.com > make or pick a project > **Google Auth Platform**. Set up **Branding** (app name, your email), and **Audience** (External).
+2. **Clients > Create client**. Application type **Web application**.
+   - **Authorized JavaScript origins**: `https://coe.pmcstudios.uk`
+   - **Authorized redirect URIs**: the Supabase callback address above.
+3. Create. Copy the **Client ID** and **Client secret**.
+4. Supabase > Authentication > Sign In / Providers > **Google** > turn on, paste both, Save.
+(Keep this same client for part 6.)
+
+**Microsoft**
+1. portal.azure.com > **Microsoft Entra ID > App registrations > New registration**. Pick the account types you want (to let anyone with a Microsoft account in, choose the option that includes personal accounts). Redirect URI: platform **Web**, the Supabase callback address. Register.
+2. Copy the **Application (client) ID**. **Certificates & secrets > Client secrets > New client secret**. Copy the **Value** (not the Secret ID). It is shown once, and it expires, so note the date.
+3. Supabase > Providers > **Azure** > paste both. If you chose personal accounts only, set **Azure Tenant URL** to `https://login.microsoftonline.com/consumers`. Save.
+
+**GitHub**
+1. github.com/settings/developers > **OAuth Apps > New OAuth App**. Homepage URL `https://coe.pmcstudios.uk`. Authorization callback URL: the Supabase callback address. Leave Device Flow off. Register.
+2. Copy the **Client ID**, press **Generate a new client secret**, copy it.
+3. Supabase > Providers > **GitHub** > turn on, paste both, Save.
+Signing in with GitHub is only for the account. Coe's GitHub tools use a separate token (part 6).
+
+## 6. Google Docs, Sheets and Slides, and GitHub (Pro)
+Coe makes the file when the person presses the button on the preview. Nothing is written without that press.
+
+**Google** (no extra server needed)
+1. In the same Google Cloud project: **APIs & Services > Library**. Enable **Google Docs API**, **Google Sheets API**, **Google Slides API** and **Google Drive API**.
+2. **Google Auth Platform > Data Access** > Add or remove scopes. Add `.../auth/drive.file` (Coe can then only touch files it made). Optional, for reading existing files: `documents.readonly`, `spreadsheets.readonly`, `presentations.readonly`. These three are "sensitive", so people see an "unverified app" screen until Google verifies the app. Skip them if you do not want that.
+3. While the app's Audience says **Testing**, only the test users you list (Audience > Test users) can connect. Add yourself. Press **Publish app** when you want anyone to be able to.
+4. GitHub repository > Settings > Secrets and variables > Actions > **Variables** > add `GOOGLE_CLIENT_ID` = the Client ID (not the secret). Re-run Actions > Deploy to GitHub Pages.
+5. In Coe: Settings > **You** > Connect Google. Google's access lasts about an hour, then the person presses Connect again.
+
+**GitHub** (each person does this themselves, in Coe: Settings > You)
+1. github.com > profile picture > Settings > **Developer settings > Personal access tokens > Fine-grained tokens > Generate new token**.
+2. Pick an expiry, **Only select repositories** and choose them, then under Permissions set **Contents**, **Issues** and **Pull requests** to **Read and write**. Generate, copy.
+3. Paste it into Coe > Settings > You > GitHub > Connect. It stays in that browser only. It is never sent to Coe's server.
+
+## 7. Coe using PMC Apps
+Coe opens apps from `https://apps.pmcstudios.uk` inside the chat. Deploy the new PMC Apps build from this delivery first, because it contains the small piece that lets Coe drive an app. Without it the apps still open, but Coe cannot press their buttons. Free gets 5 runs a day in Coe, Pro is unlimited. The apps site itself stays free and AI-free.
+
+## 9. Business photos and ratings on maps (optional, Google Places)
+Coe makes maps and business cards without this, using OpenStreetMap. This adds photos, star ratings, phone numbers and websites. Google charges for it after a free monthly amount, so set a budget alert.
+1. console.cloud.google.com > pick or make a project. Turn on billing for it (Google needs a card on file, even for the free amount).
+2. **APIs & Services > Library** > search **Places API (New)** > **Enable**.
+3. **APIs & Services > Credentials > Create credentials > API key**. Open the key > **API restrictions** > **Restrict key** > tick only **Places API (New)** > Save. (Leave website restrictions off: the key lives on the Worker, not on the site.)
+4. Cloudflare Worker > Settings > Variables and Secrets > Add > type **Secret**, name `GOOGLE_PLACES_KEY`, paste the key > **Deploy**.
+5. Cloud Billing > **Budgets & alerts** > make a budget (for example £10 a month) so you get an email if it climbs. The Worker already limits look-ups: Free 12 a day, Pro 400.
+
+## 10. If Coe will not open on someone's phone
+Coe now fixes most of these by itself. When a file does not arrive it clears the old saved copy and tries once more, and if that fails it shows a box with **Try again** and **Fix and reload** instead of a blank page. A very slow connection shows "Coe is taking a while". The most common real cause was an old iPhone (iOS 16.3 or older) that could not read one line of code. That line is now guarded. Phones older than about iOS 14 can still struggle. Offline, the saved copy opens after 4.5 seconds.
+
+## 11. Run the checks (optional, on a computer with Node 20+)
+`npm install`, then `npm test` checks the feature list is over 75 and has no duplicates. `npx tsc --noEmit` checks the types.
+
+## 8. Update the database (do this once if you already ran setup.sql before)
+Supabase > SQL Editor > paste all of `supabase/setup.sql` again and run. It only adds what is missing: the `profiles` table (notes, study decks, your own styles) and the `shares` table with its `get_share` function (shared chat links). Without the shares part, everything else works; only "Share as a link" fails.
+
 ## Handy switches (Worker variables, all optional)
 - `PRO_EMAILS`: emails that get Pro without paying, comma separated. For you and testers. Put your own email here: Pro is what unlocks "My own key" in Settings > Your AI.
-- `FREE_DAILY` (30), `PRO_DAILY` (300): credits a day.
+- `FREE_DAILY_TOKENS` (300000), `PRO_DAILY_TOKENS` (6000000): tokens a day for a signed-in person. A short chat answer is about 1,000 to 6,000 tokens, so Free is roughly 50 chats and Pro 1,000 or more. Change them whenever you like.
+- `ANON_DAILY_TOKENS` (150000): tokens a day for someone who is not signed in, per network. (`ANON_IP_DAILY` from older zips is no longer used. You can delete it.)
+- `REDO_FREE` (3), `REDO_PRO` (10): "Wrong? Redo" presses a day that cost no tokens. After that a redo counts like any message.
+- `CHECK_FREE` (10), `CHECK_PRO` (60): free "double-check my answer" passes a day.
+- `APPS_FREE` (5): PMC App runs a day on Free.
 - `REQUIRE_SIGNIN`: set to `1` so only signed-in people can chat.
 - `ACCESS_CODE` (Secret): people need this word to use the server.
 
 ## How it works
-- No account: Free. Credits are counted on that device.
-- Signed in: credits are counted by the Worker, per account. Swift and Core cost 1. Deep costs 3. They reset at midnight UTC.
+- Everything is counted in **tokens** (the pieces of words the AI reads and writes), so the number you see is what was used. Free signed-in: 300,000 a day. Pro: 6,000,000 a day. Not signed in: 150,000 a day per network. They reset at midnight UTC. A bar in the sidebar shows what is left, and a banner appears at the top of the chat when more than 90% is used.
+- Coe Swift and Core count normally. Coe Deep counts double. A web search costs about 18,000 tokens and a picture about 30,000.
+- Giving feedback ("How am I doing?") quietly adds 20,000 tokens for that day. Nothing in the app says so.
+- Small daily allowances, counted apart from tokens: Free gets 1 Deep Work run, 3 web searches, 2 pictures, 12 business look-ups, 3 Sound lab listens and 5 PMC App runs. Pro gets 200, 100, 40, 400, 60 and no limit.
+- Pro only: long replies, big files (up to 24 MB), zip/PowerPoint/Excel files in, Google/GitHub buttons, the project folder, your own key.
+- Web search uses OpenAI's web search tool through the Worker. Pictures use `gpt-image-2.5-flare`. OpenAI may ask you to verify your organisation before image models work (platform.openai.com > Settings > Organization > General).
+- Voice: the mic button dictates, and Voice mode talks hands-free with 13 natural voices. It uses the Worker (speech to text, then text to speech) with your OpenAI key, so there is nothing to set up. Each thing you say counts as one voice turn, and so does each piece of a spoken reply (a reply is usually 1 to 3 pieces). Free gets 24 a day, Pro 3,000. The first time, the browser asks to use the microphone: press Allow. If the Worker voice cannot be reached or runs out, Coe switches to the browser's own free voice, which sounds more robotic.
+- Sound and video files: attach an mp3, m4a, wav or webm and Coe types out what was said (with time stamps). Attach a video and Coe reads a few frames as pictures and types out the soundtrack. Free listens to about 6 minutes, Pro to 40. Each piece of about 3 minutes uses one voice turn.
+- **Dated heads-up:** OpenAI is retiring `gpt-4o-mini-tts` on 6 January 2027. Until then the voices work as they are. Before that date, ask me to move voice to OpenAI's replacement (or set `MODEL_SPEECH` to a newer speech model if OpenAI lists one for its Speech endpoint).
+- Maths: any equation, in LaTeX, is drawn properly, including chemistry (`\ce{H2O}`). Click an equation to copy its LaTeX. The maths keyboard (the Σ button) builds one with buttons and a live preview. Coe checks sums with a real maths engine instead of guessing.
+- Study: flash cards and quiz answers can be saved to Study (header button). Cards come back on a spaced schedule (again, hard, good, easy), with a streak, points and levels. Decks follow the account when signed in, and can be exported or imported as a file.
+- Slide decks: Coe can make a deck in the chat. Press Present for full screen (arrow keys, N for notes), or Save .pptx for PowerPoint. Tables of data can be sorted, totalled, charted and saved as CSV.
+- Run button: on JavaScript and Python code in a reply. It runs in a sealed box on the visitor's device, with a time limit. Python loads from the jsDelivr CDN the first time (about 10 MB).
+- My styles: Style > Write your own style. Your own ways of working are kept on the device and in the account.
+- Share as a link: the share button in the header (or Ctrl+K > Share). It makes a read-only copy of one chat's words (no pictures or files) at `/share/#...`. Pages in it only run if the reader presses Show. The owner can stop sharing at any time. Needs the shares part of `setup.sql`.
+- Install as an app: Ctrl+K > Install Coe as an app (or the browser's install button). Chats and Study open offline; chatting needs a connection. The site's `sw.js` only caches files from the same site and always fetches pages fresh when online.
+- Look: Settings > Look has colour, text size, animations (full, calm, off), compact and easy-read spacing, click sounds and the Enter key. Click sounds are off by default. Settings > About lists everything Coe can do.
+- Also in replies: interactive graphs (drag and zoom), quizzes with a score, flash cards, charts, live pages, games, music and animation pages. Ctrl+K opens a command list. Typing `/` in the message box lists shortcuts. "Style" picks tutor, maths mentor, examiner, coder and more. Chats save as Markdown, a web page, or PDF (from the print box).
 - Own key (Settings > Your AI): Pro only. Everyone else uses Coe's key from the Worker.
 - Pro: only from paying (or `PRO_EMAILS`). Stripe tells the Worker, the Worker saves it, the site reads it.
-- "Wrong? Redo free" costs nothing, up to 10 a day on Free and 30 on Pro.
+- "Wrong? Redo" is free (no tokens) up to 3 a day on Free and 10 on Pro, and is refused when the tokens have run out.
 - Past chats: on the device by default. Signed in: also saved in the account, so they follow you.
 
 ## If a key leaks
