@@ -17,13 +17,13 @@ Do parts 1 to 3 first. Part 4 (Stripe) can wait. Until it is done, Pro shows "No
    - Resend > **API keys** > create a key (name `Coe`, permission: sending access). Copy it now. It is only shown once.
 5. Supabase > **Authentication > Notifications > Email > SMTP Settings**. Turn on custom SMTP. Sender email `no-reply@mail.pmcstudios.uk`, sender name `Coe`, host `smtp.resend.com`, port `465`, username `resend`, password = the Resend key. Save.
 6. Supabase > **Authentication > Email Templates**. Open **Confirm sign up**, then **Magic link or OTP**. In each, add a line `Your code: {{ .Token }}` and Save. The email then shows a 6 digit code.
-7. Supabase > **Settings > API Keys**. Copy the **publishable key** (starts `sb_publishable_`). The Project URL is in the **Connect** button at the top of the project page. (If you only see the old keys, the **anon** key works the same.)
+7. Supabase > **Settings > API Keys**. Copy the **publishable key** (starts `sb_publishable_`). The Project URL is `https://` + your project's reference ID + `.supabase.co`. The reference ID is the text after `/project/` in the dashboard's address bar (also under Project Settings > General > Reference ID). (If you only see the old keys, the **anon** key works the same.)
 8. GitHub repository > **Settings > Secrets and variables > Actions > Variables** tab > **New repository variable**. Add `SUPABASE_URL` (the Project URL) and `SUPABASE_ANON_KEY` (the publishable or anon key). Add `COE_SERVER` in part 3.
 
 ## 3. The server (Cloudflare Worker)
-1. Cloudflare > Workers & Pages > Create > Worker. Name it `coe-server`. Deploy.
-2. Edit code. Replace everything with `worker/worker.js`. Deploy.
-3. Worker > Settings > Variables and Secrets. Add these:
+1. dash.cloudflare.com > **Workers & Pages** > **Create** (or **Create application**) > **Start with Hello World!** > **Get started**. Name it `coe-server`. Press **Deploy**, then **Continue to project**.
+2. Press **Edit code** (top of the page). Delete everything in the editor, paste all of `worker/worker.js`, press **Deploy**.
+3. Worker > **Settings** > **Variables and Secrets** > **Add**. Pick the type (Text or Secret), type the name and value, then press **Deploy**. Add these:
 
 | Name | Type | Value |
 | --- | --- | --- |
