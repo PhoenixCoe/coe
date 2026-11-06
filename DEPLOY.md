@@ -120,6 +120,18 @@ Coe makes maps and business cards without this, using OpenStreetMap. This adds p
 4. Cloudflare Worker > Settings > Variables and Secrets > Add > type **Secret**, name `GOOGLE_PLACES_KEY`, paste the key > **Deploy**.
 5. Cloud Billing > **Budgets & alerts** > make a budget (for example £10 a month) so you get an email if it climbs. The Worker already limits look-ups: Free 12 a day, Pro 400.
 
+## 12. Getting the Google parts and the audio parts working (a short checklist)
+**Audio (voice in, voice out, Sound lab).** They all run through your Worker and your OpenAI key, so there is nothing else to switch on.
+1. platform.openai.com > Billing: the account needs a payment method and some credit. (A key without credit gets errors on every audio call.)
+2. Cloudflare Worker > Settings > Variables and Secrets: `API_KEY` must be your OpenAI key (Secret). Leave `MODEL_TRANSCRIBE`, `MODEL_SPEECH` and `MODEL_AUDIO` empty unless you want to change a model.
+3. Try it: Voice (left side) and talk. Then Ctrl+K > Sound lab and drop in a song.
+4. OpenAI removes the speech model Coe uses (`gpt-4o-mini-tts`) on 6 January 2027. Its named replacement only works through the Realtime API, not the endpoint Coe uses. Before that date Coe's spoken replies need a change: tell me and I will move them.
+
+**Google sign-in, Google Docs/Sheets/Slides, and business photos on maps** are three separate things:
+1. Sign in with Google: part 5. Docs, Sheets and Slides: part 6. Business photos and ratings: part 9. Do any, or none.
+2. Part 5 and part 6 share one Google Cloud project and one OAuth client. Part 9 only needs the Places API (New), a billing account on the project, and a key that is restricted to Places API (New).
+3. Google asks for billing on the project for Places even if you stay inside the free amount. Set a budget alert (part 9, step 5).
+
 ## 10. If Coe will not open on someone's phone
 Coe now fixes most of these by itself. When a file does not arrive it clears the old saved copy and tries once more, and if that fails it shows a box with **Try again** and **Fix and reload** instead of a blank page. A very slow connection shows "Coe is taking a while". The most common real cause was an old iPhone (iOS 16.3 or older) that could not read one line of code. That line is now guarded. Phones older than about iOS 14 can still struggle. Offline, the saved copy opens after 4.5 seconds.
 
