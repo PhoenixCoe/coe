@@ -16,7 +16,7 @@ Rules:
 - If the code is fine, return an empty findings list and a summary that says so.
 - Items marked "already found" are known. Do not repeat them.`;
 
-export interface Asked { findings: Finding[]; summary: string; cut: boolean; credits?: { used: number; limit: number; plan: string } }
+export interface Asked { findings: Finding[]; summary: string; cut: boolean; tokens?: number; credits?: { used: number; limit: number; plan: string } }
 
 const numbered = (code: string) => code.split('\n').map((l, i) => `${i + 1}: ${l}`).join('\n');
 
@@ -52,5 +52,5 @@ export async function askCoe(s: CoeSettings, o: { code: string; lang: Lang; note
     if (rep && typeof rep.text === 'string') { const from = int(rep.from, total), to = int(rep.to, total); if (from && to && to >= from && to - from < 40) fix = { from, to, text: rep.text.replace(/\n$/, '') }; }
     findings.push({ id: fid(), line, endLine: int(f.endLine, total), severity: sev(f.severity), title: title.slice(0, 90), why: typeof f.why === 'string' ? f.why.slice(0, 220) : undefined, idea: typeof f.idea === 'string' ? f.idea.slice(0, 220) : undefined, fix, source: 'coe' });
   }
-  return { findings: findings.slice(0, 20), summary: typeof j.summary === 'string' ? j.summary.slice(0, 240) : '', cut: r.cut, credits: r.credits };
+  return { findings: findings.slice(0, 20), summary: typeof j.summary === 'string' ? j.summary.slice(0, 240) : '', cut: r.cut, tokens: (r.inTokens ?? 0) + (r.outTokens ?? 0) || undefined, credits: r.credits };
 }

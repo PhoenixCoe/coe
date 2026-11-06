@@ -7,6 +7,8 @@ import { cloudOn, session, sync, takeLink } from '@/lib/coe/cloud';
 import { loadConv, loadIndex, type Conv, type ConvMeta } from './store';
 import type { ChatProps } from './Chat';
 import { ownerFromUrl } from '@/lib/coe/owner';
+import { Intro } from './Intro';
+import { startPwa } from '@/lib/coe/pwa';
 
 const SEEN = 'pmc:coe:intro';
 const introSeen = () => { try { return localStorage.getItem(SEEN) === '1'; } catch { return false; } };
@@ -19,33 +21,42 @@ const frame = () => new Promise<void>((r) => requestAnimationFrame(() => request
  * text formatter are ready, and your saved conversations are opened.
  */
 export default function App() {
-  const [first, setFirst] = useState<boolean | null>(null);
-  useEffect(() => { ownerFromUrl(); setFirst(!introSeen()); }, []);
-  return first === null ? <div className="ld-quiet" aria-busy="true" /> : <Boot first={first} />;
+  useEffect(() => { ownerFromUrl(); startPwa(); }, []);
+  return <Boot />;
 }
 
-function Boot({ first }: { first: boolean }) {
+const STEPS = ['Loading the workspace', 'Loading the fonts', 'Preparing the text formatter', 'Opening your chats', 'Checking the connection'];
+/** A file that fails to arrive on a weak mobile connection gets a few more tries before giving up. */
+async function again<T>(f: () => Promise<T>, tries = 3): Promise<T> {
+  for (let i = 0; ; i++) { try { return await f(); } catch (e) { if (i >= tries - 1) throw e; await new Promise((r) => setTimeout(r, 700 * (i + 1))); } }
+}
+
+function Boot() {
+  // The server draws the loader, so a phone sees it before any script has run. First visit or not only matters once the page is up.
+  const [first] = useState(() => (typeof window === 'undefined' ? false : !introSeen()));
+  const [tries, setTries] = useState(0);
   const made = useRef<{ Chat?: ComponentType<ChatProps>; list?: ConvMeta[]; conv?: Conv | null }>({});
   const plan = useRef<LoadStep[] | null>(null);
   if (!plan.current) {
     plan.current = [
-      { label: 'Loading the workspace', run: async () => { made.current.Chat = (await import('./Chat')).Chat; } },
-      { label: 'Loading the fonts', run: async () => { try { await document.fonts.ready; await document.fonts.load('14px "JetBrains Mono"'); } catch { /* falls back to other fonts */ } } },
-      { label: 'Preparing the text formatter', run: () => loadMarkdown() },
-      { label: 'Opening your chats', run: async () => {
-          if (cloudOn) { takeLink(); if (session()) { try { await sync(); } catch { /* offline: this device keeps its own copy */ } } }
+      { label: STEPS[0], run: async () => { made.current.Chat = (await again(() => import('./Chat'))).Chat; } },
+      { label: STEPS[1], run: async () => { try { await document.fonts.ready; await document.fonts.load('14px "JetBrains Mono"'); } catch { /* falls back to other fonts */ } } },
+      { label: STEPS[2], run: () => loadMarkdown() },
+      { label: STEPS[3], run: async () => {
+          if (cloudOn) { takeLink(); if (session()) { try { await Promise.race([sync(), new Promise((r) => setTimeout(r, 2500))]); } catch { /* offline: this device keeps its own copy */ } } }   // a slow network never holds the page up
           made.current.list = await loadIndex();
           let id: string | null = null;
           try { id = sessionStorage.getItem(LAST); } catch { /* storage blocked */ }
           made.current.conv = id ? (await loadConv(id)) ?? null : null;
         } },
-      { label: 'Checking the connection', run: async () => { connection(loadSettings()); await frame(); } },
+      { label: STEPS[4], run: async () => { connection(loadSettings()); await frame(); } },
     ];
   }
-  const load = useLoadSequence(plan.current, first ? 1500 : 0);
+  const load = useLoadSequence(plan.current, first ? 1000 : 0, tries);
   useEffect(() => { if (load.ready) { try { localStorage.setItem(SEEN, '1'); } catch { /* storage blocked */ } } }, [load.ready]);
-  if (!load.ready && !first && !load.error) return <div className="ld-quiet" aria-busy="true" />;
-  if (!load.ready) return <CoeLoader title="Coe" steps={plan.current.map((s) => s.label)} index={load.index} error={load.error} />;
   const { Chat, list, conv } = made.current;
-  return Chat ? <Chat initialList={list ?? []} initialConv={conv ?? null} /> : null;
+  // Tell the page that Coe is open, so the recovery help in the page's head stands down.
+  useEffect(() => { if (load.ready && Chat) { try { document.documentElement.classList.add('coe-ready'); (window as unknown as { __coeHideStuck?: () => void }).__coeHideStuck?.(); } catch { /* ignore */ } } }, [load.ready, Chat]);
+  if (!load.ready) return <CoeLoader title="Coe" steps={STEPS} index={load.index} error={load.error} onRetry={() => { made.current = {}; setTries((n) => n + 1); }} />;
+  return Chat ? <><Chat initialList={list ?? []} initialConv={conv ?? null} />{!first && <Intro />}</> : null;
 }

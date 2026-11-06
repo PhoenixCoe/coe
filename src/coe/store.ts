@@ -2,11 +2,35 @@ import type { ModelKey } from '@/lib/coe/models';
 
 /** A picture in a message: kept as base64 so a conversation can be saved, sent again and exported. */
 export interface Img { name: string; type: string; data: string }
+/** A file read in for Coe: the words are kept, the original is not. */
+export interface Attach { name: string; kind: string; chars: number; text: string; cut?: boolean; note?: string }
+/** What a tool made, to show under the reply. Kept with the chat. */
+export type ToolOut =
+  | { kind: 'text'; text: string }
+  | { kind: 'search'; text: string; sources: { title: string; url: string }[] }
+  | { kind: 'image'; img: Img }
+  | { kind: 'maths'; text: string }
+  | { kind: 'link'; url: string; label: string }
+  | { kind: 'files'; items: { name: string; type: string; size: number; data: string }[] };
+export interface ToolRun { id: string; tool: string; args: Record<string, unknown>; status: 'running' | 'pending' | 'ok' | 'error'; note?: string; out?: ToolOut; result?: string; shown?: string; /** When it started and finished (milliseconds). */ t0?: number; t1?: number }
 export interface Msg {
   id: string; role: 'user' | 'assistant'; text: string; images?: Img[]; model?: ModelKey; ts: number;
   error?: string; errKind?: string; stopped?: boolean; cut?: boolean; inTokens?: number; outTokens?: number;
+  /** Files read in with this message. */
+  attach?: Attach[];
+  /** A tool the reply asked for, and what came of it. */
+  runs?: ToolRun[];
+  /** What a tool told Coe. It goes to the model but is not shown as a message. */
+  hidden?: boolean;
+  /** This reply was made in Deep Work. */
+  work?: boolean;
+  /** Coe looked it over before finishing: it was fine, or it found and fixed a mistake (and what it was). */
+  checked?: 'ok' | 'fixed';
+  fix?: string;
+  /** Sent while Coe was still answering the message before it. */
+  late?: boolean;
 }
-export interface Conv { id: string; title: string; created: number; updated: number; model: ModelKey; space?: 'chat' | 'aced'; pinned?: boolean; messages: Msg[] }
+export interface Conv { id: string; title: string; created: number; updated: number; model: ModelKey; space?: 'chat' | 'aced'; pinned?: boolean; messages: Msg[]; /** The project folder: file name to text. */ files?: Record<string, string> }
 export interface ConvMeta { id: string; title: string; updated: number; space?: 'chat' | 'aced'; pinned?: boolean; count: number }
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);
@@ -68,7 +92,8 @@ export function usage(): Use {
   if (u.month !== t.month) { u.month = t.month; u.thisMonth = 0; }
   return u;
 }
-export function countMessage(): Use { const u = usage(); u.today++; u.thisMonth++; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }
+/** Adds the tokens a reply really used (words in plus words out). */
+export function countMessage(tokens = 0): Use { const u = usage(); const n = Math.max(1, Math.round(tokens) || 1); u.today += n; u.thisMonth += n; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }
 export function resetToday() { const u = usage(); u.today = 0; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }
 
 // ---------------------------------------------------------------- words
