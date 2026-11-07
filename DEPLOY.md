@@ -41,6 +41,7 @@ Do parts 1 to 3 first. Already set up from an earlier zip? You only need to uplo
 | `MODEL_TRANSCRIBE` | Text | optional. Voice in (and audio or video files). Leave empty to use `gpt-transcribe` (it falls back to `gpt-4o-mini-transcribe`) |
 | `MODEL_SPEECH` | Text | optional. Voice out. Leave empty to use `gpt-4o-mini-tts` (see the note under How it works) |
 | `MODEL_AUDIO` | Text | optional. The model that listens in the Sound lab and names instruments and noises. Leave empty to use `gpt-audio-mini` |
+| `RESEND_API_KEY` | Secret | optional. Emails written feedback to contact@pmcstudios.uk. See part 5. |
 | `GOOGLE_PLACES_KEY` | Secret | optional. Adds photos, ratings, phone numbers and websites to the business cards on maps. See part 9. Without it, maps still work through OpenStreetMap |
 
 4. Copy the Worker address (like `https://coe-server.yourname.workers.dev`). GitHub repository > Settings > Secrets and variables > Actions > **Variables** > add `COE_SERVER` with that address. Then Actions > Deploy to GitHub Pages > **Run workflow**. Visitors never have to paste it.
@@ -70,44 +71,13 @@ Use Stripe's **test mode** first. Switch to live at the end.
 7. Test: sign in on the site > Plans > Get Pro > card `4242 4242 4242 4242`, any future date, any CVC. Pro turns on within a few seconds.
 8. Go live: repeat steps 2 to 6 with live mode keys and ids.
 
-## 5. Sign in with Google, Microsoft or GitHub (optional)
-The buttons only appear for providers you switch on. Do any, or none. The email code keeps working either way.
-All three need the same callback address from Supabase: `https://<your-project-ref>.supabase.co/auth/v1/callback`. Supabase shows it (with a Copy button) on each provider's page: Supabase > **Authentication > Sign In / Providers**.
-
-**Google**
-1. console.cloud.google.com > make or pick a project > **Google Auth Platform**. Set up **Branding** (app name, your email), and **Audience** (External).
-2. **Clients > Create client**. Application type **Web application**.
-   - **Authorized JavaScript origins**: `https://coe.pmcstudios.uk`
-   - **Authorized redirect URIs**: the Supabase callback address above.
-3. Create. Copy the **Client ID** and **Client secret**.
-4. Supabase > Authentication > Sign In / Providers > **Google** > turn on, paste both, Save.
-(Keep this same client for part 6.)
-
-**Microsoft**
-1. portal.azure.com > **Microsoft Entra ID > App registrations > New registration**. Pick the account types you want (to let anyone with a Microsoft account in, choose the option that includes personal accounts). Redirect URI: platform **Web**, the Supabase callback address. Register.
-2. Copy the **Application (client) ID**. **Certificates & secrets > Client secrets > New client secret**. Copy the **Value** (not the Secret ID). It is shown once, and it expires, so note the date.
-3. Supabase > Providers > **Azure** > paste both. If you chose personal accounts only, set **Azure Tenant URL** to `https://login.microsoftonline.com/consumers`. Save.
-
-**GitHub**
-1. github.com/settings/developers > **OAuth Apps > New OAuth App**. Homepage URL `https://coe.pmcstudios.uk`. Authorization callback URL: the Supabase callback address. Leave Device Flow off. Register.
-2. Copy the **Client ID**, press **Generate a new client secret**, copy it.
-3. Supabase > Providers > **GitHub** > turn on, paste both, Save.
-Signing in with GitHub is only for the account. Coe's GitHub tools use a separate token (part 6).
-
-## 6. Google Docs, Sheets and Slides, and GitHub (Pro)
-Coe makes the file when the person presses the button on the preview. Nothing is written without that press.
-
-**Google** (no extra server needed)
-1. In the same Google Cloud project: **APIs & Services > Library**. Enable **Google Docs API**, **Google Sheets API**, **Google Slides API** and **Google Drive API**.
-2. **Google Auth Platform > Data Access** > Add or remove scopes. Add `.../auth/drive.file` (Coe can then only touch files it made). Optional, for reading existing files: `documents.readonly`, `spreadsheets.readonly`, `presentations.readonly`. These three are "sensitive", so people see an "unverified app" screen until Google verifies the app. Skip them if you do not want that.
-3. While the app's Audience says **Testing**, only the test users you list (Audience > Test users) can connect. Add yourself. Press **Publish app** when you want anyone to be able to.
-4. GitHub repository > Settings > Secrets and variables > Actions > **Variables** > add `GOOGLE_CLIENT_ID` = the Client ID (not the secret). Re-run Actions > Deploy to GitHub Pages.
-5. In Coe: Settings > **You** > Connect Google. Google's access lasts about an hour, then the person presses Connect again.
-
-**GitHub** (each person does this themselves, in Coe: Settings > You)
-1. github.com > profile picture > Settings > **Developer settings > Personal access tokens > Fine-grained tokens > Generate new token**.
-2. Pick an expiry, **Only select repositories** and choose them, then under Permissions set **Contents**, **Issues** and **Pull requests** to **Read and write**. Generate, copy.
-3. Paste it into Coe > Settings > You > GitHub > Connect. It stays in that browser only. It is never sent to Coe's server.
+## 5. Feedback emails to contact@pmcstudios.uk (optional, free tier is enough)
+Messages people write in Coe (Settings > About > Tell us something, and the box after a Bad or Fine face) are emailed to contact@pmcstudios.uk. Without this part Coe still works: the person gets a button that opens their own email app instead.
+1. resend.com > make a free account > **Domains** > **Add Domain** > `pmcstudios.uk` > add the DNS records it shows in Cloudflare (DNS > Records) > **Verify**.
+2. Resend > **API Keys** > **Create API Key** (permission: Sending access) > copy it.
+3. Cloudflare Worker > **Settings** > **Variables and Secrets** > **Add**: type **Secret**, name `RESEND_API_KEY`, paste the key > **Deploy**.
+4. Optional: add a **Text** variable `MAIL_FROM` = `Coe <coe@pmcstudios.uk>` (must be on the domain you verified) and `FEEDBACK_TO` = another address if you want mail to go somewhere else.
+5. Test: Coe > Settings > About > Tell us something > write a line > Send. It should reach contact@pmcstudios.uk in a few seconds.
 
 ## 7. Coe using PMC Apps
 Coe opens apps from `https://apps.pmcstudios.uk` inside the chat. Deploy the new PMC Apps build from this delivery first, because it contains the small piece that lets Coe drive an app. Without it the apps still open, but Coe cannot press their buttons. Free gets 5 runs a day in Coe, Pro is unlimited. The apps site itself stays free and AI-free.
@@ -120,17 +90,14 @@ Coe makes maps and business cards without this, using OpenStreetMap. This adds p
 4. Cloudflare Worker > Settings > Variables and Secrets > Add > type **Secret**, name `GOOGLE_PLACES_KEY`, paste the key > **Deploy**.
 5. Cloud Billing > **Budgets & alerts** > make a budget (for example £10 a month) so you get an email if it climbs. The Worker already limits look-ups: Free 12 a day, Pro 400.
 
-## 12. Getting the Google parts and the audio parts working (a short checklist)
+## 12. Getting the audio parts working (a short checklist)
 **Audio (voice in, voice out, Sound lab).** They all run through your Worker and your OpenAI key, so there is nothing else to switch on.
 1. platform.openai.com > Billing: the account needs a payment method and some credit. (A key without credit gets errors on every audio call.)
 2. Cloudflare Worker > Settings > Variables and Secrets: `API_KEY` must be your OpenAI key (Secret). Leave `MODEL_TRANSCRIBE`, `MODEL_SPEECH` and `MODEL_AUDIO` empty unless you want to change a model.
 3. Try it: Voice (left side) and talk. Then Ctrl+K > Sound lab and drop in a song.
 4. OpenAI removes the speech model Coe uses (`gpt-4o-mini-tts`) on 6 January 2027. Its named replacement only works through the Realtime API, not the endpoint Coe uses. Before that date Coe's spoken replies need a change: tell me and I will move them.
 
-**Google sign-in, Google Docs/Sheets/Slides, and business photos on maps** are three separate things:
-1. Sign in with Google: part 5. Docs, Sheets and Slides: part 6. Business photos and ratings: part 9. Do any, or none.
-2. Part 5 and part 6 share one Google Cloud project and one OAuth client. Part 9 only needs the Places API (New), a billing account on the project, and a key that is restricted to Places API (New).
-3. Google asks for billing on the project for Places even if you stay inside the free amount. Set a budget alert (part 9, step 5).
+**Voice on a Mac.** Safari and Chrome on a Mac ask for the microphone once. If you pressed Block: click the lock in the address bar and allow the microphone. If it still does not work: Apple menu > System Settings > Privacy & Security > Microphone > tick your browser. Tap anywhere on the page once before Coe talks, because Safari only plays sound after a tap.
 
 ## 10. If Coe will not open on someone's phone
 Coe now fixes most of these by itself. When a file does not arrive it clears the old saved copy and tries once more, and if that fails it shows a box with **Try again** and **Fix and reload** instead of a blank page. A very slow connection shows "Coe is taking a while". The most common real cause was an old iPhone (iOS 16.3 or older) that could not read one line of code. That line is now guarded. Phones older than about iOS 14 can still struggle. Offline, the saved copy opens after 4.5 seconds.
@@ -156,7 +123,7 @@ Supabase > SQL Editor > paste all of `supabase/setup.sql` again and run. It only
 - Coe Swift and Core count normally. Coe Deep counts double. A web search costs about 18,000 tokens and a picture about 30,000.
 - Giving feedback ("How am I doing?") quietly adds 20,000 tokens for that day. Nothing in the app says so.
 - Small daily allowances, counted apart from tokens: Free gets 1 Deep Work run, 3 web searches, 2 pictures, 12 business look-ups, 3 Sound lab listens and 5 PMC App runs. Pro gets 200, 100, 40, 400, 60 and no limit.
-- Pro only: long replies, big files (up to 24 MB), zip/PowerPoint/Excel files in, Google/GitHub buttons, the project folder, your own key.
+- Pro only: long replies, big files (up to 24 MB), zip/PowerPoint/Excel files in, the project folder, your own key.
 - Web search uses OpenAI's web search tool through the Worker. Pictures use `gpt-image-2.5-flare`. OpenAI may ask you to verify your organisation before image models work (platform.openai.com > Settings > Organization > General).
 - Voice: the mic button dictates, and Voice mode talks hands-free with 13 natural voices. It uses the Worker (speech to text, then text to speech) with your OpenAI key, so there is nothing to set up. Each thing you say counts as one voice turn, and so does each piece of a spoken reply (a reply is usually 1 to 3 pieces). Free gets 24 a day, Pro 3,000. The first time, the browser asks to use the microphone: press Allow. If the Worker voice cannot be reached or runs out, Coe switches to the browser's own free voice, which sounds more robotic.
 - Sound and video files: attach an mp3, m4a, wav or webm and Coe types out what was said (with time stamps). Attach a video and Coe reads a few frames as pictures and types out the soundtrack. Free listens to about 6 minutes, Pro to 40. Each piece of about 3 minutes uses one voice turn.
