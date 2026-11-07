@@ -1,4 +1,5 @@
 'use client';
+import { Halftone } from '@/ui/Halftone';
 import { useEffect, useRef, useState } from 'react';
 import { CopyButton, downloadText } from '@/ui/copy';
 import { Seg } from '@/ui/Seg';
@@ -12,7 +13,7 @@ import { connection, modeOf, own, type CoeSettings } from '@/lib/coe/settings';
 import { WORKER_CODE } from '@/lib/coe/worker';
 import { You } from './You';
 import { Select } from '@/ui/Controls';
-import { AboutTab, ChatTab, LearnTab, LookTab } from './SettingsTabs';
+import { AboutTab, ChatTab, ChromeTab, LearnTab, LookTab } from './SettingsTabs';
 import { VoiceFields } from './VoiceFields';
 
 /** A window over the chat: a dark veil, a boxed card, Escape to close. */
@@ -29,7 +30,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   return (
     <div className="cx-veil" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={card} className={`cx-modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
-        <div className="cx-modal-top"><h2 className="d">{title}</h2><button type="button" className="cx-ib cx-closeb" aria-label="Close" onClick={onClose}><UiIcon name="close" size={20} /><span>Close</span></button></div>
+        <div className="cx-modal-top"><Halftone className="ht-bar" /><h2 className="d">{title}</h2><button type="button" className="cx-ib cx-closeb" aria-label="Close" onClick={onClose}><UiIcon name="close" size={20} /><span>Close</span></button></div>
         <div className="cx-modal-body">{children}</div>
       </div>
     </div>
@@ -47,10 +48,10 @@ export function Upgrade({ note, onClose }: { note: string; onClose: () => void }
 }
 
 // ---------------------------------------------------------------- settings
-export type Tab = 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'about';
+export type Tab = 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'ext' | 'about';
 const TABS: { id: Tab; name: string; icon: Parameters<typeof UiIcon>[0]['name'] }[] = [
   { id: 'look', name: 'Look', icon: 'theme' }, { id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice', icon: 'wave' },
-  { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'you', name: 'You', icon: 'user' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'about', name: 'About', icon: 'info' },
+  { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'you', name: 'You', icon: 'user' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'ext', name: 'Chrome', icon: 'globe' }, { id: 'about', name: 'About', icon: 'info' },
 ];
 export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCount, onExport, onImport, onDeleteAll, onClose }: {
   owner: boolean; settings: CoeSettings; set: (s: CoeSettings) => void; tab: Tab; setTab: (t: Tab) => void; convCount: number;
@@ -162,6 +163,7 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
       {tab === 'chat' && <ChatTab s={settings} up={up} />}
       {tab === 'learn' && <LearnTab s={settings} up={up} />}
       {tab === 'voice' && <VoiceFields settings={settings} />}
+      {tab === 'ext' && <ChromeTab />}
       {tab === 'about' && <AboutTab />}
 
       {tab === 'you' && <You pro={pro || st.plan === 'pro'} signedIn={st.signedIn} />}
