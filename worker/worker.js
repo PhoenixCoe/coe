@@ -17,6 +17,7 @@
 //      APPS_FREE (5)  PMC App runs a day on Free. Pro is unlimited.
 //      PRO_EMAILS                        (text, optional)  emails that get Pro without paying, comma separated. For you, for testing.
 //      REQUIRE_SIGNIN                    (text, optional)  set to 1 so only signed-in people can chat
+//      RESEND_API_KEY (secret), MAIL_FROM, FEEDBACK_TO  (optional)  emails written feedback to FEEDBACK_TO (contact@pmcstudios.uk). MAIL_FROM must be on a domain you verified in Resend.
 // 3. Deploy, then paste the Worker's address into Coe > Settings.
 
 const MOST = 16000;              // the longest reply it will ever ask for
@@ -155,16 +156,28 @@ export default {
     // Extra tokens earned today (by answering "How am I doing?"). They are added to the day's limit.
     const bonusToday = async () => (billing ? await usedToday("bonus:" + (await subjectOf())) : 0);
 
-    // ---- "How am I doing?": a rating from the box in the chat. It is counted, and it quietly earns a few extra tokens, once a day.
+    // ---- "How am I doing?" and the feedback form. A rating is counted (and quietly earns a few extra tokens, once a day).
+    // A written message is emailed to FEEDBACK_TO (default contact@pmcstudios.uk) through Resend, when RESEND_API_KEY is set.
     if (request.method === "POST" && path === "/feedback") {
       let b = {}; try { b = await request.json(); } catch { /* an empty body is refused below */ }
-      if (!["bad", "fine", "good"].includes(b.rating)) return fail(400, "That is not one of the choices.");
-      if (billing) {
+      const message = String(b.message || "").trim().slice(0, 2000), kind = ["idea", "problem", "other", "rating"].includes(b.kind) ? b.kind : "rating";
+      if (!["bad", "fine", "good"].includes(b.rating) && !message) return fail(400, "Write a message or pick a face.");
+      if (billing && ["bad", "fine", "good"].includes(b.rating)) {
         const sub = await subjectOf();
         await spend("fbtally:" + b.rating, 1, 1e9).catch(() => {});
         if ((await spend("fb:" + sub, 1, 1).catch(() => -1)) >= 0) await spend("bonus:" + sub, FEEDBACK_BONUS, 1e9).catch(() => {});
       }
-      return reply(200, { ok: true });
+      let emailed = false;
+      if (message && env.RESEND_API_KEY) {
+        const ok = billing ? (await spend("fbmsg:" + (await subjectOf()), 1, 8).catch(() => 0)) >= 0 : true;   // 8 messages a day each
+        if (ok) {
+          const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + String(env.RESEND_API_KEY).trim(), "content-type": "application/json" },
+            body: JSON.stringify({ from: env.MAIL_FROM || "Coe <coe@pmcstudios.uk>", to: [env.FEEDBACK_TO || "contact@pmcstudios.uk"], reply_to: who?.email || undefined,
+              subject: "Coe feedback: " + kind + (b.rating ? " (" + b.rating + ")" : ""), text: message + "\n\n---\nFrom: " + (who?.email || "not signed in") + "\nRating: " + (b.rating || "none") + "\nPage: " + String(b.page || "").slice(0, 200) }) }).catch(() => null);
+          emailed = !!r?.ok;
+        }
+      }
+      return reply(200, { ok: true, emailed });
     }
 
     if (request.method === "GET" && path === "/me") {
