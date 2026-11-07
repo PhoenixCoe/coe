@@ -1,19 +1,6 @@
 /**
- * The accounts Coe can reach for you (Google, GitHub), and what Coe remembers about you.
- * The keys are kept in this browser only. They are never sent to Coe's server or put in a chat.
+ * What Coe remembers about you. It is kept in this browser only.
  */
-const KEY = 'pmc:coe:links';
-export interface Google { token: string; exp: number; level: 'make' | 'read'; email?: string }
-export interface GitHub { token: string; login: string; kind: 'token' | 'signin' }
-export interface Links { google?: Google; github?: GitHub }
-
-export function links(): Links { try { return JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch { return {}; } }
-function save(l: Links) { try { localStorage.setItem(KEY, JSON.stringify(l)); window.dispatchEvent(new Event('pmc:coe-links')); } catch { /* storage blocked */ } }
-export const setGoogle = (g: Google | undefined) => { const l = links(); if (g) l.google = g; else delete l.google; save(l); };
-export const setGithub = (g: GitHub | undefined) => { const l = links(); if (g) l.github = g; else delete l.github; save(l); };
-export const googleNow = (): Google | null => { const g = links().google; return g && g.exp > Date.now() ? g : null; };
-export const onLinks = (fn: () => void) => { window.addEventListener('pmc:coe-links', fn); return () => window.removeEventListener('pmc:coe-links', fn); };
-
 // ---------------------------------------------------------------- memory
 const MEM = 'pmc:coe:memory';
 export const MAX_FACTS = 60;

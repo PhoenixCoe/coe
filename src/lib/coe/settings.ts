@@ -54,12 +54,16 @@ export interface CoeSettings {
   goal: number;
   /** What happens when you send a message while Coe is still replying. */
   whileBusy: 'queue' | 'interrupt';
+  /** Longest reply in words. 0 means no limit. */
+  maxWords: number;
+  /** Stronger text and borders. */
+  contrast: boolean;
 }
 
 export const DEFAULTS: CoeSettings = {
   mode: 'server', serverUrl: (process.env.NEXT_PUBLIC_COE_SERVER ?? '').trim().replace(/\/+$/, ''), code: '', provider: 'openai', keys: {}, bases: {}, models: {},
   system: '', creativity: 'default', name: '', size: 'normal', enter: 'send',
-  check: 'smart', length: 'balanced', tone: 'friendly', level: 'auto', replyLang: '', effects: true, asks: 'sometimes', motion: 'full', scale: 100, compact: false, easy: false, goal: 10, whileBusy: 'queue',
+  check: 'smart', length: 'balanced', tone: 'friendly', level: 'auto', replyLang: '', effects: true, asks: 'sometimes', motion: 'full', scale: 100, compact: false, easy: false, goal: 10, whileBusy: 'queue', maxWords: 0, contrast: false,
 };
 export const CREATIVITY: Record<CoeSettings['creativity'], number | undefined> = { default: undefined, precise: 0.2, balanced: 0.7, creative: 1 };
 

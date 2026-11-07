@@ -47,21 +47,6 @@ export function takeLink(): boolean {
 const head = (extra: Record<string, string> = {}, bearer = KEY) => ({ apikey: KEY, ...(bearer.startsWith('sb_') ? {} : { authorization: `Bearer ${bearer}` }), 'content-type': 'application/json', ...extra });
 const fail = async (r: Response) => { let m = ''; try { const j = await r.json(); m = j.msg || j.message || j.error_description || j.error || ''; } catch { /* no body */ } return new Error(m || `Request failed (${r.status})`); };
 
-export type Provider = 'google' | 'azure' | 'github';
-let enabled: Promise<Provider[]> | null = null;
-/** Which sign-in providers are switched on in Supabase. Empty when it cannot tell, so no dead buttons are shown. */
-export function providers(): Promise<Provider[]> {
-  if (!cloudOn) return Promise.resolve([]);
-  return (enabled ??= fetch(`${URL_}/auth/v1/settings`, { headers: { apikey: KEY } })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((j) => (['google', 'azure', 'github'] as Provider[]).filter((p) => j?.external?.[p] === true))
-    .catch(() => []));
-}
-/** Leaves for the provider's own sign-in page. It brings the person back here, signed in. */
-export function startProvider(p: Provider) {
-  location.assign(`${URL_}/auth/v1/authorize?provider=${p}&redirect_to=${encodeURIComponent(location.origin + '/')}`);
-}
-
 export async function sendCode(email: string) {
   const r = await fetch(`${URL_}/auth/v1/otp?redirect_to=${encodeURIComponent(location.origin + '/')}`, { method: 'POST', headers: head(), body: JSON.stringify({ email, create_user: true }) });
   if (!r.ok) throw await fail(r);
@@ -111,6 +96,14 @@ export async function put(c: Conv) {
   const s = session(); if (!s) return;
   await rest('chats?on_conflict=user_id,id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, id: c.id, title: c.title, updated: c.updated, pinned: !!c.pinned, data: textOnly(c) }) });
   const k = ids(); k.add(c.id); setIds(k);
+}
+/** While a reply is being written: the chat so far, marked live, so another device that has it open can follow along. */
+export async function putLive(c: Conv) { await put({ ...c, live: Date.now() }); }
+/** What the account holds for one chat right now, for following a reply that is being written on another device. */
+export async function peek(id: string): Promise<{ updated: number; data: Conv } | null> {
+  if (!session()) return null;
+  const rows: { updated: number; data: Conv }[] = await (await rest(`chats?id=eq.${encodeURIComponent(id)}&select=updated,data`)).json();
+  const r = rows[0]; return r && r.data && Array.isArray(r.data.messages) ? r : null;
 }
 export async function remove(id: string) {
   if (!session()) return;

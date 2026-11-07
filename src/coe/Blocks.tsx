@@ -1,5 +1,6 @@
 'use client';
 import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, BrowserWindow, turnSteps } from './Activity';
 import { UiIcon } from '@/ui/icons';
 import { CopyButton, downloadBlob, downloadText } from '@/ui/copy';
 import { cleanSvg, hasMath, loadMath, renderMarkdown } from './markdown';
@@ -9,19 +10,17 @@ import { DataBlock } from './DataTable';
 import { AskCard } from './AskCard';
 import { MapBlock } from './MapBlock';
 import { dataUrl, type Img, type Msg, type ToolOut, type ToolRun } from './store';
-import { appsFrameSrc, defOf, findTool, needsApproval, summary, type Call } from '@/lib/coe/tools';
+import { appsFrameSrc, defOf, findTool, type Call } from '@/lib/coe/tools';
 import { APPS_URL, appBySlug, makeFrame, registerFrame } from '@/lib/coe/pmc';
-import { googleAvailable } from '@/lib/coe/google';
-import { links } from '@/lib/coe/links';
 import { entryOf, hasFiles, inlinePage, type Files } from '@/lib/coe/workspace';
 import type { PlanKey } from '@/lib/coe/models';
 
 // ---------------------------------------------------------------- what the blocks need from the chat
-export interface RichCtx { shared?: boolean; /** Pictures in this chat, oldest first: ![](pic:1) shows the first. */ pics?: Img[]; /** Text effects on or off. */ effects?: boolean; plan: PlanKey; files: Files; convId: string; ask?: (text: string) => void; approve: (msgId: string, runId: string) => void; skip: (msgId: string, runId: string) => void }
+export interface RichCtx { shared?: boolean; /** Pictures in this chat, oldest first: ![](pic:1) shows the first. */ pics?: Img[]; /** Text effects on or off. */ effects?: boolean; plan: PlanKey; files: Files; convId: string; ask?: (text: string) => void }
 export const RichContext = createContext<RichCtx | null>(null);
 
 // ---------------------------------------------------------------- splitting a reply into words and special blocks
-export type Seg = { t: 'md'; text: string } | { t: 'block'; lang: string; code: string; closed: boolean; n: number };
+export type Seg = { t: 'md'; text: string } | { t: 'fold'; title: string; text: string; closed: boolean } | { t: 'block'; lang: string; code: string; closed: boolean; n: number };
 const SPECIAL = new Set(['html', 'htm', 'svg', 'mermaid', 'coe-tool', 'coe-plan', 'followups', 'slides', 'data', 'map', 'ask', ...STUDY_LANGS]);
 
 export function splitBlocks(text: string): Seg[] {
@@ -29,6 +28,11 @@ export function splitBlocks(text: string): Seg[] {
   let buf: string[] = [], i = 0;
   const flush = () => { if (buf.length) { const t = buf.join('\n'); if (t.trim()) segs.push({ t: 'md', text: t }); buf = []; } };
   while (i < lines.length) {
+    const fm = /^\s{0,3}:::\s*(?:fold|details)\b[ \t]*(.*)$/i.exec(lines[i]);
+    if (fm) {
+      let j = i + 1; while (j < lines.length && !/^\s{0,3}:::\s*$/.test(lines[j])) j++;
+      flush(); segs.push({ t: 'fold', title: fm[1].trim() || 'More', text: lines.slice(i + 1, j).join('\n'), closed: j < lines.length }); i = j < lines.length ? j + 1 : j; continue;
+    }
     const m = /^\s{0,3}(`{3,})\s*([\w+-]*)[^\n]*$/.exec(lines[i]);
     if (m) {
       const fence = m[1], lang = m[2].toLowerCase();
@@ -68,7 +72,7 @@ const Md = memo(function Md({ text, live }: { text: string; live?: boolean }) {
       const p = pics?.[Number(im.dataset.pic) - 1];
       if (p) { im.src = dataUrl(p); im.removeAttribute('data-pic'); } else if (!live) im.replaceWith(Object.assign(document.createElement('span'), { className: 'cx-img-miss', textContent: im.alt || 'Picture' }));
     });
-    if (live) return;
+    if (live) { el.querySelectorAll('pre').forEach((p) => { p.scrollTop = p.scrollHeight; }); return; }   // code being written stays in view
     const els = el.querySelectorAll('.fx-s, .fx-box'); if (!els.length) return;
     if (typeof IntersectionObserver === 'undefined') { els.forEach((e) => e.classList.add('fx-go')); return; }
     const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('fx-go'); io.unobserve(e.target); } }), { threshold: 0.15 });
@@ -90,6 +94,7 @@ export const Rich = memo(function Rich({ text, msg, live }: { text: string; msg?
     <>
       {segs.map((s, i) => {
         if (s.t === 'md') return <Md key={i} text={s.text} live={live && i === segs.length - 1} />;
+        if (s.t === 'fold') return <details key={i} className="cx-fold"><summary className="d"><UiIcon name="down" size={14} />{s.title}</summary><div className="cx-fold-in"><Rich text={s.text} live={live && !s.closed} /></div></details>;
         if (s.lang === 'html') return <Preview key={i} kind="html" code={s.code} closed={s.closed && !live} />;
         if (s.lang === 'svg') return <Preview key={i} kind="svg" code={s.code} closed={s.closed} />;
         if (s.lang === 'mermaid') return <Preview key={i} kind="mermaid" code={s.code} closed={s.closed} />;
@@ -149,15 +154,39 @@ async function svgToPng(svg: string): Promise<Blob> {
   return new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('PNG failed'))), 'image/png'));
 }
 
+const ZOOMS = [{ k: '50', n: '50%' }, { k: '75', n: '75%' }, { k: 'fit', n: 'Fit' }, { k: '125', n: '125%' }] as const;
+/** A page in a box that always fits: the page is laid out at its real width and scaled down to the space there is. */
+function ScaledFrame({ vw, zoom, srcDoc, title, sandbox, k }: { vw: number; zoom: string; srcDoc: string; title: string; sandbox: string; k: number }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [dim, setDim] = useState({ w: 600, h: 400 });
+  useEffect(() => {
+    const el = box.current; if (!el) return;
+    const read = () => setDim({ w: el.clientWidth || 600, h: el.clientHeight || 400 });
+    read(); if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(read); ro.observe(el); return () => ro.disconnect();
+  }, []);
+  const sc = zoom === 'fit' ? (vw ? Math.min(1, dim.w / vw) : 1) : Number(zoom) / 100;
+  const W = vw || Math.round(dim.w / sc);
+  return (
+    <div ref={box} className="cx-pv-box">
+      <div className="cx-pv-sizer" style={{ width: W * sc, height: dim.h }}>
+        <iframe key={k} className="cx-pv-frame" title={title} sandbox={sandbox} referrerPolicy="no-referrer" srcDoc={srcDoc} style={{ width: W, height: dim.h / sc, transform: `scale(${sc})` }} />
+      </div>
+    </div>
+  );
+}
+
 export function Preview({ kind, code, closed, title }: { kind: Kind; code: string; closed: boolean; title?: string }) {
   const [tab, setTab] = useState<'view' | 'code'>('view');
-  const [size, setSize] = useState<(typeof SIZES)[number]['k']>('full');
+  const [size, setSize] = useState<(typeof SIZES)[number]['k']>('full'), [zoom, setZoom] = useState('fit');
   const [big, setBig] = useState(false);
   const [run, setRun] = useState(0);
   const [svg, setSvg] = useState<string | null>(null), [err, setErr] = useState('');
   const shared = !!useContext(RichContext)?.shared;      // on a shared page the words came from someone else, so a page only runs when asked
   const [trusted, setTrusted] = useState(!shared);
   const showCode = tab === 'code' || !closed;
+  const codeRef = useRef<HTMLPreElement>(null);
+  useEffect(() => { const el = codeRef.current; if (el && !closed) el.scrollTop = el.scrollHeight; }, [code, closed]);   // follow the code as it is written
 
   // SVG pictures are cleaned first. Diagrams are drawn by Mermaid once the block is complete.
   useEffect(() => {
@@ -173,16 +202,16 @@ export function Preview({ kind, code, closed, title }: { kind: Kind; code: strin
   const sw = SIZES.find((s) => s.k === size)!.w;
 
   const frame = kind === 'html' && closed && !showCode ? (
-    <div className="cx-pv-stage" style={{ background: 'repeating-conic-gradient(#e9dfcd 0 25%, #f4ecdc 0 50%) 0 0 / 18px 18px' }}>
+    <div className="cx-pv-stage">
       {!trusted
         ? <div className="cx-pv-gate"><p className="tx"><b>This page was written by the person who shared the chat.</b> It can run code. Show it only if you trust them, and never type a password or card number into it.</p><button type="button" className="btn gold" onClick={() => setTrusted(true)}>Show the page</button></div>
-        : <iframe key={run} className="cx-pv-frame" title={title || 'Preview'} sandbox={shared ? 'allow-scripts' : 'allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock'} referrerPolicy="no-referrer" srcDoc={code} style={{ width: sw ? sw : '100%' }} />}
+        : <ScaledFrame k={run} vw={sw} zoom={zoom} title={title || 'Preview'} sandbox={shared ? 'allow-scripts' : 'allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock'} srcDoc={code} />}
     </div>
   ) : null;
   const pic = kind !== 'html' && closed && !showCode ? (
     <div className="cx-pv-pic">{svg ? (kind === 'svg' ? <img alt="Picture" src={'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)} /> : <div dangerouslySetInnerHTML={{ __html: svg }} />) : err ? <p className="cx-pv-err tx">{err} <button type="button" className="cx-link" onClick={() => setTab('code')}>See the code</button></p> : <p className="tx cx-pv-wait">Drawing…</p>}</div>
   ) : null;
-  const body = showCode ? <pre className="cx-pv-code"><code>{code}{!closed && <span className="cx-cursor" aria-hidden />}</code></pre> : frame ?? pic;
+  const body = showCode ? <pre ref={codeRef} className="cx-pv-code"><code>{code}{!closed && <span className="cx-cursor" aria-hidden />}</code></pre> : frame ?? pic;
 
   const head = (
     <div className="cx-pv-top">
@@ -197,6 +226,7 @@ export function Preview({ kind, code, closed, title }: { kind: Kind; code: strin
       {closed && kind === 'html' && tab === 'view' && (
         <div className="seg cx-pv-seg" role="group" aria-label="Screen size">{SIZES.map((s) => <button key={s.k} type="button" aria-pressed={size === s.k} onClick={() => setSize(s.k)}>{s.n}</button>)}</div>
       )}
+      {closed && kind === 'html' && tab === 'view' && <div className="seg cx-pv-seg" role="group" aria-label="Zoom">{ZOOMS.map((z) => <button key={z.k} type="button" aria-pressed={zoom === z.k} onClick={() => setZoom(z.k)}>{z.n}</button>)}</div>}
     </div>
   );
   const foot = closed && (
@@ -218,9 +248,9 @@ export function Preview({ kind, code, closed, title }: { kind: Kind; code: strin
         <div className="cx-pv-big" role="dialog" aria-label="Preview">
           <div className="cx-pv-big-top"><b className="d">{kind === 'html' ? 'Page' : kind === 'svg' ? 'Picture' : 'Diagram'}</b><span className="cx-grow" />
             {kind === 'html' && <div className="seg cx-pv-seg" role="group" aria-label="Screen size">{SIZES.map((s) => <button key={s.k} type="button" aria-pressed={size === s.k} onClick={() => setSize(s.k)}>{s.n}</button>)}</div>}
-            <button type="button" className="btn small" onClick={() => setBig(false)}><UiIcon name="close" size={15} />Close</button></div>
+            {kind === 'html' && <div className="seg cx-pv-seg" role="group" aria-label="Zoom">{ZOOMS.map((z) => <button key={z.k} type="button" aria-pressed={zoom === z.k} onClick={() => setZoom(z.k)}>{z.n}</button>)}</div>}<button type="button" className="btn small" onClick={() => setBig(false)}><UiIcon name="close" size={15} />Close</button></div>
           <div className="cx-pv-big-body">
-            {kind === 'html' ? <iframe className="cx-pv-frame" title="Preview" sandbox="allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock" referrerPolicy="no-referrer" srcDoc={code} style={{ width: sw ? sw : '100%', height: '100%' }} />
+            {kind === 'html' ? <ScaledFrame k={run} vw={sw} zoom={zoom} title="Preview" sandbox={shared ? 'allow-scripts' : 'allow-scripts allow-forms allow-modals allow-popups allow-pointer-lock'} srcDoc={code} />
               : svg ? (kind === 'svg' ? <img alt="Picture" src={'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)} /> : <div dangerouslySetInnerHTML={{ __html: svg }} />) : null}
           </div>
         </div>
@@ -246,14 +276,13 @@ function ToolSlot({ msg, n, closed, code }: { msg: Msg; n: number; closed: boole
   return <ToolCard msg={msg} call={call} run={run} />;
 }
 
-const TITLES: Record<string, string> = { js: 'Running code', maths: 'Working it out', search: 'Searching the web', image: 'Making a picture', remember: 'Remembering', google_doc: 'Google Doc', google_sheet: 'Google Sheet', google_slides: 'Google Slides', google_read: 'Reading Google', github: 'GitHub', workspace: 'Project folder', pmc_app: 'PMC App' };
-const ICON: Record<string, string> = { js: 'code', maths: 'sigma', search: 'globe', image: 'image', remember: 'pin', google_doc: 'file', google_sheet: 'list', google_slides: 'panel', google_read: 'file', github: 'branch', workspace: 'folder', pmc_app: 'apps' };
+const TITLES: Record<string, string> = { js: 'Running code', maths: 'Working it out', search: 'Searching the web', image: 'Making a picture', remember: 'Remembering', chat: 'Chats', workspace: 'Project folder', pmc_app: 'PMC App' };
+const ICON: Record<string, string> = { js: 'code', maths: 'sigma', search: 'globe', image: 'image', remember: 'pin', chat: 'chat', workspace: 'folder', pmc_app: 'apps' };
 const str = (v: unknown) => (typeof v === 'string' ? v : '');
 
 function titleOf(c: Call): string {
   if (c.tool === 'pmc_app') return `PMC App: ${appBySlug(str(c.slug))?.title ?? str(c.slug)}`;
   if (c.tool === 'workspace') return `Project folder: ${str(c.action)}${c.path ? ' ' + str(c.path) : ''}`;
-  if (c.tool === 'github') return `GitHub: ${str(c.action)}${c.repo ? ' ' + str(c.repo) : ''}`;
   if (c.tool === 'search') return `Searching the web: ${str(c.q).slice(0, 70)}`;
   return TITLES[c.tool] ?? c.tool;
 }
@@ -261,12 +290,11 @@ function titleOf(c: Call): string {
 function ToolCard({ msg, call, run }: { msg: Msg; call: Call; run?: ToolRun }) {
   const ctx = useContext(RichContext);
   const st = run?.status ?? 'running';
-  const waiting = needsApproval(call) && (st === 'pending' || (st === 'error' && !!run?.note));
-  const state = st === 'running' ? 'Working' : st === 'pending' ? 'Waiting for you' : st === 'error' ? 'Did not work' : 'Done';
+  const state = st === 'running' ? 'Working' : st === 'error' ? 'Did not work' : 'Done';
   return (
-    <div className={`cx-tool ${st}${waiting ? ' wait' : ''}`}>
+    <div className={`cx-tool ${st}`}>
       <div className="cx-tool-h">
-        {st === 'running' ? <span className="cx-spin" aria-hidden /> : <UiIcon name={ICON[call.tool] ?? 'sparkle'} size={16} />}
+        <UiIcon name={ICON[call.tool] ?? 'sparkle'} size={16} />
         <b className="d">{titleOf(call)}</b><span className="cx-grow" /><i className="cx-tool-st">{state}</i>
       </div>
       <ToolBody msg={msg} call={call} run={run} ctx={ctx} />
@@ -319,87 +347,9 @@ function ToolBody({ msg, call, run, ctx }: { msg: Msg; call: Call; run?: ToolRun
     if (a === 'preview' && ctx) return <ProjectPreview files={ctx.files} entry={str(call.path) || undefined} />;
     return <>{out?.kind === 'text' && (a === 'list' || a === 'run' ? <pre className="cx-tool-out">{out.text}</pre> : <p className="tx cx-tool-text">{out.text.split('\n')[0]}</p>)}{err}</>;
   }
-  if (tool === 'github') {
-    const a = str(call.action);
-    if (!needsApproval(call)) return <>{out?.kind === 'text' && <pre className="cx-tool-out">{out.text}</pre>}{err}</>;
-    const files = Array.isArray(call.files) ? (call.files as { path?: string; delete?: boolean }[]) : [];
-    return <>
-      <p className="tx cx-tool-text">{summary(call)}</p>
-      {a === 'commit' && <ul className="cx-diff">{files.map((f, i) => <li key={i} className={f.delete ? 'del' : 'add'}><b>{f.delete ? '−' : '+'}</b>{str(f.path)}</li>)}{call.from_workspace === true && <li className="add"><b>+</b>every file in the project folder</li>}</ul>}
-      {str(call.body) && <p className="tx cx-tool-sub">{str(call.body).slice(0, 400)}</p>}
-      <Approve msg={msg} run={run} ctx={ctx} label={a === 'commit' ? (call.pr ? 'Commit and open pull request' : 'Commit') : a === 'issue' ? 'Open the issue' : 'Open the pull request'} need="github" />
-    </>;
-  }
-  if (tool === 'google_doc' || tool === 'google_sheet' || tool === 'google_slides') return <GoogleCard msg={msg} call={call} run={run} ctx={ctx} />;
-  if (tool === 'google_read') return <>{out?.kind === 'text' && <p className="tx cx-tool-text">{out.text}</p>}{err}</>;
   return err;
 }
 
-function Approve({ msg, run, ctx, label, need }: { msg: Msg; run?: ToolRun; ctx: RichCtx | null; label: string; need: 'google' | 'github' }) {
-  const st = run?.status ?? 'running';
-  const pro = ctx?.plan === 'pro';
-  useEffect(() => { if (need === 'google' && googleAvailable) void import('@/lib/coe/google').then(() => { const s = document.createElement('link'); s.rel = 'preconnect'; s.href = 'https://accounts.google.com'; document.head.appendChild(s); }); }, [need]);
-  if (st === 'ok' && run?.out?.kind === 'link') return <a className="btn small gold" href={run.out.url} target="_blank" rel="noopener noreferrer"><UiIcon name="link" size={14} />{run.out.label}</a>;
-  if (st === 'running') return <p className="tx cx-tool-wait">Working on it…</p>;
-  const noGoogle = need === 'google' && !googleAvailable, noGh = need === 'github' && !links().github;
-  return (
-    <div className="cx-appr">
-      {!pro
-        ? <a className="btn small gold" href="/plans/"><UiIcon name="bolt" size={14} />{label} (Pro)</a>
-        : noGoogle ? <p className="tx cx-tool-sub">Google is not switched on for this site yet.</p>
-        : noGh ? <button type="button" className="btn small" onClick={() => window.dispatchEvent(new CustomEvent('pmc:coe-open', { detail: 'connections' }))}>Connect GitHub first</button>
-        : <><button type="button" className="btn small gold" onClick={() => ctx?.approve(msg.id, run?.id ?? '')}>{label}</button><button type="button" className="cx-act" onClick={() => ctx?.skip(msg.id, run?.id ?? '')}>No thanks</button></>}
-      {run?.note && st !== 'ok' && <p className="cx-tool-err tx">{run.note}</p>}
-      {!run && <p className="tx cx-tool-sub">Getting ready…</p>}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------- Docs, Sheets, Slides: preview first
-const col = (i: number) => { let s = ''; for (let n = i + 1; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(65 + ((n - 1) % 26)) + s; return s; };
-const csv = (rows: unknown[][]) => rows.map((r) => r.map((c) => { const t = String(c ?? ''); return /[",\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; }).join(',')).join('\n');
-
-function GoogleCard({ msg, call, run, ctx }: { msg: Msg; call: Call; run?: ToolRun; ctx: RichCtx | null }) {
-  const [sheet, setSheet] = useState(0), [slide, setSlide] = useState(0);
-  const title = str(call.title) || 'Untitled';
-  const sheets = (Array.isArray(call.sheets) ? call.sheets : []) as { name?: string; rows?: unknown[][] }[];
-  const slides = (Array.isArray(call.slides) ? call.slides : []) as { title?: string; bullets?: string[]; text?: string }[];
-  const label = call.tool === 'google_doc' ? 'Create in Google Docs' : call.tool === 'google_sheet' ? 'Create in Google Sheets' : 'Create in Google Slides';
-  const md = str(call.markdown);
-  const html = useMemo(() => (call.tool === 'google_doc' ? renderMarkdown(md) : ''), [call.tool, md]);
-  const cur = sheets[Math.min(sheet, sheets.length - 1)];
-
-  return (
-    <>
-      <p className="cx-gdoc-title d">{title}</p>
-      {call.tool === 'google_doc' && <div className="cx-gpage"><div className="cx-md tx" dangerouslySetInnerHTML={{ __html: html }} /></div>}
-      {call.tool === 'google_sheet' && cur && (
-        <div className="cx-gsheet">
-          {sheets.length > 1 && <div className="cx-gtabs" role="tablist">{sheets.map((s, i) => <button key={i} type="button" role="tab" aria-selected={i === sheet} className={i === sheet ? 'on' : ''} onClick={() => setSheet(i)}>{s.name || `Sheet${i + 1}`}</button>)}</div>}
-          <div className="cx-gscroll"><table><thead><tr><th />{Array.from({ length: Math.max(1, ...(cur.rows ?? []).map((r) => r.length)) }, (_, i) => <th key={i}>{col(i)}</th>)}</tr></thead>
-            <tbody>{(cur.rows ?? []).slice(0, 60).map((r, ri) => <tr key={ri} className={ri === 0 ? 'head' : ''}><th>{ri + 1}</th>{r.map((c, ci) => <td key={ci}>{String(c ?? '')}</td>)}</tr>)}</tbody></table></div>
-          {(cur.rows?.length ?? 0) > 60 && <p className="tx cx-tool-sub">Showing the first 60 rows of {cur.rows!.length}.</p>}
-        </div>
-      )}
-      {call.tool === 'google_slides' && slides.length > 0 && (
-        <div className="cx-gslides">
-          <div className={`cx-slide${slide === 0 ? ' cover' : ''}`}><b className="d">{slides[Math.min(slide, slides.length - 1)].title}</b>
-            {(slides[Math.min(slide, slides.length - 1)].bullets?.length ? <ul>{slides[Math.min(slide, slides.length - 1)].bullets!.map((b, i) => <li key={i} className="tx">{b}</li>)}</ul> : <p className="tx">{slides[Math.min(slide, slides.length - 1)].text}</p>)}
-            <i>{Math.min(slide, slides.length - 1) + 1} / {slides.length}</i></div>
-          <div className="cx-gthumbs">{slides.map((s, i) => <button key={i} type="button" className={i === slide ? 'on' : ''} onClick={() => setSlide(i)} aria-label={`Slide ${i + 1}`}><span className="tx">{(s.title || '').slice(0, 26)}</span></button>)}</div>
-        </div>
-      )}
-      <div className="cx-appr">
-        <Approve msg={msg} run={run} ctx={ctx} label={label} need="google" />
-        <button type="button" className="cx-act" onClick={() => {
-          if (call.tool === 'google_doc') downloadText(`${title}.md`, md, 'text/markdown');
-          else if (call.tool === 'google_sheet') downloadText(`${(cur?.name || title)}.csv`, csv(cur?.rows ?? []), 'text/csv');
-          else downloadText(`${title}.md`, slides.map((s, i) => `## ${i + 1}. ${s.title}\n${(s.bullets ?? [s.text ?? '']).map((b) => '- ' + b).join('\n')}`).join('\n\n'), 'text/markdown');
-        }}><UiIcon name="download" size={14} />{call.tool === 'google_sheet' ? 'Save .csv' : 'Save .md'}</button>
-      </div>
-    </>
-  );
-}
 
 // ---------------------------------------------------------------- a PMC App, open in the chat
 function AppCard({ call, run, ctx }: { call: Call; run?: ToolRun; ctx: RichCtx | null }) {
@@ -408,7 +358,7 @@ function AppCard({ call, run, ctx }: { call: Call; run?: ToolRun; ctx: RichCtx |
   if (!app) return <p className="cx-tool-err tx">There is no app called “{slug}”.</p>;
   return (
     <>
-      {run?.note === 'open' && ctx && <AppFrame run={run} app={app.title} slug={slug} fullscreen={app.fullscreen} convId={ctx.convId} call={call} />}
+      {run?.note === 'open' && <p className="tx cx-tool-sub">{app.title} is open in the screen below.</p>}
       {run && run.note !== 'open' && run.status === 'ok' && <p className="tx cx-tool-sub">Worked the same window ({app.title}).</p>}
       {out?.kind === 'files' && <Files items={out.items} />}
       {run?.status === 'error' && run.result && <p className="cx-tool-err tx">{run.shown ?? run.result}</p>}
@@ -416,7 +366,7 @@ function AppCard({ call, run, ctx }: { call: Call; run?: ToolRun; ctx: RichCtx |
   );
 }
 
-function AppFrame({ run, app, slug, fullscreen, convId, call }: { run: ToolRun; app: string; slug: string; fullscreen: boolean; convId: string; call: Call }) {
+export function AppFrame({ run, app, slug, fullscreen, convId, call }: { run: ToolRun; app: string; slug: string; fullscreen: boolean; convId: string; call: Call }) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [h, setH] = useState(fullscreen ? 620 : 460), [big, setBig] = useState(false);
   const src = useMemo(() => appsFrameSrc(slug, typeof location === 'undefined' ? '' : location.origin), [slug]);
@@ -436,6 +386,44 @@ function AppFrame({ run, app, slug, fullscreen, convId, call }: { run: ToolRun; 
         <button type="button" className="cx-act" onClick={() => setBig((b) => !b)}><UiIcon name={big ? 'close' : 'expand'} size={14} />{big ? 'Smaller' : 'Bigger'}</button></div>
       <iframe ref={ref} className="cx-app-frame" title={app} src={src} style={big ? undefined : { height: h }} allow="clipboard-write" />
     </div>
+  );
+}
+
+/**
+ * The screen: what Coe is looking at (a PMC App it opened, or the web it searched) sits big, low on the page just above the box you type in.
+ * The steps and commands that went with it are under the picture, shut until you open them. Hide it with Hide; it comes back for the next thing Coe opens.
+ */
+/** What the screen shows now: the latest app Coe opened, or the web it searched in the latest turn. */
+export function dockTarget(messages: Msg[]): { run: ToolRun; end: number; app: boolean } | null {
+  let app: ToolRun | undefined, web: ToolRun | undefined, end = -1;
+  messages.forEach((m, i) => (m.runs ?? []).forEach((r) => {
+    if (r.tool === 'pmc_app' && r.note === 'open') { app = r; web = undefined; end = i; }
+    if (r.tool === 'search') { web = r; app = undefined; end = i; }
+  }));
+  let lastUser = -1; for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'user' && !messages[i].hidden) { lastUser = i; break; }
+  if (web && end < lastUser) web = undefined;   // the web view is for the latest turn; an app stays until the chat moves on to something else
+  const run = app ?? web;
+  return run ? { run, end, app: !!app } : null;
+}
+
+export function Dock({ messages, convId, live }: { messages: Msg[]; convId: string; live: boolean }) {
+  const [hidden, setHidden] = useState<string | null>(null);
+  const t = dockTarget(messages);
+  if (!t || hidden === t.run.id) return null;
+  const { run, end } = t, app = t.app ? run : undefined;
+  let last = messages.length - 1; while (last > end && messages[last].role === 'user') last--;   // the steps of the whole turn this belongs to
+  const steps = turnSteps(messages, Math.max(last, 0));
+  const slug = str(run.args.slug), meta = app ? appBySlug(slug) : undefined;
+  if (app && !meta) return null;
+  return (
+    <section className="cx-dock" aria-label={app ? `${meta!.title}, open` : 'What Coe found on the web'}>
+      <div className="cx-dock-bar"><b className="d">{app ? meta!.title : 'The web'}</b><span className="cx-grow" />
+        <button type="button" className="cx-act" onClick={() => setHidden(run.id)} aria-label="Hide the screen"><UiIcon name="down" size={14} />Hide</button></div>
+      <div className="cx-dock-body">
+        {app ? <AppFrame key={run.id} run={run} app={meta!.title} slug={slug} fullscreen={meta!.fullscreen} convId={convId} call={run.args as Call} /> : <BrowserWindow run={run} />}
+      </div>
+      {!live && steps.length > 0 && <div className="cx-dock-steps"><Activity steps={steps} live={false} /></div>}
+    </section>
   );
 }
 

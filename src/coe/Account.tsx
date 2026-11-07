@@ -1,14 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Modal } from './Panels';
-import { cloudOn, providers, sendCode, session, signOut, startProvider, takeAuthError, verifyCode, type Provider } from '@/lib/coe/cloud';
+import { cloudOn, sendCode, session, signOut, takeAuthError, verifyCode } from '@/lib/coe/cloud';
 import { deleteAccount } from '@/lib/coe/billing';
 import { forgetStatus, onStatus, status } from '@/lib/coe/account';
 import { QUOTAS, fmtTok } from '@/lib/coe/models';
 import { loadSettings } from '@/lib/coe/settings';
 
-const NAMES: Record<Provider, string> = { google: 'Google', azure: 'Microsoft', github: 'GitHub' };
-const MARK: Record<Provider, string> = { google: 'G', azure: 'M', github: 'GH' };
 
 /** Sign in with a provider or an emailed code. Signed in: plan, today's usage, what is connected, sign out, delete. */
 export function Account({ onClose, onChange }: { onClose: () => void; onChange: (signedIn: boolean) => void }) {
@@ -18,10 +16,8 @@ export function Account({ onClose, onChange }: { onClose: () => void; onChange: 
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(() => takeAuthError());
-  const [provs, setProvs] = useState<Provider[]>([]);
   const [sure, setSure] = useState(false);
   const [, bump] = useState(0);
-  useEffect(() => { void providers().then(setProvs); }, []);
   useEffect(() => onStatus(() => bump((n) => n + 1)), []);
   const go = async (f: () => Promise<void>) => { setBusy(true); setErr(''); try { await f(); } catch (e) { setErr((e as Error).message || 'Something went wrong.'); } finally { setBusy(false); } };
 
@@ -80,10 +76,6 @@ export function Account({ onClose, onChange }: { onClose: () => void; onChange: 
   return (
     <Modal title="Sign in" onClose={onClose}>
       <p className="tx">Sign in to keep your chats and notes in your account, on every device. Without it they stay on this device only.</p>
-      {provs.length > 0 && <>
-        <div className="cx-prov">{provs.map((p) => <button key={p} type="button" className="btn cx-provb" onClick={() => startProvider(p)}><b className="d" aria-hidden>{MARK[p]}</b>Continue with {NAMES[p]}</button>)}</div>
-        <p className="cx-or tx" aria-hidden><span>or with your email</span></p>
-      </>}
       {step === 'email' ? (
         <form className="cx-form" onSubmit={(e) => { e.preventDefault(); void go(async () => { await sendCode(email.trim()); setStep('code'); }); }}>
           <div className="cx-fr"><label className="d" htmlFor="acc-email">Email</label>

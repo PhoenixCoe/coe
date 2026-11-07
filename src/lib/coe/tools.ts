@@ -15,10 +15,8 @@ import { lookupPlaces } from './places';
 import { bumpQuota, countOther, quotaLeft } from './account';
 import { COST_IMAGE, COST_SEARCH, QUOTAS, type PlanKey, type QuotaKey } from './models';
 import type { CoeSettings } from './settings';
-import { googleNow, links, memory, remember } from './links';
+import { memory, remember } from './links';
 import { runJs } from './sandbox';
-import * as gh from './github';
-import * as gg from './google';
 import * as ws from './workspace';
 import { APPS_URL, appBySlug, catalogPrompt, describe, frameFor, nearApps, openFrame, type AppFile, type DoMsg } from './pmc';
 
@@ -44,18 +42,12 @@ export function findTool(text: string): Found | null {
 export interface Def { name: string; pro?: boolean; confirm?: boolean; quota?: QuotaKey }
 export const TOOLS: Def[] = [
   { name: 'js' }, { name: 'maths' }, { name: 'remember' }, { name: 'search', quota: 'search' }, { name: 'image', quota: 'image' }, { name: 'place' }, { name: 'pmc_app', quota: 'app' },
-  { name: 'google_doc', confirm: true }, { name: 'google_sheet', confirm: true }, { name: 'google_slides', confirm: true },
-  { name: 'google_read', pro: true }, { name: 'github', pro: true }, { name: 'workspace', pro: true },
+  { name: 'chat' }, { name: 'workspace', pro: true },
 ];
 export const defOf = (n: string) => TOOLS.find((t) => t.name === n);
 /** Steps one request may take before Coe must wrap up. */
 export const STEPS = { free: 4, pro: 10, work: 24 };
 
-/** Reads the call and says whether it only shows something for the person to approve. */
-export const needsApproval = (c: Call): boolean => {
-  if (c.tool === 'github') return ['commit', 'issue', 'pull'].includes(String(c.action));
-  return !!defOf(c.tool)?.confirm;
-};
 
 export interface Ctx {
   settings: CoeSettings; signal: AbortSignal; plan: PlanKey; convId: string; runId: string;
@@ -63,6 +55,16 @@ export interface Ctx {
   images: () => Img[];                    // pictures in the chat, newest last: what the person attached, and what was made
   patch: (p: Partial<ToolRun>) => void;
   say: (t: string) => void;
+  chats?: ChatOps;
+}
+/** What Coe may do to the chats in the side list, but only when the person asks. */
+export interface ChatOps {
+  list: () => Promise<{ id: string; title: string; pinned: boolean; current: boolean }[]>;
+  rename: (id: string, title: string) => Promise<void>;
+  pin: (id: string, on: boolean) => Promise<void>;
+  remove: (id: string) => Promise<void>;
+  /** Squeeze the older messages of this chat into a summary. */
+  compact: () => Promise<boolean>;
 }
 export interface Done { status: 'ok' | 'error' | 'pending'; result: string; shown?: string; out?: ToolOut; images?: Img[] }
 
@@ -88,9 +90,7 @@ export async function execute(c: Call, x: Ctx): Promise<Done> {
       case 'place': return await toolPlace(c, x);
       case 'pmc_app': return await toolApp(c, x);
       case 'workspace': return await toolWorkspace(c, x);
-      case 'google_read': { const r = await gg.readGoogle(str(c.url)); return { status: 'ok', result: `${r.kind} "${r.title}":\n${trim(r.text, 30000)}`, out: { kind: 'text', text: `Read ${r.kind}: ${r.title}` } }; }
-      case 'github': return await toolGithub(c, x);
-      case 'google_doc': case 'google_sheet': case 'google_slides': return await previewGoogle(c);
+      case 'chat': return await toolChat(c, x);
     }
   } catch (e) { if ((e as Error).name === 'AbortError') return fail('Stopped.'); return fail((e as Error).message || 'That did not work.'); }
   return fail('That tool did nothing.');
@@ -210,6 +210,15 @@ async function toolWorkspace(c: Call, x: Ctx): Promise<Done> {
     case 'delete': { x.setFiles(ws.removeFile(f, c.path)); return note(`Deleted ${ws.cleanPath(c.path)}.`); }
     case 'read': { const p = ws.cleanPath(c.path); if (!(p in f)) return fail(`There is no file ${p}. Files: ${Object.keys(f).join(', ') || 'none'}.`); return { status: 'ok', result: trim(f[p], 40000), out: { kind: 'text', text: `Read ${p}` } }; }
     case 'list': return note(ws.listing(f));
+    case 'tree': return note(ws.tree(f));
+    case 'mkdir': { const d = ws.cleanPath(c.path).replace(/\/+$/, ''); const next = ws.writeFile(f, d + '/.keep', ''); x.setFiles(next); return note(`Made the folder ${d}/.`); }
+    case 'move': { const from = ws.cleanPath(c.path), to = ws.cleanPath(c.to); if (!(from in f)) return fail(`There is no file ${from}.`); const moved = ws.writeFile(f, to, f[from]); x.setFiles(ws.removeFile(moved, from)); return note(`Moved ${from} to ${to}.`); }
+    case 'search': {
+      const q = str(c.q, 200); if (!q) return fail('Say what to search for in "q".');
+      let re: RegExp; try { re = new RegExp(c.regex === true ? q : q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); } catch { return fail('That is not a valid pattern.'); }
+      const hits: string[] = []; for (const [p, text] of Object.entries(f)) text.split('\n').forEach((l, i) => { if (hits.length < 80 && re.test(l)) hits.push(`${p}:${i + 1}: ${l.trim().slice(0, 160)}`); });
+      return note(hits.join('\n') || 'No matches.', hits.length ? `${hits.length} matches` : 'No matches');
+    }
     case 'run': {
       const p = c.path ? ws.cleanPath(c.path) : ''; const code = p ? f[p] : str(c.code);
       if (!code) return fail(p ? `There is no file ${p}.` : 'Give a path to a .js file, or code.');
@@ -218,73 +227,34 @@ async function toolWorkspace(c: Call, x: Ctx): Promise<Done> {
       return { status: r.ok ? 'ok' : 'error', result: bits, out: { kind: 'text', text: bits } };
     }
     case 'preview': { const e = c.path ? ws.cleanPath(c.path) : ws.entryOf(f); if (!e || !(e in f)) return fail('There is no HTML file to preview. Write index.html first.'); return { status: 'ok', result: `${e} is now shown as a live preview under your message. You cannot see it. If you want to check it, run code that reads the file, or ask the person how it looks.`, out: { kind: 'text', text: `Preview of ${e}` } }; }
-    default: return fail('workspace actions are: write, edit, read, list, delete, run, preview.');
+    default: return fail('workspace actions are: write, edit, read, list, tree, mkdir, move, search, delete, run, preview.');
   }
 }
 
-// ---------------------------------------------------------------- GitHub
-async function toolGithub(c: Call, x: Ctx): Promise<Done> {
-  if (!links().github) return fail('GitHub is not connected. Tell the person to add a token in Settings > Connections.');
-  const a = str(c.action, 20), repo = str(c.repo, 200);
-  const txt = (t: string): Done => ({ status: 'ok', result: trim(t, 30000), out: { kind: 'text', text: trim(t, 1500) } });
-  switch (a) {
-    case 'repos': return txt(await gh.repos());
-    case 'tree': return txt(await gh.tree(repo, str(c.ref, 100)));
-    case 'read': return txt(await gh.readFile(repo, str(c.path, 300), str(c.ref, 100)));
-    case 'search': return txt(await gh.searchCode(str(c.q, 200), repo));
-    case 'commit': case 'issue': case 'pull': return preview(c);
-    case 'to_workspace': { // copy repository files into the project folder
-      const paths = arr<string>(c.paths).slice(0, 40); let f = x.files();
-      for (const p of paths) f = ws.writeFile(f, p, await gh.readFile(repo, p, str(c.ref, 100)));
-      x.setFiles(f); return txt(`Copied ${paths.length} files into the project folder.`);
-    }
-    default: return fail('github actions are: repos, tree, read, search, to_workspace, commit, issue, pull.');
+// ---------------------------------------------------------------- the chat list
+async function toolChat(c: Call, x: Ctx): Promise<Done> {
+  const ops = x.chats; if (!ops) return fail('Chats cannot be changed here.');
+  const a = str(c.action, 12), all = await ops.list();
+  if (a === 'list') return { status: 'ok', result: all.slice(0, 60).map((m) => `${m.pinned ? '[pinned] ' : ''}${m.title}${m.current ? ' (this chat)' : ''}`).join('\n') || 'No chats.', out: { kind: 'text', text: `${all.length} chats` } };
+  if (a === 'compact') { const ok = await ops.compact(); return ok ? { status: 'ok', result: 'The older messages are now a short summary. Carry on as before.', out: { kind: 'text', text: 'Summarised the older messages' } } : fail('There is not enough chat to summarise yet.'); }
+  const q = str(c.chat, 120).trim().toLowerCase();
+  let hit = all.find((m) => m.current);
+  if (q && q !== 'this' && q !== 'current') {
+    const m = all.filter((t) => t.title.toLowerCase().includes(q));
+    if (m.length === 0) return fail(`No chat is called "${str(c.chat, 60)}". Ask the person which one they mean.`);
+    if (m.length > 1) return fail('More than one chat matches: ' + m.slice(0, 6).map((t) => `"${t.title}"`).join(', ') + '. Ask the person which one.');
+    hit = m[0];
   }
-}
-
-/** Something that changes the outside world is shown first. */
-function preview(c: Call): Done { return { status: 'pending', result: 'Shown to the person with a button. Wait for their decision.', out: { kind: 'text', text: summary(c) } }; }
-async function previewGoogle(c: Call): Promise<Done> {
-  if (c.tool === 'google_doc' && !str(c.markdown).trim()) return fail('A Google Doc needs "markdown" with its content.');
-  if (c.tool === 'google_sheet' && !arr(c.sheets).length) return fail('A Google Sheet needs "sheets": [{"name":"...","rows":[[...],[...]]}].');
-  if (c.tool === 'google_slides' && !arr(c.slides).length) return fail('Google Slides need "slides": [{"title":"...","bullets":["..."]}].');
-  return preview(c);
-}
-export function summary(c: Call): string {
-  if (c.tool === 'google_doc') return `Google Doc: ${str(c.title, 100) || 'Untitled'}`;
-  if (c.tool === 'google_sheet') return `Google Sheet: ${str(c.title, 100) || 'Untitled'}`;
-  if (c.tool === 'google_slides') return `Google Slides: ${str(c.title, 100) || 'Untitled'}`;
-  if (c.tool === 'github') return c.action === 'commit' ? `Commit to ${str(c.repo)} on ${str(c.branch) || 'the default branch'}: ${str(c.message, 100)}` : c.action === 'issue' ? `Issue on ${str(c.repo)}: ${str(c.title, 100)}` : `Pull request on ${str(c.repo)}: ${str(c.title, 100)}`;
-  return c.tool;
-}
-
-/** What the person approved. Called from a button, so a Google pop-up can open. */
-export async function approve(c: Call, x: Pick<Ctx, 'plan' | 'files'>): Promise<{ result: string; url?: string; label?: string }> {
-  if (x.plan !== 'pro') throw new Error('Putting things into Google and GitHub is part of Pro.');
-  if (c.tool === 'github') {
-    const repo = str(c.repo);
-    if (c.action === 'commit') {
-      let files = arr<{ path: string; content?: string; delete?: boolean }>(c.files);
-      if (c.from_workspace === true) files = [...files, ...Object.entries(x.files()).map(([path, content]) => ({ path, content }))];
-      const pr = c.pr && typeof c.pr === 'object' ? (c.pr as { title?: string; body?: string; base?: string }) : undefined;
-      const r = await gh.commit({ repo, branch: str(c.branch, 100) || undefined, message: str(c.message, 500) || 'Update from Coe', files, pr: pr ? { title: str(pr.title, 250) || str(c.message, 250), body: str(pr.body), base: pr.base } : undefined });
-      return { result: `Committed${r.pr ? ' and opened a pull request' : ''}: ${r.pr ?? r.url}`, url: r.pr ?? r.url, label: r.pr ? 'Open pull request' : 'Open commit' };
-    }
-    if (c.action === 'issue') { const u = await gh.openIssue(repo, str(c.title, 250), str(c.body)); return { result: `Issue opened: ${u}`, url: u, label: 'Open issue' }; }
-    if (c.action === 'pull') { const u = await gh.openPull(repo, str(c.title, 250), str(c.head, 100), str(c.base, 100), str(c.body)); return { result: `Pull request opened: ${u}`, url: u, label: 'Open pull request' }; }
-  }
-  if (!googleNow()) await gg.connectGoogle('make');
-  if (c.tool === 'google_doc') {
-    const r = c.id || c.url ? await gg.appendDoc(str(c.id || c.url), str(c.markdown)) : await gg.makeDoc(str(c.title, 200), str(c.markdown));
-    return { result: `Google Doc ready: ${r.url}`, url: r.url, label: 'Open in Google Docs' };
-  }
-  if (c.tool === 'google_sheet') { const r = await gg.makeSheet(str(c.title, 200), arr<gg.SheetIn>(c.sheets)); return { result: `Google Sheet ready: ${r.url}`, url: r.url, label: 'Open in Google Sheets' }; }
-  if (c.tool === 'google_slides') { const r = await gg.makeSlides(str(c.title, 200), arr<gg.SlideIn>(c.slides)); return { result: `Google Slides ready: ${r.url}`, url: r.url, label: 'Open in Google Slides' }; }
-  throw new Error('That cannot be approved.');
+  if (!hit) return fail('That chat is not saved yet.');
+  const note = hit.current ? 'this chat' : `"${hit.title}"`;
+  if (a === 'rename') { const t = str(c.title, 80).replace(/\s+/g, ' ').trim(); if (!t) return fail('Say the new name in "title".'); await ops.rename(hit.id, t); return { status: 'ok', result: `Renamed ${note} to "${t}".`, out: { kind: 'text', text: `Renamed to "${t}"` } }; }
+  if (a === 'pin' || a === 'unpin') { await ops.pin(hit.id, a === 'pin'); return { status: 'ok', result: `${a === 'pin' ? 'Pinned' : 'Unpinned'} ${note}.`, out: { kind: 'text', text: a === 'pin' ? 'Pinned' : 'Unpinned' } }; }
+  if (a === 'delete') { await ops.remove(hit.id); return { status: 'ok', result: `Deleted ${note}. It cannot be brought back.${hit.current ? ' This chat is going away, so just say a short goodbye.' : ''}`, out: { kind: 'text', text: 'Deleted' } }; }
+  return fail('chat actions are: list, rename, pin, unpin, delete, compact.');
 }
 
 // ---------------------------------------------------------------- what Coe is told
-export interface PromptOpts { plan: PlanKey; work: boolean; web: boolean; google: boolean; github: boolean; files: ws.Files; stepsLeft: number; hasApps: boolean }
+export interface PromptOpts { plan: PlanKey; work: boolean; web: boolean; files: ws.Files; stepsLeft: number; hasApps: boolean }
 
 export function toolsPrompt(o: PromptOpts): string {
   const P = o.plan === 'pro';
@@ -308,18 +278,14 @@ export function toolsPrompt(o: PromptOpts): string {
     add(catalogPrompt());
     add('  Pixel Art Maker also takes a drawing: {"tool":"pmc_app","slug":"pixel-art-maker","call":{"load":{"palette":{"a":"#a33a2b","b":"#171717"},"frames":[["..aa..","..aa..", "...one string of letters per row, \\".\\" is empty..."]],"fps":6}}}. More than one frame makes an animation. Then click "GIF" for the animated file, or "PNG" or "Sheet".');
   }
-  add('- google_doc {"title": "...", "markdown": "..."}, google_sheet {"title": "...", "sheets": [{"name": "...", "rows": [["header","header"],["a",1]]}]}, google_slides {"title": "...", "slides": [{"title": "...", "bullets": ["..."]}]}: shows a preview, and the person presses a button to put it in their Google account' + (P ? '' : ' (that button is part of Pro; they can still read the preview and download it)') + '. Write the whole thing. In sheets, text starting with = is a formula. Slides: the first one is the cover.');
-  if (P) add('- google_read {"url": "..."}: reads a Google Doc, Sheet or Slides file the person shares.');
-  if (P && o.github) {
-    add('- github {"action": ..., "repo": "owner/name"}: actions repos, tree {ref}, read {path, ref}, search {q}, to_workspace {paths: [...]} run now. commit {branch, message, files: [{path, content}], from_workspace: true|false, pr: {title, body}}, issue {title, body} and pull {title, head, base, body} are shown for the person to approve. A commit to a new branch makes the branch.');
-  }
+  add('- chat {"action": "rename"|"pin"|"unpin"|"delete"|"compact"|"list", "title": "new name", "chat": "part of another chat\'s name; leave out for this chat"}: changes the chats in the side list. If the person asks you to rename, pin, unpin or delete a chat, do it straight away. If they have not asked but it would clearly help (a chat whose name no longer fits, one they keep coming back to, one that was only a test), you may suggest it in one short sentence and ask, for example "Want me to rename this chat to X?". Then do nothing until they say yes. Never change, pin or delete a chat without one of those two things, and never delete unless they said delete or remove (or said yes to your question). If it is not clear which chat they mean, ask. Confirm what you did in one short sentence. compact squeezes the older messages of this chat into a summary; you may use it yourself when the chat has become very long, and you must say you did.');
   if (P) {
-    add('- workspace {"action": ...}: a project folder for this chat, so you can build real projects. write {path, content}, edit {path, find, replace} (find must appear exactly once), read {path}, list, delete {path}, run {path or code} (runs JavaScript with readFile(path) and listFiles()), preview {path} (shows an HTML page live, with its own CSS and JS files). The person can download the folder as a zip or commit it to GitHub. Work in steps: write, run, read the result, fix, repeat. Check your work before you say it is done.');
+    add('- workspace {"action": ...}: a project folder for this chat, so you can build real projects. write {path, content} (a path like src/app/main.js makes the folders itself), edit {path, find, replace} (find must appear exactly once), read {path}, list, tree, mkdir {path}, move {path, to}, search {q, regex?} (finds text in every file with line numbers), delete {path}, run {path or code} (runs JavaScript with readFile(path) and listFiles()), preview {path} (shows an HTML page live, with its own CSS and JS files). The person can download the folder as a zip or commit it to GitHub. Work in steps: write, run, read the result, fix, repeat. Check your work before you say it is done.');
     const names = Object.keys(o.files);
     add(names.length ? 'The project folder now holds:\n' + ws.listing(o.files) : 'The project folder is empty.');
   }
   add('');
-  add('When the person asks for something that needs a tool you do not have (GitHub, a project folder, a Google file read), say it is part of Pro or needs connecting in Settings > Connections, in one sentence.');
+  add('When the person asks for something that needs a tool you do not have (a project folder), say it is part of Pro, in one sentence.');
   if (o.work) {
     add('');
     add('# Deep Work');

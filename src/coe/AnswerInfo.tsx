@@ -8,7 +8,7 @@ import { modelByKey } from '@/lib/coe/models';
 import type { Msg } from './store';
 
 const ago = (t: number) => { const s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? 'just now' : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(t).toLocaleDateString('en-GB'); };
-const TOOL: Record<string, string> = { js: 'Ran code', maths: 'Exact maths', search: 'Searched the web', image: 'Made a picture', place: 'Looked up places', pmc_app: 'Used a PMC App', workspace: 'Worked on project files', remember: 'Noted something', github: 'GitHub', google_doc: 'Google Docs', google_sheet: 'Google Sheets', google_slides: 'Google Slides', google_read: 'Read a Google file' };
+const TOOL: Record<string, string> = { js: 'Ran code', maths: 'Exact maths', search: 'Searched the web', image: 'Made a picture', place: 'Looked up places', pmc_app: 'Used a PMC App', chat: 'Changed a chat', workspace: 'Worked on project files', remember: 'Noted something', github: 'GitHub', google_doc: 'Google Docs', google_sheet: 'Google Sheets', google_slides: 'Google Slides', google_read: 'Read a Google file' };
 
 export function AnswerInfo({ msg, onClose }: { msg: Msg; onClose: () => void }) {
   const places = useMemo(() => mapPlaces(msg.text), [msg.text]);
