@@ -837,6 +837,15 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const empty = conv.messages.length === 0;
   const dk = useMemo(() => dockTarget(conv.messages), [conv.messages]);
   const turnFrom = (i: number) => { let j = i; while (j > 0 && !(conv.messages[j - 1].role === 'user' && !conv.messages[j - 1].hidden)) j--; return j; };
+  const groups = useMemo(() => {
+    const g: number[][] = [];
+    conv.messages.forEach((x, i) => {
+      if (x.hidden) return;
+      const prev = g[g.length - 1], pm = prev ? conv.messages[prev[0]] : null;
+      if (x.role === 'assistant' && !x.compact && pm && pm.role === 'assistant' && !pm.compact) prev.push(i); else g.push([i]);
+    });
+    return g;
+  }, [conv.messages]);
   const lastUser = [...conv.messages].reverse().find((m) => m.role === 'user' && !m.hidden && !m.compact)?.id;
   const full = !keyOn && left <= 0;
   const hasInput = text.trim().length > 0 || pics.length > 0 || atts.length > 0;
@@ -1005,37 +1014,44 @@ export function Chat({ initialList, initialConv }: ChatProps) {
             </div>
           ) : (
             <RichContext.Provider value={richCtx}><ol className="cx-msgs">
-              {conv.messages.map((m, i) => {
-                if (m.hidden) return null;
+              {groups.map((idxs) => {
+                // One question gets one answer: every step Coe took for it (its text, its screen, its files) is shown together under one name.
+                const i = idxs[idxs.length - 1], m = conv.messages[i], first = conv.messages[idxs[0]], parts = idxs.map((k) => conv.messages[k]);
+                const agg: Msg = parts.length > 1 ? { ...m, text: parts.map((x) => x.text).filter(Boolean).join('\n\n'), outTokens: parts.reduce((n, x) => n + (x.outTokens ?? 0), 0) } : m;
                 if (m.compact) return <li key={m.id} data-mid={m.id} className="cx-msg compactmsg"><details className="cx-fold"><summary className="d"><UiIcon name="down" size={14} />Earlier messages, summarised</summary><div className="cx-fold-in"><p className="tx" style={{ whiteSpace: 'pre-wrap' }}>{m.text.replace(/^\[[^\]]*\]\n?/, '')}</p></div></details></li>;
                 const lastOne = i === conv.messages.length - 1 || conv.messages.slice(i + 1).every((x) => x.hidden);
                 const live = streaming && lastOne && m.role === 'assistant';
                 const nextVis = conv.messages.slice(i + 1).find((x) => !x.hidden), turnEnd = m.role === 'assistant' && (!nextVis || nextVis.role === 'user');
                 const rr = m.runs?.[0], liveRun = live && rr?.status === 'running' ? describeRun(rr) : null;
                 return (
-                  <li key={m.id} data-mid={m.id} className={`cx-msg ${m.role}${Date.now() - m.ts < 2500 ? ' new' : ''}`}>
+                  <li key={first.id} data-mid={first.id} className={`cx-msg ${m.role}${Date.now() - m.ts < 2500 ? ' new' : ''}`}>
                     <div className="cx-who d">{m.role === 'user' ? 'You' : <><CoeStar size={20} />Coe{m.marked ? <UiIcon name="bookmark" size={14} /> : null}{m.work ? <i>Deep Work</i> : m.model ? <i>{modelByKey(m.model).name.replace(/^Coe /, '')}</i> : null}</>}</div>
-                    {m.images?.length ? (
-                      <div className="cx-pics">{m.images.map((im, k) => (
+                    {parts.map((pt) => (
+                    <div key={pt.id} data-mid={pt.id} className="cx-part">
+                    {pt.images?.length ? (
+                      <div className="cx-pics">{pt.images.map((im, k) => (
                         <button type="button" key={k} className="cx-pic" onClick={() => setBig(im)} aria-label={`Open ${im.name}`}><img src={dataUrl(im)} alt={im.name} /></button>
                       ))}</div>
                     ) : null}
-                    {m.attach?.length ? <div className="cx-atts">{m.attach.map((a, k) => <span key={k} className="cx-att tx"><UiIcon name="file" size={15} /><b>{a.name}</b><i>{a.kind}{a.cut ? ', cut short' : ''}</i></span>)}</div> : null}
-                    {m.role === 'user'
-                      ? (m.text && <Clamp limit={260}><p className="cx-says tx">{m.text}</p></Clamp>)
-                      : (m.text ? <Clamp live={live}><Rich text={m.text} msg={m} live={live} /></Clamp>: null)}
-                    {m.role === 'assistant' && m.checked && !live && <p className={`cx-checked tx ${m.checked}`}><UiIcon name={m.checked === 'ok' ? 'shield' : 'wand'} size={14} />{m.checked === 'ok' ? 'Double-checked' : <>Fixed before sending: {m.fix}</>}</p>}
-                    {live && !m.error && <Generating phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} empty={!m.text} />}
-                    {m.role === 'assistant' && turnEnd && !m.error && !(dk && dk.end >= turnFrom(i) && dk.end <= i) && <Activity steps={turnSteps(conv.messages, i)} live={live} phaseNote={PHASES[shownPhase === 'rest' ? 'idle' : shownPhase].label} />}
-                    {m.error && (
-                      <ErrorBox own={keyOn} kind={m.errKind} text={m.error} canRetry={lastOne && !busy} onAct={errAct} />
+                    {pt.attach?.length ? <div className="cx-atts">{pt.attach.map((a, k) => <span key={k} className="cx-att tx"><UiIcon name="file" size={15} /><b>{a.name}</b><i>{a.kind}{a.cut ? ', cut short' : ''}</i></span>)}</div> : null}
+                    {pt.role === 'user'
+                      ? (pt.text && <Clamp limit={260}><p className="cx-says tx">{pt.text}</p></Clamp>)
+                      : (pt.text ? <Clamp live={live && pt === m}><Rich text={pt.text} msg={pt} live={live && pt === m} /></Clamp>: null)}
+                    {pt.error && (
+                      <ErrorBox own={keyOn} kind={pt.errKind} text={pt.error} canRetry={lastOne && !busy && pt === m} onAct={errAct} />
                     )}
+                    </div>
+                    ))}
+                    {m.role === 'assistant' && m.checked && !live && <p className={`cx-checked tx ${m.checked}`}><UiIcon name={m.checked === 'ok' ? 'shield' : 'wand'} size={14} />{m.checked === 'ok' ? 'Double-checked' : <>Fixed before sending: {m.fix}</>}</p>}
+                    {m.role === 'assistant' && !m.error && <Dock messages={conv.messages} convId={conv.id} live={live} from={idxs[0]} to={i} />}
+                    {live && !m.error && <Generating phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} empty={!parts.some((x) => x.text)} />}
+                    {m.role === 'assistant' && turnEnd && !m.error && !(dk && dk.end >= turnFrom(i) && dk.end <= i) && <Activity steps={turnSteps(conv.messages, i)} live={live} phaseNote={PHASES[shownPhase === 'rest' ? 'idle' : shownPhase].label} />}
                     {m.role === 'assistant' && (m.stopped || m.cut) && !m.error && <p className="cx-flag tx">{m.stopped ? 'You stopped this reply.' : 'This reply reached its length limit. Say “continue” to carry on.'}</p>}
                     {!live && (
                       <div className="cx-acts">
-                        {m.role === 'assistant' && m.text && <button type="button" className="cx-act" onClick={() => copyMsg(m)}><UiIcon name="copy" size={14} />Copy</button>}
-                        {m.role === 'assistant' && m.text && !m.error && <button type="button" className="cx-act" aria-pressed={aloud === m.id} onClick={() => readAloud(m)}><UiIcon name={aloud === m.id ? 'stop' : 'volume'} size={14} />{aloud === m.id ? 'Stop' : 'Read aloud'}</button>}
-                        {m.role === 'assistant' && m.text && !m.error && (
+                        {m.role === 'assistant' && agg.text && <button type="button" className="cx-act" onClick={() => copyMsg(agg)}><UiIcon name="copy" size={14} />Copy</button>}
+                        {m.role === 'assistant' && agg.text && !m.error && <button type="button" className="cx-act" aria-pressed={aloud === m.id} onClick={() => readAloud(agg)}><UiIcon name={aloud === m.id ? 'stop' : 'volume'} size={14} />{aloud === m.id ? 'Stop' : 'Read aloud'}</button>}
+                        {m.role === 'assistant' && agg.text && !m.error && (
                           <details className="cx-more" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) { const d = e.currentTarget as HTMLDetailsElement; const off = (ev: Event) => { if (!d.contains(ev.target as Node)) { d.open = false; document.removeEventListener('pointerdown', off, true); } }; document.addEventListener('pointerdown', off, true); } }}>
                             <summary className="cx-act" aria-label="More for this answer"><UiIcon name="menu" size={14} />More</summary>
                             <div className="cx-more-menu" onClick={(e) => { (e.currentTarget.closest('details') as HTMLDetailsElement).open = false; }}>
@@ -1048,11 +1064,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                           </details>
                         )}
                         {m.role === 'user' && m.id === lastUser && !busy && <button type="button" className="cx-act" onClick={() => edit(m.id)}><UiIcon name="edit" size={14} />Edit</button>}
-                        {m.role === 'assistant' && m.outTokens ? <span className="cx-tok tx">{m.outTokens} tokens</span> : null}
+                        {m.role === 'assistant' && agg.outTokens ? <span className="cx-tok tx">{agg.outTokens} tokens</span> : null}
                       </div>
                     )}
                     {m.role === 'assistant' && lastOne && !live && !busy && !m.error && (() => {
-                      const f = followupsOf(m.text);
+                      const f = followupsOf(agg.text);
                       return f.length ? <div className="cx-fu" role="group" aria-label="Ask next">{f.map((x) => <button key={x} type="button" className="fu" onClick={() => sendBody(x)}>{x}</button>)}</div> : null;
                     })()}
                   </li>
@@ -1062,7 +1078,6 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           )}
         </div>
 
-        <Dock messages={conv.messages} convId={conv.id} live={streaming} />
         <footer className="cx-compose">
           {away && <button type="button" className="cx-jump btn small" onClick={() => { stick.current = true; toBottom(true); setAway(false); }}><UiIcon name="down" size={15} />Latest</button>}
           {remoteLive && !busy && <p className="cx-flag tx" role="status">Coe is replying to this chat on another device. It shows here as it is written.</p>}
