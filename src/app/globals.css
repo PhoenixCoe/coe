@@ -1939,15 +1939,19 @@ html[data-motion='off'] .bw-cursor.go, html[data-motion='off'] .bw.running .bw-t
 .cx-tool.ok:not(:has(pre, .cx-pv, .cx-app, img, ul, table, .bw, .cx-files, a.btn, .cx-plan)) .cx-tool-text { padding: 0 8px 4px 32px; margin: 0; font-size: 0.9rem; opacity: 0.8; }
 .fl-tabs button { white-space: nowrap; padding: 5px 6px; font-size: 0.86rem; }
 
-/* the screen: the preview sits low, just above the box you type in, with the steps under it and shut */
-.cx-dock { flex: none; border-top: 3px solid var(--ink); background: var(--cream); padding: 6px max(14px, calc((100% - 860px) / 2)) 8px; }
+/* the screen: part of the one reply, under its text, with the steps under it and shut */
+.cx-dock { margin: 12px 0 6px; }
 .cx-dock-bar { display: flex; align-items: center; gap: 8px; padding: 0 0 4px; font-size: 1rem; }
-.cx-dock-body { max-height: 42dvh; overflow: auto; overscroll-behavior: contain; }
+.cx-dock-body { max-height: 70dvh; overflow: auto; overscroll-behavior: contain; }
 .cx-dock .cx-app, .cx-dock .bw { margin: 0; }
 .cx-dock-steps { margin-top: 6px; }
 .cx-dock-steps .act { margin: 0; }
-@media (max-width: 640px) { .cx-dock { padding: 5px 8px 6px; } .cx-dock-body { max-height: 36dvh; } }
+@media (max-width: 640px) { .cx-dock-body { max-height: 60dvh; } }
+.cx-bar .cx-modes { padding: 0; margin: 0; }
 
+/* every step of one answer lives in one bubble */
+.cx-part { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; min-width: 0; }
+.cx-msg.user .cx-part { align-items: flex-end; }
 
 /* a smaller prompt box, so it takes less of the screen */
 .cx-compose { padding: 6px max(14px, calc((100% - 860px) / 2)) 4px; border-top-width: 3px; }
@@ -1956,6 +1960,7 @@ html[data-motion='off'] .bw-cursor.go, html[data-motion='off'] .bw.running .bw-t
 .cx .cx-ta { padding: 8px 12px 2px; font-size: 1rem; line-height: 1.4; max-height: 160px; }
 .cx-bar { gap: 6px; padding: 2px 6px 6px; }
 .cx-modes { padding: 5px 8px 0; gap: 4px; }
+.cx-bar .cx-modes { padding: 0; margin: 0; }
 .tb { height: 32px; min-width: 32px; padding: 0 8px; font-size: 0.92rem; box-shadow: 2px 2px 0 var(--g2); }
 .tb-plus { width: 32px; }
 .cx-send { width: 34px; height: 34px; box-shadow: 2px 2px 0 var(--ink); }
@@ -1964,7 +1969,6 @@ html[data-motion='off'] .bw-cursor.go, html[data-motion='off'] .bw.running .bw-t
   .cx-compose { padding: 5px 8px 4px; }
   .cx .cx-ta { padding: 7px 10px 1px; max-height: 120px; }
   .cx-fine { display: none; }
-  .tb, .tb-plus { height: 36px; min-width: 36px; }   /* a thumb needs a bit more, but not a lot */
+  .tb, .tb-plus { height: 36px; min-width: 36px; }
   .cx-send { width: 38px; height: 38px; }
 }
-.cx-bar .cx-modes { padding: 0; margin: 0; }

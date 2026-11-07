@@ -390,8 +390,8 @@ export function AppFrame({ run, app, slug, fullscreen, convId, call }: { run: To
 }
 
 /**
- * The screen: what Coe is looking at (a PMC App it opened, or the web it searched) sits big, low on the page just above the box you type in.
- * The steps and commands that went with it are under the picture, shut until you open them. Hide it with Hide; it comes back for the next thing Coe opens.
+ * The screen: what Coe is looking at (a PMC App it opened, or the web it searched), at the end of the one reply it belongs to, under the text.
+ * The steps and commands that went with it are under the picture, shut until you open them. Hide it with Hide.
  */
 /** What the screen shows now: the latest app Coe opened, or the web it searched in the latest turn. */
 export function dockTarget(messages: Msg[]): { run: ToolRun; end: number; app: boolean } | null {
@@ -406,13 +406,12 @@ export function dockTarget(messages: Msg[]): { run: ToolRun; end: number; app: b
   return run ? { run, end, app: !!app } : null;
 }
 
-export function Dock({ messages, convId, live }: { messages: Msg[]; convId: string; live: boolean }) {
+export function Dock({ messages, convId, live, from, to }: { messages: Msg[]; convId: string; live: boolean; from: number; to: number }) {
   const [hidden, setHidden] = useState<string | null>(null);
   const t = dockTarget(messages);
-  if (!t || hidden === t.run.id) return null;
+  if (!t || t.end < from || t.end > to || hidden === t.run.id) return null;
   const { run, end } = t, app = t.app ? run : undefined;
-  let last = messages.length - 1; while (last > end && messages[last].role === 'user') last--;   // the steps of the whole turn this belongs to
-  const steps = turnSteps(messages, Math.max(last, 0));
+  const steps = turnSteps(messages, to);   // the steps of the whole turn this belongs to
   const slug = str(run.args.slug), meta = app ? appBySlug(slug) : undefined;
   if (app && !meta) return null;
   return (
