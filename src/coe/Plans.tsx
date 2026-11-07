@@ -15,7 +15,7 @@ type PIcon = Parameters<typeof UiIcon>[0]['name'];
 const POINT_ICONS: [RegExp, PIcon][] = [
   [/tokens a day/i, 'chart'], [/Deep Work/i, 'list'], [/taste of the big stuff/i, 'sparkle'], [/Coe Deep|Coe Swift|Coe Core/i, 'bolt'], [/study|Code check/i, 'graduate'],
   [/Charts|diagrams|previews/i, 'deck'], [/pictures in each|Make pictures/i, 'image'], [/longer replies/i, 'text'], [/Search the web/i, 'search'], [/PMC App/i, 'apps'],
-  [/Google/i, 'cloud'], [/GitHub/i, 'branch'], [/Big files/i, 'file'], [/own AI key/i, 'lock'], [/Everything in Free/i, 'check'],
+  [/Big files/i, 'file'], [/own AI key/i, 'lock'], [/Everything in Free/i, 'check'],
 ];
 const iconFor = (t: string): PIcon => POINT_ICONS.find(([r]) => r.test(t))?.[1] ?? 'check';
 

@@ -1,6 +1,7 @@
 'use client';
 /** The Study hub: your saved decks, a daily streak, and review sessions that bring each card back just before you would forget it. */
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import { useBackClose } from './back';
 import { UiIcon } from '@/ui/icons';
 import { downloadText } from '@/ui/copy';
 import { Inline } from './Study';
@@ -22,6 +23,7 @@ export function StudyHub({ onClose, onAsk, say }: { onClose: () => void; onAsk: 
   const [review, setReview] = useState<{ ids: string[]; title: string } | null>(null);
   const [adding, setAdding] = useState<string | null>(null);   // deck id being added to, or 'new'
   const [menu, setMenu] = useState<string | null>(null);
+  useBackClose(onClose);
   const [view, setView] = useState<string | null>(null);        // deck whose cards are being listed
   const s = loadStudy(), st = streak(), lv = level(s.xp), days = lastDays(14), maxDay = Math.max(1, ...days.map((d) => d.count));
   const totalDue = dueCards().length;
@@ -42,12 +44,12 @@ export function StudyHub({ onClose, onAsk, say }: { onClose: () => void; onAsk: 
   return (
     <div className="sh" role="dialog" aria-label="Study">
       <header className="sh-top">
+        <button type="button" className="sh-b d sh-back" onClick={onClose}><UiIcon name="left" size={16} /><span>Back to chat</span></button>
         <b className="d sh-name"><UiIcon name="study" size={22} />Study</b>
         <span className="cx-grow" />
         <label className="sh-b d"><UiIcon name="download" size={16} /><span>Import</span><input type="file" accept="application/json,.json" hidden onChange={(e) => { void importFile(e.target.files?.[0]); e.target.value = ''; }} /></label>
         <button type="button" className="sh-b d" onClick={() => { downloadText('coe-study.json', exportStudy(), 'application/json'); }} disabled={!s.cards.length}><UiIcon name="out" size={16} /><span>Export</span></button>
-        <button type="button" className="sh-b d" onClick={onClose}><UiIcon name="close" size={16} /><span>Close</span></button>
-      </header>
+        </header>
 
       <div className="sh-body">
         <section className="sh-stats" aria-label="Your progress">
@@ -158,7 +160,7 @@ function Review({ ids, title, onClose }: { ids: string[]; title: string; onClose
 
   return (
     <div className="sh rv" role="dialog" aria-label={`Reviewing ${title}`}>
-      <header className="sh-top"><b className="d sh-name"><UiIcon name="study" size={22} />{title}</b><span className="cx-grow" /><span className="tx rv-count">{finished ? 'Finished' : `${left} left`}</span><button type="button" className="sh-b d" onClick={onClose}><UiIcon name="close" size={16} /><span>{finished ? 'Done' : 'Stop'}</span></button></header>
+      <header className="sh-top"><b className="d sh-name"><UiIcon name="study" size={22} />{title}</b><span className="cx-grow" /><span className="tx rv-count">{finished ? 'Finished' : `${left} left`}</span><button type="button" className="sh-b d" onClick={onClose}><UiIcon name="close" size={16} /><span>{finished ? 'Done' : 'Back to Study'}</span></button></header>
       <div className="rv-bar" aria-hidden><i style={{ width: `${Math.min(100, ((total - left) / total) * 100)}%` }} /></div>
       {finished ? (
         <div className="rv-end">

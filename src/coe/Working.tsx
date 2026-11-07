@@ -31,3 +31,14 @@ export function Working({ phase, label, detail, size = 30 }: { phase: Phase; lab
     </div>
   );
 }
+
+/** The one "Coe is working" element: soft sweeping lines before the first word, then a small shimmering label. Nothing else animates while a reply is made. */
+export function Generating({ phase, label, detail, empty }: { phase: Phase; label?: string; detail?: string; empty?: boolean }) {
+  const p = PHASES[phase === 'rest' ? 'idle' : phase];
+  return (
+    <div className={`gen${empty ? ' empty' : ''}`} role="status" aria-live="polite">
+      {empty && <div className="gen-lines" aria-hidden><i /><i /><i /></div>}
+      <div className="gen-row"><span className="gen-spark" aria-hidden /><span className="gen-t d">{label ?? p.label}</span>{detail && <span className="gen-d tx">{detail}</span>}</div>
+    </div>
+  );
+}

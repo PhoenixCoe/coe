@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { CopyButton, downloadText } from '@/ui/copy';
 import { Seg } from '@/ui/Seg';
+import { useBackClose } from './back';
 import { UiIcon } from '@/ui/icons';
 import { ask, type CoeError } from '@/lib/coe/client';
 import { COE_MODELS } from '@/lib/coe/models';
@@ -18,6 +19,7 @@ import { VoiceFields } from './VoiceFields';
 export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
   const card = useRef<HTMLDivElement>(null), close = useRef(onClose);
   close.current = onClose;
+  useBackClose(onClose);
   // Focus the window once when it opens. (Doing it again on every change would pull the cursor out of a box you are typing in.)
   useEffect(() => { card.current?.focus(); }, []);
   useEffect(() => {
@@ -27,7 +29,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   return (
     <div className="cx-veil" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div ref={card} className={`cx-modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
-        <div className="cx-modal-top"><h2 className="d">{title}</h2><button type="button" className="cx-ib" aria-label="Close" onClick={onClose}><UiIcon name="close" size={22} /></button></div>
+        <div className="cx-modal-top"><h2 className="d">{title}</h2><button type="button" className="cx-ib cx-closeb" aria-label="Close" onClick={onClose}><UiIcon name="close" size={20} /><span>Close</span></button></div>
         <div className="cx-modal-body">{children}</div>
       </div>
     </div>

@@ -6,6 +6,8 @@ import { UiIcon } from '@/ui/icons';
 import { LEADS, loadLead, setLead, setSfx, sfxOn, type Lead } from '@/lib/coe/look';
 import { DEFAULTS, type CoeSettings } from '@/lib/coe/settings';
 import { FEATURES, FEATURE_GROUPS, type FeaturePlan } from '@/lib/coe/features';
+import { loadSettings } from '@/lib/coe/settings';
+import { mailtoFeedback, sendFeedback, type FeedbackKind } from '@/lib/coe/feedback';
 
 type Up = (patch: Partial<CoeSettings>) => void;
 type Icon = Parameters<typeof UiIcon>[0]['name'];
@@ -26,13 +28,16 @@ export function LookTab({ s, up }: { s: CoeSettings; up: Up }) {
         <Select label="Animations" value={s.motion} onChange={(motion) => up({ motion })} options={[
           { value: 'full', label: 'Full', hint: 'Everything moves' }, { value: 'calm', label: 'Calm', hint: 'Only small movements' }, { value: 'off', label: 'Off', hint: 'Nothing moves' }]} />
       </Row>
-      <Switch icon="panel" label="Compact" hint="Tighter spacing, so more fits on screen." on={s.compact} onChange={(compact) => up({ compact, ...(compact ? { easy: false } : {}) })} />
-      <Switch icon="access" label="Easy read" hint="Roomier lines and bigger buttons." on={s.easy} onChange={(easy) => up({ easy, ...(easy ? { compact: false } : {}) })} />
-      <Switch icon="volume" label="Click sounds" hint="Soft sounds for send, done and mistakes." on={snd} onChange={(v) => setSfx(v)} />
+      <Row label="Spacing" icon="panel" hint="How tight or roomy the page feels.">
+        <Select label="Spacing" value={s.easy ? 'easy' : s.compact ? 'compact' : 'normal'} onChange={(v) => up({ compact: v === 'compact', easy: v === 'easy' })} options={[
+          { value: 'compact', label: 'Compact', hint: 'More fits on screen' }, { value: 'normal', label: 'Normal' }, { value: 'easy', label: 'Roomy', hint: 'Bigger buttons, easier to tap' }]} />
+      </Row>
+      <Switch icon="access" label="High contrast" hint="Stronger text and borders." on={s.contrast} onChange={(contrast) => up({ contrast })} />
+      <Switch icon="volume" label="Click sounds" hint="Soft sounds when you send and when Coe finishes." on={snd} onChange={(v) => setSfx(v)} />
       <Row label="Enter key" icon="keyboard" hint="What pressing Enter does in the message box.">
         <Select label="Enter key" value={s.enter} onChange={(enter) => up({ enter })} options={[{ value: 'send', label: 'Sends the message', hint: 'Shift+Enter adds a line' }, { value: 'newline', label: 'Adds a line', hint: 'Ctrl+Enter sends' }]} />
       </Row>
-      <div className="cx-actions"><button type="button" className="btn small" onClick={() => up({ scale: DEFAULTS.scale, motion: DEFAULTS.motion, compact: false, easy: false })}><UiIcon name="refresh" size={15} />Reset the look</button></div>
+      <div className="cx-actions"><button type="button" className="btn small" onClick={() => up({ scale: DEFAULTS.scale, motion: DEFAULTS.motion, compact: false, easy: false, contrast: false })}><UiIcon name="refresh" size={15} />Reset the look</button></div>
     </div>
   );
 }
@@ -47,14 +52,11 @@ export function ChatTab({ s, up }: { s: CoeSettings; up: Up }) {
       <Row label="Answer length" icon="list" hint="Unless you ask for something else in a message.">
         <Select label="Answer length" value={s.length} onChange={(length) => up({ length })} options={[{ value: 'short', label: 'Short', hint: 'The answer, then only what is needed' }, { value: 'balanced', label: 'Balanced' }, { value: 'detailed', label: 'Detailed', hint: 'Reasons, steps and examples' }]} />
       </Row>
+      <Row label="Word limit" icon="list" hint="The longest a reply may be.">
+        <Select label="Word limit" value={String(s.maxWords)} onChange={(v) => up({ maxWords: Number(v) })} options={[{ value: '0', label: 'No limit' }, { value: '100', label: '100 words' }, { value: '250', label: '250 words' }, { value: '500', label: '500 words' }]} />
+      </Row>
       <Row label="Tone" icon="chat" hint="How Coe sounds.">
         <Select label="Tone" value={s.tone} onChange={(tone) => up({ tone })} options={[{ value: 'friendly', label: 'Friendly' }, { value: 'neutral', label: 'Neutral' }, { value: 'formal', label: 'Formal' }, { value: 'playful', label: 'Playful' }]} />
-      </Row>
-      <Row label="Creativity" icon="sparkle" hint="Precise for facts and maths, creative for ideas.">
-        <Select label="Creativity" value={s.creativity} onChange={(creativity) => up({ creativity })} options={[{ value: 'default', label: 'Usual' }, { value: 'precise', label: 'Precise' }, { value: 'balanced', label: 'Balanced' }, { value: 'creative', label: 'Creative' }]} />
-      </Row>
-      <Row label="Questions" icon="chat" hint="How often Coe asks you something while it works.">
-        <Select label="How often Coe asks questions" value={s.asks} onChange={(asks) => up({ asks })} options={[{ value: 'rarely', label: 'Rarely', hint: 'Only when it cannot go on' }, { value: 'sometimes', label: 'Sometimes' }, { value: 'often', label: 'Often', hint: 'Checks in at the start and end of bigger jobs' }]} />
       </Row>
       <Row label="Checking its work" icon="check" hint="Coe re-reads an answer and fixes mistakes before you see it. Each check uses a few tokens.">
         <Select label="Checking its own work" value={s.check} onChange={(check) => up({ check })} options={[{ value: 'off', label: 'Off' }, { value: 'smart', label: 'Smart', hint: 'Only when it matters' }, { value: 'always', label: 'Always' }]} />
@@ -81,6 +83,23 @@ export function LearnTab({ s, up }: { s: CoeSettings; up: Up }) {
         <Slider hideLabel label="Daily card goal" value={s.goal} min={5} max={60} step={5} onChange={(goal) => up({ goal })} format={(n) => `${n} cards`} marks={[{ value: 5, label: '5' }, { value: 20, label: '20' }, { value: 40, label: '40' }, { value: 60, label: '60' }]} />
       </Row>
     </div>
+  );
+}
+
+/** A message to the people who make Coe. It is emailed to contact@pmcstudios.uk. */
+function FeedbackForm() {
+  const [kind, setKind] = useState<FeedbackKind>('idea'), [text, setText] = useState(''), [st, setSt] = useState<'' | 'sending' | 'sent' | 'failed'>('');
+  return (
+    <form className="cx-fbform" onSubmit={(e) => { e.preventDefault(); if (!text.trim()) return; setSt('sending'); void sendFeedback(loadSettings(), undefined, text, kind).then((r) => setSt(r.emailed ? 'sent' : 'failed')); }}>
+      <b className="d">Tell us something</b>
+      <Select label="What is it?" value={kind} onChange={(v) => setKind(v)} options={[{ value: 'idea', label: 'An idea' }, { value: 'problem', label: 'Something is wrong' }, { value: 'other', label: 'Something else' }]} />
+      <textarea className="cx-in tall" rows={4} maxLength={2000} value={text} placeholder="Write it here" aria-label="Your message" onChange={(e) => { setText(e.target.value); setSt(''); }} />
+      <div className="cx-actions">
+        <button type="submit" className="btn small gold" disabled={!text.trim() || st === 'sending'}>{st === 'sending' ? 'Sending…' : 'Send'}</button>
+        {st === 'sent' && <span className="tx" role="status">Sent. Thank you.</span>}
+        {st === 'failed' && <><span className="tx" role="status">It could not be sent from here.</span><button type="button" className="btn small" onClick={() => mailtoFeedback(text, kind)}>Email it instead</button></>}
+      </div>
+    </form>
   );
 }
 
@@ -121,6 +140,7 @@ export function AboutTab() {
           </section>
         );
       })}
+      <FeedbackForm />
       <p className="tx cx-small">Coe is made by PMC Studios. It can be wrong, so check anything important.</p>
     </div>
   );

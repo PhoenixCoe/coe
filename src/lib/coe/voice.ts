@@ -44,6 +44,25 @@ let shared: AudioContext | null = null;
 function sharedCtx(): AudioContext | null {
   try { if (!shared || shared.state === 'closed') { const AC = window.AudioContext || (window as any).webkitAudioContext; shared = new AC(); } if (shared!.state === 'suspended') void shared!.resume(); return shared; } catch { return null; }
 }
+const isSafari = () => typeof navigator !== 'undefined' && /^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent);
+let player: HTMLAudioElement | null = null;
+/**
+ * One audio element for everything Coe says. Safari (every Mac) only lets an element play if it was started by a tap or key press once,
+ * so it is started silently on the first tap anywhere, and then reused. Without this the answer is generated and nobody hears it.
+ */
+function sharedPlayer(): HTMLAudioElement {
+  if (!player) { player = new Audio(); player.preload = 'auto'; (player as any).playsInline = true; }
+  return player;
+}
+const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+export function unlockAudio() {
+  if (typeof window === 'undefined') return;
+  const go = () => {
+    window.removeEventListener('pointerdown', go, true); window.removeEventListener('keydown', go, true);
+    try { sharedCtx(); const a = sharedPlayer(); a.src = SILENT; a.volume = 1; void a.play().then(() => { a.pause(); }).catch(() => {}); if (browserSpeaks()) { window.speechSynthesis.getVoices(); } } catch { /* the first real tap will try again */ }
+  };
+  window.addEventListener('pointerdown', go, true); window.addEventListener('keydown', go, true);
+}
 export const setVoiceActive = (v: boolean) => { voiceOn = v; if (v) sharedCtx(); };
 
 /** Sound strength in n bands from low to high voice pitch, each 0..1. */
@@ -141,7 +160,7 @@ export function speak(s: CoeSettings, text: string, p: VoicePrefs, hooks: { onSt
   };
   const untap = () => { if (iv) { clearInterval(iv); iv = 0; } an = null; hooks.onSpectrum?.(new Array(24).fill(0)); };
   const say = forSpeech(text);
-  const stop = () => { stopped = true; ctl.abort(); if (audio) { audio.pause(); audio.src = ''; } if (synth) window.speechSynthesis.cancel(); untap(); };
+  const stop = () => { stopped = true; ctl.abort(); if (audio) { audio.pause(); audio.onended = null; audio.onerror = null; } if (synth) window.speechSynthesis.cancel(); untap(); };
   const browserSay = (t: string) => new Promise<void>((res) => {
     if (!browserSpeaks() || !t) { res(); return; }
     synth = true; const u = new SpeechSynthesisUtterance(t); u.rate = p.speed; if (p.lang) u.lang = p.lang;
@@ -158,8 +177,8 @@ export function speak(s: CoeSettings, text: string, p: VoicePrefs, hooks: { onSt
         next = i + 1 < parts.length ? speechBlob(s, parts[i + 1], p, ctl.signal) : Promise.resolve(blob);
         next.catch(() => {});
         if (stopped) break;
-        const url = URL.createObjectURL(blob); audio = new Audio(url); tap(audio);
-        await new Promise<void>((res, rej) => { audio!.onended = () => res(); audio!.onerror = () => rej(new Error('The sound could not play.')); audio!.play().then(() => { if (!started) { started = true; hooks.onStart?.(); } }, rej); });
+        const url = URL.createObjectURL(blob); audio = sharedPlayer(); audio.onended = null; audio.onerror = null; audio.src = url; audio.volume = 1; if (!isSafari()) tap(audio);
+        await new Promise<void>((res, rej) => { audio!.onended = () => res(); audio!.onerror = () => rej(new Error('The sound could not play.')); audio!.play().then(() => { if (!started) { started = true; hooks.onStart?.(); } }, (e) => rej(new Error(e?.name === 'NotAllowedError' ? 'Your browser blocked the sound. Tap anywhere on the page once, then try again.' : 'The sound could not play.'))); });
         URL.revokeObjectURL(url);
       }
       return { fallback: false };
@@ -179,11 +198,18 @@ export function speak(s: CoeSettings, text: string, p: VoicePrefs, hooks: { onSt
  * Resolves null if nothing was said for a while. onLevel gets 0..1 about 20 times a second.
  */
 export async function listen(opts: { onLevel?: (v: number) => void; onSpectrum?: (b: number[]) => void; signal?: AbortSignal; waitMs?: number; silenceMs?: number; maxMs?: number; manual?: boolean } = {}): Promise<{ blob: Blob | null; stop: () => void }> {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-  const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((m) => MediaRecorder.isTypeSupported(m)) || '';
+  let stream: MediaStream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  catch (e) {
+    const n = (e as Error).name;
+    throw new Error(n === 'NotAllowedError' || n === 'SecurityError' ? 'The microphone is blocked. Allow it with the icon in the address bar. On a Mac also check System Settings > Privacy & Security > Microphone and tick your browser.' : n === 'NotFoundError' ? 'No microphone was found. Plug one in and try again.' : 'The microphone could not start (' + ((e as Error).message || n) + ').');
+  }
+  const order = isSafari() ? ['audio/mp4;codecs=mp4a.40.2', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'] : ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
+  const mime = order.find((m) => MediaRecorder.isTypeSupported(m)) || '';
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
   const chunksOut: Blob[] = []; rec.ondataavailable = (e) => { if (e.data.size) chunksOut.push(e.data); };
-  const AC = window.AudioContext || (window as any).webkitAudioContext; const ac = new AC(); const src = ac.createMediaStreamSource(stream); const an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
+  const AC = window.AudioContext || (window as any).webkitAudioContext; const ac = new AC(); if (ac.state === 'suspended') await ac.resume().catch(() => {});   // a suspended context reads silence, so nothing would ever be heard
+  const src = ac.createMediaStreamSource(stream); const an = ac.createAnalyser(); an.fftSize = 1024; src.connect(an);
   const buf = new Uint8Array(an.fftSize), fbuf = new Uint8Array(an.frequencyBinCount);
   let heard = false, lastVoice = 0, t0 = performance.now(), floor = 0.01, n = 0, ended = false, iv = 0; let finish: () => void = () => {};
   const end = new Promise<void>((r) => { finish = r; });
@@ -206,7 +232,7 @@ export async function listen(opts: { onLevel?: (v: number) => void; onSpectrum?:
   }, 50);
   await end;
   clearInterval(iv);
-  const blob: Blob | null = await new Promise((res) => { rec.onstop = () => res(heard && chunksOut.length ? new Blob(chunksOut, { type: rec.mimeType || 'audio/webm' }) : null); try { rec.stop(); } catch { res(null); } });
+  const blob: Blob | null = await new Promise((res) => { rec.onstop = () => res((heard || opts.manual) && chunksOut.length ? new Blob(chunksOut, { type: rec.mimeType || mime || 'audio/webm' }) : null); try { rec.stop(); } catch { res(null); } });
   stream.getTracks().forEach((t) => t.stop()); void ac.close();
   return { blob, stop };
 }

@@ -1,11 +1,11 @@
 'use client';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CoeStar, CoeWordmark, type Phase } from '@/ui/Mark';
-import { PHASES, Working, phaseOfTool } from './Working';
+import { PHASES, Generating, phaseOfTool } from './Working';
 import { Activity, describeRun, turnSteps } from './Activity';
 import { UiIcon } from '@/ui/icons';
 import { downloadText } from '@/ui/copy';
-import { CoeError, stream, type ChatMsg } from '@/lib/coe/client';
+import { CoeError, ask as askModel, stream, type ChatMsg } from '@/lib/coe/client';
 import { COE_MODELS, FILE_TEXT, MAX_REPLY, MAX_WORK, QUOTAS, canUse, fmtTok, modelByKey, type ModelKey } from '@/lib/coe/models';
 import { applyCredits, bumpQuota, countReply, counted, creditsNow, limitNow, onStatus, planInfo, planNow, quotaLeft, refreshStatus, status } from '@/lib/coe/account';
 import { explain as describeErr, type ErrAct } from '@/lib/coe/errors';
@@ -13,11 +13,11 @@ import { ErrorBox } from './ErrorBox';
 import { isOwner } from '@/lib/coe/owner';
 import { modeOf, connection, loadSettings, saveSettings, type CoeSettings } from '@/lib/coe/settings';
 import { toImg } from './images';
-import { Rich, RichContext, followupsOf, wordsOf, type RichCtx } from './Blocks';
+import { Dock, Rich, RichContext, dockTarget, followupsOf, wordsOf, type RichCtx } from './Blocks';
 import { KINDS, isReadable, readAny } from './readers';
 import { MEDIA_KINDS, isAudio, isVideo, readAudio, videoFrames } from './media';
-import { STEPS, approve as approveTool, execute, findTool, memoryPrompt, needsApproval, SHOW_PROMPT, toolsPrompt, type Call } from '@/lib/coe/tools';
-import { links, memory, onMemory } from '@/lib/coe/links';
+import { STEPS, execute, findTool, memoryPrompt, SHOW_PROMPT, toolsPrompt, type Call, type ChatOps } from '@/lib/coe/tools';
+import { memory, onMemory } from '@/lib/coe/links';
 import { APPS_ORIGIN } from '@/lib/coe/pmc';
 import { Workspace } from './Workspace';
 import { hasFiles, type Files } from '@/lib/coe/workspace';
@@ -40,7 +40,7 @@ import { PERSONAS, SLASH, loadPersona, loadStyles, personaOf, savePersona, type 
 import { StyleEditor } from './Styles';
 import { ShareDialog } from './Share';
 import { installCoe, isInstalled } from '@/lib/coe/pwa';
-import { VOICE_PROMPT, browserListen, browserListens, canListen, listening, loadPrefs, serverVoice, speak, transcribe, voiceActive, type Speaking } from '@/lib/coe/voice';
+import { VOICE_PROMPT, browserListen, browserListens, canListen, listening, loadPrefs, serverVoice, speak, transcribe, unlockAudio, voiceActive, type Speaking } from '@/lib/coe/voice';
 import { pushProfile, cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
 import { knowledgeFor } from './knowledge';
 import { BASE_COE, CHECK_SYSTEM, REDO_NOTE, STARTERS, greeting, picsNote, preferencesPrompt, worthChecking } from './prompts';
@@ -48,6 +48,10 @@ import { Modal, SettingsPanel, Upgrade, type Tab } from './Panels';
 import { Select } from '@/ui/Controls';
 import { setFavicon } from '@/lib/coe/favicon';
 import { redoLeft, redoUsed } from '@/lib/coe/redo';
+import { Clamp } from './Clamp';
+import { madeCount } from './Workspace';
+import { putLive as cloudLive, peek as cloudPeek } from '@/lib/coe/cloud';
+import { compactConv, tooLong } from '@/lib/coe/compact';
 import { Feedback } from './Feedback';
 import { AnswerInfo } from './AnswerInfo';
 import { feedbackDue, feedbackLater, feedbackShown, noteReply, sendFeedback } from '@/lib/coe/feedback';
@@ -109,7 +113,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [atts, setAtts] = useState<Attach[]>([]);
   const [work, setWork] = useState(false);                    // Deep Work for the next message
   const [web, setWeb] = useState(() => { try { return localStorage.getItem('pmc:coe:web') !== '0'; } catch { return true; } });
-  const [shelf, setShelf] = useState(false);                   // the project folder
+  const [shelf, setShelf] = useState(false);                   // the Files window
+  const [shelfTab, setShelfTab] = useState<'sent' | 'made' | 'project' | undefined>(undefined);
   const [mathOpen, setMathOpen] = useState(false);             // the maths keyboard
   const [palOpen, setPalOpen] = useState(false);               // Ctrl+K
   const [persona, setPersona] = useState('coe');               // how Coe works in this browser
@@ -124,6 +129,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [busy, setBusy] = useState(false);
   const [infoFor, setInfoFor] = useState<string | null>(null);
   const [side, setSide] = useState(() => typeof window === 'undefined' || window.innerWidth >= 900);
+  // A phone or a narrow window: the list folds away by itself, and stays folded when the screen is turned.
+  useEffect(() => {
+    const q = window.matchMedia('(max-width: 899px)');
+    const fold = () => { if (q.matches) setSide(false); };
+    fold(); q.addEventListener?.('change', fold);
+    return () => q.removeEventListener?.('change', fold);
+  }, []);
   const [q, setQ] = useState('');
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; sure?: boolean } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);   // a row in the list
@@ -193,6 +205,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [, bump] = useState(0);
   useEffect(() => onStatus(() => { setUse(usage()); bump((n) => n + 1); }), []);
 
+  const nameRef = useRef<(c: Conv) => Promise<void>>(async () => {});
+  const chatBits = useRef<{ patch: (id: string, p: Partial<Conv>) => Promise<void>; remove: (id: string) => Promise<void> }>({ patch: async () => {}, remove: async () => {} });
   const abort = useRef<AbortController | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -226,6 +240,37 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const streaming = busy;
   const assistant = 'Coe';
 
+  // ---------------------------------------------------------------- the same chat on two devices, live
+  // The device that is writing a reply saves the chat-so-far to the account about every second and a half; a device that has the same chat open looks for it every two seconds.
+  const [remoteLive, setRemoteLive] = useState(false);
+  const seenLive = useRef(0), liveAt = useRef(0);
+  useEffect(() => {
+    if (!busy || !cloudOn || !session()) return;
+    const t = window.setInterval(() => { const c = convRef.current; if (c.messages.length) void cloudLive(c).catch(() => {}); }, 1500);
+    return () => window.clearInterval(t);
+  }, [busy]);
+  useEffect(() => {
+    if (busy || !cloudOn || !session() || !conv.messages.length) { setRemoteLive(false); return; }
+    let off = false; const id = conv.id;
+    const t = window.setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const r = await cloudPeek(id); if (!r || off || convRef.current.id !== id) return;
+        const d = r.data, mine = convRef.current, fresh = !!d.live && d.live !== seenLive.current;
+        if (fresh) { seenLive.current = d.live!; liveAt.current = Date.now(); }
+        setRemoteLive(Date.now() - liveAt.current < 5000);
+        if (!fresh && !(r.updated > mine.updated)) return;
+        if (d.messages.length === mine.messages.length && d.messages[d.messages.length - 1]?.text === mine.messages[mine.messages.length - 1]?.text && d.title === mine.title) return;
+        const keep = (m: Msg) => { const o = mine.messages.find((x) => x.id === m.id); return o ? { ...m, ...(o.images?.length ? { images: o.images } : {}), ...(o.attach?.length ? { attach: o.attach } : {}), ...(o.runs?.length ? { runs: o.runs } : {}) } : m; };
+        const next: Conv = { ...mine, ...d, live: undefined, files: mine.files ?? d.files, messages: d.messages.map(keep) };
+        setConv(next); stick.current = true; if (!d.live) await saveConv(next);
+      } catch { /* the next look tries again */ }
+    }, 2000);
+    return () => { off = true; window.clearInterval(t); };
+  }, [busy, conv.id, conv.messages.length > 0]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { unlockAudio(); }, []);   // Safari only plays sound after one tap on the page
+
   // Another tab or the settings window may change the settings.
   useEffect(() => {
     const on = () => setSettingsState(loadSettings());
@@ -237,6 +282,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // ---------------------------------------------------------------- scrolling
   const toBottom = useCallback((smooth = false) => { const el = scroller.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); }, []);
   useEffect(() => { if (!conv.messages.length) { const el = scroller.current; if (el) el.scrollTop = 0; } else if (stick.current) toBottom(); }, [conv.messages, toBottom]);
+  // While a reply is being made, keep following it even when a preview or picture grows without a new message arriving.
+  useEffect(() => { if (!busy) return; const t = window.setInterval(() => { if (stick.current) toBottom(); }, 140); return () => window.clearInterval(t); }, [busy, toBottom]);
   const onScroll = () => {
     const el = scroller.current; if (!el) return;
     const near = el.scrollHeight - el.scrollTop - el.clientHeight < 90;
@@ -321,11 +368,39 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   /** Every picture in the chat, oldest first: what was attached, and what tools made. */
   const imagesOf = (c: Conv): Img[] => c.messages.flatMap((m) => [...(m.images ?? []), ...(m.runs ?? []).flatMap((r) => (r.out?.kind === 'image' ? [r.out.img] : []))]);
 
+  // When Coe finishes a request that made two or more files, the Files window opens on the right (on a wide screen) so nothing gets lost.
+  const madeAt = useRef(-1);
+  useEffect(() => {
+    if (busy) { madeAt.current = madeCount(convRef.current.messages, convRef.current.files); return; }
+    const now = madeCount(convRef.current.messages, convRef.current.files);
+    if (madeAt.current >= 0 && now - madeAt.current >= 2 && window.innerWidth >= 900) { setShelfTab(Object.keys(convRef.current.files ?? {}).length >= 2 ? 'project' : 'made'); setShelf(true); }
+    madeAt.current = -1;
+  }, [busy]);
+
+  /** After the first reply Coe gives the chat a short name of its own, unless a name was already chosen. The check call is free. */
+  const nameIt = useCallback(async (c: Conv) => {
+    const s = loadSettings(); const first = c.messages.find((m) => m.role === 'user' && !m.hidden && m.text), reply = c.messages.find((m) => m.role === 'assistant' && m.text);
+    if (!first || !reply || !connection(s).ok) return;
+    try {
+      const r = await askModel(s, { model: 'swift', check: true, maxTokens: 24, system: 'You name chats. Reply with only a title of 2 to 5 words. No quotes, no full stop. Use the language the person wrote in.', messages: [{ role: 'user', text: `Person: ${first.text.slice(0, 400)}\nCoe: ${wordsOf(reply.text).slice(0, 500)}\n\nTitle:` }] });
+      const t = r.text.replace(/["'`*#]+/g, '').replace(/[.!]+$/, '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (!t || t.split(' ').length > 9) return;
+      const cur = c.id === convRef.current.id ? convRef.current : await loadConv(c.id); if (!cur || cur.named || !cur.messages.length) return;
+      const next = { ...cur, title: t, named: true }; if (c.id === convRef.current.id) setConv(next); await persist(next);
+    } catch { /* the first words stay as the name */ }
+  }, [persist, setConv]);
+
   const run = useCallback(async (base: Conv, opts: { free?: boolean; wrong?: string; work?: boolean } = {}) => {
     const s = loadSettings();
     const pn = planNow(s), pl = planInfo(s);
     const c0 = connection(s);
     if (!c0.ok) { openSetup(c0.why); return; }
+    if (tooLong(base)) {   // a very long chat is squeezed into a summary first, so it stays quick
+      setNote('This chat is getting long, so the older messages are being summarised…');
+      const c2 = await compactConv(s, base).catch(() => null);
+      if (c2) { base = c2; setConv(c2); await persist(c2); }
+      setNote('');
+    }
     const model: ModelKey = opts.work ? 'deep' : base.model;
     if (!opts.work && !canUse(pn, base.model)) { setUpgrade(`${modelByKey(base.model).name} needs the Pro plan.`); return; }
     if (opts.work && pn !== 'pro' && quotaLeft('work', s).left <= 0) { setUpgrade('Deep Work is part of Pro. Free includes one run a day, and today\'s is used.'); return; }
@@ -334,6 +409,14 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const mine = base.id, active = () => convRef.current.id === mine;
     let work: Conv = base;
     const commit = (c: Conv) => { work = c; if (active()) setConv(c); };
+    let killed = false;   // the person asked Coe to delete this very chat
+    const ops: ChatOps = {
+      list: async () => (await loadIndex()).map((m) => ({ id: m.id, title: m.title, pinned: !!m.pinned, current: m.id === base.id })),
+      rename: async (id, t) => { if (id === base.id) commit({ ...work, title: t.slice(0, 80), named: true }); else await chatBits.current.patch(id, { title: t.slice(0, 80), named: true }); },
+      pin: async (id, on) => { if (id === base.id) commit({ ...work, pinned: on }); else await chatBits.current.patch(id, { pinned: on }); },
+      remove: async (id) => { if (id === base.id) killed = true; else await chatBits.current.remove(id); },
+      compact: async () => { const c2 = await compactConv(s, work).catch(() => null); if (!c2) return false; commit(c2); return true; },
+    };
     const ctl = new AbortController(); abort.current = ctl; setBusy(true); setFavicon('busy'); stick.current = true;
     const cap = opts.work ? STEPS.work : STEPS[pn];
 
@@ -348,7 +431,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       const now = new Date();
       const system = [
         BASE_COE, SHOW_PROMPT, personaOf(loadPersona()).prompt && `Working style the person chose (${personaOf(loadPersona()).name}): ${personaOf(loadPersona()).prompt}`, voiceActive() && VOICE_PROMPT,
-        toolsPrompt({ plan: pn, work: !!opts.work, web, google: !!links().google, github: !!links().github, files: work.files ?? {}, stepsLeft: cap - step, hasApps: !!APPS_ORIGIN }),
+        toolsPrompt({ plan: pn, work: !!opts.work, web, files: work.files ?? {}, stepsLeft: cap - step, hasApps: !!APPS_ORIGIN }),
         memoryPrompt(),
         knowledgeFor([...work.messages].reverse().find((m) => m.role === 'user' && !m.hidden)?.text ?? '', { hasApps: !!APPS_ORIGIN }),
         opts.wrong && `${REDO_NOTE}\n\nThe earlier answer was:\n${opts.wrong}`,
@@ -406,7 +489,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         const setRun = (p: Partial<ToolRun>) => commit({ ...work, messages: work.messages.map((m) => (m.id === holder.id ? { ...m, runs: [{ ...(m.runs?.[0] ?? run0), ...p }] } : m)) });
         setRun({}); setPhase(phaseOfTool(call?.tool ?? 'unknown'));
         const res = call
-          ? await execute(call, { settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId: run0.id, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), patch: setRun, say })
+          ? await execute(call, { settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId: run0.id, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), patch: setRun, say, chats: ops })
           : { status: 'error' as const, result: found.error ?? 'That tool block could not be read.', out: undefined, images: undefined };
         setRun({ t1: Date.now(), status: res.status, result: res.result, ...(res.shown ? { shown: res.shown } : {}), ...(res.out ? { out: res.out } : {}) });
         if (res.status === 'pending' || ctl.signal.aborted) return false;
@@ -433,32 +516,12 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       const lastM = work.messages[work.messages.length - 1];
       setFavicon(lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped ? 'done' : 'idle');
       if (lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped) { noteReply(); if (active() && feedbackDue()) { feedbackShown(); setFb(true); } }
-      await persist(work);
+      if (killed) await chatBits.current.remove(base.id); else { await persist(work); if (!work.named && lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped) void nameRef.current(work); }
     }
   }, [persist, say, setConv, web]);
 
-  /** The person pressed the button on something Coe wanted to do outside the chat: a Google file, a commit. */
-  const patchRun = useCallback((msgId: string, p: Partial<ToolRun>): Conv => {
-    const c = convRef.current;
-    const next = { ...c, messages: c.messages.map((m) => (m.id === msgId ? { ...m, runs: (m.runs ?? []).map((r, i) => (i === 0 ? { ...r, ...p } : r)) } : m)) };
-    setConv(next); return next;
-  }, [setConv]);
-  const settle = useCallback(async (msgId: string, p: Partial<ToolRun>, told: string) => {
-    let next = patchRun(msgId, p);
-    next = { ...next, messages: [...next.messages, { id: uid(), role: 'user', hidden: true, text: told, ts: Date.now() }] };
-    setConv(next); await persist(next);
-  }, [patchRun, persist, setConv]);
-  const approveRun = useCallback(async (msgId: string) => {
-    const r = convRef.current.messages.find((x) => x.id === msgId)?.runs?.[0]; if (!r) return;
-    patchRun(msgId, { status: 'running', note: undefined });
-    try {
-      const out = await approveTool(r.args as Call, { plan: planNow(loadSettings()), files: () => convRef.current.files ?? {} });
-      await settle(msgId, { status: 'ok', result: out.result, out: out.url ? { kind: 'link', url: out.url, label: out.label ?? 'Open' } : undefined }, `[The person approved it, and it was done. ${out.result}]`);
-    } catch (e) { patchRun(msgId, { status: 'pending', note: (e as Error).message }); }
-  }, [patchRun, settle]);
-  const skipRun = useCallback((msgId: string) => { void settle(msgId, { status: 'ok', result: 'Not done.', out: { kind: 'text', text: 'Not done.' } }, '[The person chose not to do it. Do not ask again unless they do.]'); }, [settle]);
   const askRef = useRef<(t: string) => void>(() => {});
-  const richCtx = useMemo<RichCtx>(() => ({ plan: planNow(settings), files: conv.files ?? {}, convId: conv.id, approve: approveRun, skip: skipRun, ask: (t: string) => askRef.current(t), pics: imagesOf(conv), effects: settings.effects }), [settings, conv.files, conv.id, conv.messages.length, approveRun, skipRun, status()]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const richCtx = useMemo<RichCtx>(() => ({ plan: planNow(settings), files: conv.files ?? {}, convId: conv.id, ask: (t: string) => askRef.current(t), pics: imagesOf(conv), effects: settings.effects }), [settings, conv.files, conv.id, conv.messages.length, status()]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const stop = useCallback(() => abort.current?.abort(), []);
 
@@ -539,7 +602,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const m = conv.messages[conv.messages.length - 1];
     if (m && m.role === 'assistant' && !m.error && m.text.trim()) readAloud(m);
   }, [busy]);   // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { applyDisplay(settings); }, [settings.scale, settings.motion, settings.compact, settings.easy]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { applyDisplay(settings); }, [settings.scale, settings.motion, settings.compact, settings.easy, settings.contrast]);   // eslint-disable-line react-hooks/exhaustive-deps
   const lastReply = useMemo(() => { const m = conv.messages[conv.messages.length - 1]; return m && m.role === 'assistant' ? { id: m.id, text: wordsOf(m.text), error: !!m.error } : null; }, [conv.messages]);
 
   const errAct = (a: ErrAct) => {
@@ -595,10 +658,31 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     setRenaming(null); setTitling(false);
     const t = (v ?? '').trim(); if (!t) return;
     const c = id === convRef.current.id ? convRef.current : await loadConv(id); if (!c) return;
-    const next = { ...c, title: t.slice(0, 80) };
+    const next = { ...c, title: t.slice(0, 80), named: true };
     if (id === convRef.current.id) setConv(next);
     await persist(next);
   }, [persist, setConv]);
+
+  /** A new chat that starts as a copy of this one up to the chosen message. The old chat is left alone. */
+  const branchFrom = useCallback(async (msgId: string) => {
+    const c = convRef.current, i = c.messages.findIndex((m) => m.id === msgId); if (i < 0) return;
+    const copy: Conv = { ...c, id: uid(), title: `${c.title} (branch)`.slice(0, 80), named: true, created: Date.now(), updated: Date.now(), pinned: false, live: undefined, messages: c.messages.slice(0, i + 1).map((m) => ({ ...m })) };
+    await persist(copy); await open(copy.id); say('Branched. You are in the new chat. The first one is unchanged.');
+  }, [persist, open, say]);
+  const mark = useCallback((msgId: string) => {
+    const c = convRef.current; const next = { ...c, messages: c.messages.map((m) => (m.id === msgId ? { ...m, marked: !m.marked } : m)) }; setConv(next); void persist(next);
+  }, [persist, setConv]);
+  // Find in this chat
+  const [find, setFind] = useState<{ q: string; i: number; marks: boolean } | null>(null);
+  const hits = useMemo(() => {
+    if (!find) return [] as string[];
+    const q = find.q.trim().toLowerCase();
+    return conv.messages.filter((m) => !m.hidden && !m.compact && (find.marks ? m.marked : true) && (!q ? find.marks : m.text.toLowerCase().includes(q))).map((m) => m.id);
+  }, [find, conv.messages]);
+  const findGo = useCallback((i: number) => {
+    if (!hits.length) return; const k = (i + hits.length) % hits.length; setFind((f) => (f ? { ...f, i: k } : f));
+    const el = document.querySelector(`[data-mid="${hits[k]}"]`); if (el) { stick.current = false; el.scrollIntoView({ behavior: 'smooth', block: 'center' }); el.classList.add('flash'); window.setTimeout(() => el.classList.remove('flash'), 1400); }
+  }, [hits]);
 
   const pin = useCallback(async (id: string) => {
     const c = id === convRef.current.id ? convRef.current : await loadConv(id); if (!c) return;
@@ -607,6 +691,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     await persist(next); setMenu(null);
   }, [persist, setConv]);
 
+  nameRef.current = nameIt;
+  chatBits.current = {
+    patch: async (id, p) => { const c = id === convRef.current.id ? convRef.current : await loadConv(id); if (!c) return; const next = { ...c, ...p }; if (id === convRef.current.id) setConv(next); await persist(next); },
+    remove,
+  };
   const pickModel = (k: ModelKey) => {
     setPicker(false);
     if (!canUse(planNow(settings), k)) { setUpgrade(`${modelByKey(k).name} needs the Pro plan.`); return; }
@@ -704,7 +793,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     ...(canScreen() ? [{ id: 'screen', group: 'Tools', title: 'Capture your screen', run: () => setCapture('screen') } as Cmd] : []),
     { id: 'math', group: 'Tools', title: 'Maths keyboard', hint: 'equations and chemistry', run: () => setMathOpen(true) },
     { id: 'code', group: 'Tools', title: 'Code check', run: () => setTool(true) },
-    { id: 'files', group: 'Tools', title: 'Project folder', run: () => setShelf(true) },
+    { id: 'find', group: 'Chat', title: 'Find in this chat', hint: 'search the messages, or your bookmarks', run: () => setFind({ q: '', i: 0, marks: false }) },
+    { id: 'compact', group: 'Chat', title: 'Summarise the older messages', hint: 'keeps a long chat quick', run: () => { void (async () => { const c2 = await compactConv(loadSettings(), convRef.current).catch(() => null); if (!c2) { say('There is not enough chat to summarise yet.'); return; } setConv(c2); await persist(c2); say('The older messages are now a short summary.'); })(); } },
+    { id: 'files', group: 'Tools', title: 'Files', run: () => { setShelfTab(undefined); setShelf(true); } },
     { id: 'web', group: 'Tools', title: web ? 'Turn web search off' : 'Turn web search on', on: web, run: () => { const v = !web; setWeb(v); try { localStorage.setItem('pmc:coe:web', v ? '1' : '0'); } catch { /* storage blocked */ } } },
     { id: 'work', group: 'Tools', title: 'Deep Work for the next message', on: work, run: () => setWork((w) => !w) },
     ...SLASH.filter((c) => !c.go).map((c): Cmd => ({ id: 'sl-' + c.cmd, group: 'Start with', title: c.title, hint: '/' + c.cmd, run: () => useSlash(c) })),
@@ -744,7 +835,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   }, [list, q]);
 
   const empty = conv.messages.length === 0;
-  const lastUser = [...conv.messages].reverse().find((m) => m.role === 'user' && !m.hidden)?.id;
+  const dk = useMemo(() => dockTarget(conv.messages), [conv.messages]);
+  const turnFrom = (i: number) => { let j = i; while (j > 0 && !(conv.messages[j - 1].role === 'user' && !conv.messages[j - 1].hidden)) j--; return j; };
+  const lastUser = [...conv.messages].reverse().find((m) => m.role === 'user' && !m.hidden && !m.compact)?.id;
   const full = !keyOn && left <= 0;
   const hasInput = text.trim().length > 0 || pics.length > 0 || atts.length > 0;
   const canSend = !reading && !full && hasInput;
@@ -760,7 +853,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     { id: 'lab', icon: 'wave', title: 'Sound lab', hint: 'Tempo, key, instruments, noises', run: () => setLabOpen(true) },
     { id: 'screen', icon: 'screen', title: 'Capture your screen', hint: 'Show Coe a window', run: () => setCapture('screen'), hide: !canScreen() },
     { id: 'math', icon: 'sigma', title: 'Maths keyboard', hint: 'Equations and chemistry', run: () => setMathOpen(true) },
-    { id: 'folder', icon: 'folder', title: 'Project folder', hint: hasFiles(conv.files) ? `${Object.keys(conv.files!).length} files in this chat` : 'Files for this chat', run: () => setShelf((v) => !v), hide: !(proNow || hasFiles(conv.files)) },
+    { id: 'folder', icon: 'folder', title: 'Files', hint: 'Sent to Coe and sent back', run: () => setShelf((v) => !v), hide: !(proNow || hasFiles(conv.files)) },
   ];
 
   const toggleWeb = () => { const v = !web; setWeb(v); try { localStorage.setItem('pmc:coe:web', v ? '1' : '0'); } catch { /* storage blocked */ } };
@@ -872,6 +965,16 @@ export function Chat({ initialList, initialConv }: ChatProps) {
             <button type="button" className="cx-usage-x" aria-label="Hide this" onClick={() => setUsageOff(true)}><UiIcon name="close" size={16} /></button>
           </div>
         )}
+        {find && (
+          <div className="cx-find" role="search">
+            <input autoFocus className="cx-in" value={find.q} placeholder={find.marks ? 'Bookmarked answers' : 'Find in this chat'} aria-label="Find in this chat" onChange={(e) => setFind({ q: e.target.value, i: 0, marks: find.marks })} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); findGo(find.i + (e.shiftKey ? -1 : 1)); } else if (e.key === 'Escape') setFind(null); }} />
+            <span className="tx cx-small">{hits.length ? `${Math.min(find.i + 1, hits.length)} of ${hits.length}` : (find.q || find.marks) ? 'None' : ''}</span>
+            <button type="button" className="cx-act" aria-label="Previous" onClick={() => findGo(find.i - 1)} disabled={!hits.length}><UiIcon name="up" size={14} /></button>
+            <button type="button" className="cx-act" aria-label="Next" onClick={() => findGo(find.i + 1)} disabled={!hits.length}><UiIcon name="down" size={14} /></button>
+            <button type="button" className="cx-act" aria-pressed={find.marks} onClick={() => setFind({ q: find.q, i: 0, marks: !find.marks })}><UiIcon name="bookmark" size={14} />Bookmarks</button>
+            <button type="button" className="cx-closeb" onClick={() => setFind(null)}><UiIcon name="close" size={16} /><span>Close</span></button>
+          </div>
+        )}
         <div className="cx-scroll" ref={scroller} onScroll={onScroll} onClick={onMessages}>
           {empty ? (
             <div className="cx-empty home">
@@ -904,13 +1007,14 @@ export function Chat({ initialList, initialConv }: ChatProps) {
             <RichContext.Provider value={richCtx}><ol className="cx-msgs">
               {conv.messages.map((m, i) => {
                 if (m.hidden) return null;
+                if (m.compact) return <li key={m.id} data-mid={m.id} className="cx-msg compactmsg"><details className="cx-fold"><summary className="d"><UiIcon name="down" size={14} />Earlier messages, summarised</summary><div className="cx-fold-in"><p className="tx" style={{ whiteSpace: 'pre-wrap' }}>{m.text.replace(/^\[[^\]]*\]\n?/, '')}</p></div></details></li>;
                 const lastOne = i === conv.messages.length - 1 || conv.messages.slice(i + 1).every((x) => x.hidden);
                 const live = streaming && lastOne && m.role === 'assistant';
                 const nextVis = conv.messages.slice(i + 1).find((x) => !x.hidden), turnEnd = m.role === 'assistant' && (!nextVis || nextVis.role === 'user');
                 const rr = m.runs?.[0], liveRun = live && rr?.status === 'running' ? describeRun(rr) : null;
                 return (
                   <li key={m.id} data-mid={m.id} className={`cx-msg ${m.role}${Date.now() - m.ts < 2500 ? ' new' : ''}`}>
-                    <div className="cx-who d">{m.role === 'user' ? 'You' : <><CoeStar size={20} mode={live ? shownPhase : undefined} />Coe{m.work ? <i>Deep Work</i> : m.model ? <i>{modelByKey(m.model).name.replace(/^Coe /, '')}</i> : null}</>}</div>
+                    <div className="cx-who d">{m.role === 'user' ? 'You' : <><CoeStar size={20} />Coe{m.marked ? <UiIcon name="bookmark" size={14} /> : null}{m.work ? <i>Deep Work</i> : m.model ? <i>{modelByKey(m.model).name.replace(/^Coe /, '')}</i> : null}</>}</div>
                     {m.images?.length ? (
                       <div className="cx-pics">{m.images.map((im, k) => (
                         <button type="button" key={k} className="cx-pic" onClick={() => setBig(im)} aria-label={`Open ${im.name}`}><img src={dataUrl(im)} alt={im.name} /></button>
@@ -918,12 +1022,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                     ) : null}
                     {m.attach?.length ? <div className="cx-atts">{m.attach.map((a, k) => <span key={k} className="cx-att tx"><UiIcon name="file" size={15} /><b>{a.name}</b><i>{a.kind}{a.cut ? ', cut short' : ''}</i></span>)}</div> : null}
                     {m.role === 'user'
-                      ? (m.text && <p className="cx-says tx">{m.text}</p>)
-                      : (m.text ? <Rich text={m.text} msg={m} live={live} /> : live && !m.error ? <Working phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} /> : null)}
+                      ? (m.text && <Clamp limit={260}><p className="cx-says tx">{m.text}</p></Clamp>)
+                      : (m.text ? <Clamp live={live}><Rich text={m.text} msg={m} live={live} /></Clamp>: null)}
                     {m.role === 'assistant' && m.checked && !live && <p className={`cx-checked tx ${m.checked}`}><UiIcon name={m.checked === 'ok' ? 'shield' : 'wand'} size={14} />{m.checked === 'ok' ? 'Double-checked' : <>Fixed before sending: {m.fix}</>}</p>}
-                    {live && m.text && shownPhase === 'write' && <span className="cx-cursor" aria-hidden />}
-                    {live && m.text && shownPhase !== 'write' && !(m.runs?.length) && <Working phase={shownPhase} size={24} />}
-                    {m.role === 'assistant' && turnEnd && !m.error && <Activity steps={turnSteps(conv.messages, i)} live={live} phaseNote={PHASES[shownPhase === 'rest' ? 'idle' : shownPhase].label} />}
+                    {live && !m.error && <Generating phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} empty={!m.text} />}
+                    {m.role === 'assistant' && turnEnd && !m.error && !(dk && dk.end >= turnFrom(i) && dk.end <= i) && <Activity steps={turnSteps(conv.messages, i)} live={live} phaseNote={PHASES[shownPhase === 'rest' ? 'idle' : shownPhase].label} />}
                     {m.error && (
                       <ErrorBox own={keyOn} kind={m.errKind} text={m.error} canRetry={lastOne && !busy} onAct={errAct} />
                     )}
@@ -932,9 +1035,18 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                       <div className="cx-acts">
                         {m.role === 'assistant' && m.text && <button type="button" className="cx-act" onClick={() => copyMsg(m)}><UiIcon name="copy" size={14} />Copy</button>}
                         {m.role === 'assistant' && m.text && !m.error && <button type="button" className="cx-act" aria-pressed={aloud === m.id} onClick={() => readAloud(m)}><UiIcon name={aloud === m.id ? 'stop' : 'volume'} size={14} />{aloud === m.id ? 'Stop' : 'Read aloud'}</button>}
-                        {m.role === 'assistant' && lastOne && !m.error && !busy && <button type="button" className="cx-act" onClick={retry}><UiIcon name="refresh" size={14} />Again</button>}
-                        {m.role === 'assistant' && lastOne && !m.error && !busy && m.text && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className={`cx-act${left > 0 ? ' free' : ''}`} onClick={redo} title={left > 0 ? `Wrong? Redo it free. ${left} free ${left === 1 ? 'redo' : 'redos'} left today; after that a redo counts like a normal message.` : 'Redo it. Today\'s free redos are used, so this counts like a normal message.'}><UiIcon name="wand" size={14} />{left > 0 ? `Redo free (${left})` : 'Redo'}</button>; })()}
-                        {m.role === 'assistant' && m.text && !m.error && <button type="button" className="cx-act" onClick={() => setInfoFor(m.id)} title="Details about this answer"><UiIcon name="info" size={14} />Info</button>}
+                        {m.role === 'assistant' && m.text && !m.error && (
+                          <details className="cx-more" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) { const d = e.currentTarget as HTMLDetailsElement; const off = (ev: Event) => { if (!d.contains(ev.target as Node)) { d.open = false; document.removeEventListener('pointerdown', off, true); } }; document.addEventListener('pointerdown', off, true); } }}>
+                            <summary className="cx-act" aria-label="More for this answer"><UiIcon name="menu" size={14} />More</summary>
+                            <div className="cx-more-menu" onClick={(e) => { (e.currentTarget.closest('details') as HTMLDetailsElement).open = false; }}>
+                              {lastOne && !busy && <button type="button" className="cx-act" onClick={retry}><UiIcon name="refresh" size={14} />Again</button>}
+                              {lastOne && !busy && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className={`cx-act${left > 0 ? ' free' : ''}`} onClick={redo} title={left > 0 ? `Wrong? Redo it free. ${left} free ${left === 1 ? 'redo' : 'redos'} left today; after that a redo counts like a normal message.` : 'Redo it. Today\'s free redos are used, so this counts like a normal message.'}><UiIcon name="wand" size={14} />{left > 0 ? `Redo free (${left})` : 'Redo'}</button>; })()}
+                              <button type="button" className="cx-act" onClick={() => mark(m.id)}><UiIcon name="bookmark" size={14} />{m.marked ? 'Remove bookmark' : 'Bookmark'}</button>
+                              <button type="button" className="cx-act" onClick={() => void branchFrom(m.id)}><UiIcon name="branch" size={14} />Branch from here</button>
+                              <button type="button" className="cx-act" onClick={() => setInfoFor(m.id)}><UiIcon name="info" size={14} />Info</button>
+                            </div>
+                          </details>
+                        )}
                         {m.role === 'user' && m.id === lastUser && !busy && <button type="button" className="cx-act" onClick={() => edit(m.id)}><UiIcon name="edit" size={14} />Edit</button>}
                         {m.role === 'assistant' && m.outTokens ? <span className="cx-tok tx">{m.outTokens} tokens</span> : null}
                       </div>
@@ -950,11 +1062,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           )}
         </div>
 
+        <Dock messages={conv.messages} convId={conv.id} live={streaming} />
         <footer className="cx-compose">
           {away && <button type="button" className="cx-jump btn small" onClick={() => { stick.current = true; toBottom(true); setAway(false); }}><UiIcon name="down" size={15} />Latest</button>}
+          {remoteLive && !busy && <p className="cx-flag tx" role="status">Coe is replying to this chat on another device. It shows here as it is written.</p>}
           {note && <p className="cx-flag tx">{note}</p>}
           {full && <p className="cx-limit tx" role="status">All {fmtTok(perDay)} tokens for today are used. <a className="cx-link" href="/plans/">See plans</a></p>}
-          {fb && !busy && !empty && <Feedback onRate={(r) => void sendFeedback(loadSettings(), r)} onLater={() => { feedbackLater(); setFb(false); }} onDone={() => setFb(false)} />}
+          {fb && !busy && !empty && <Feedback onRate={(r) => void sendFeedback(loadSettings(), r)} onMessage={async (r, t) => (await sendFeedback(loadSettings(), undefined, `[${r}] ${t}`, 'problem')).emailed} onLater={() => { feedbackLater(); setFb(false); }} onDone={() => setFb(false)} />}
           {queue.length > 0 && (
             <ul className="cx-queue" aria-label="Messages waiting to be sent">
               {queue.map((q) => (
@@ -987,13 +1101,6 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               </ul>
             )}
             {mathOpen && <MathPad onInsert={(t) => { insertText(t); setMathOpen(false); }} onClose={() => { setMathOpen(false); box.current?.focus(); }} />}
-            {(work || web || persona !== 'coe') && (
-              <div className="cx-modes" role="group" aria-label="Switched on">
-                {work && <button type="button" className="cx-mode" aria-label="Turn off Deep Work" onClick={() => setWork(false)}><UiIcon name="bolt" size={14} /><span className="d">Deep Work</span><UiIcon name="close" size={12} /></button>}
-                {web && <button type="button" className="cx-mode" aria-label="Turn off web search" onClick={() => toggleWeb()}><UiIcon name="globe" size={14} /><span className="d">Web</span><UiIcon name="close" size={12} /></button>}
-                {persona !== 'coe' && <button type="button" className="cx-mode" aria-label="Go back to the usual style" onClick={() => pickPersona('coe')}><UiIcon name="graduate" size={14} /><span className="d">{personaOf(persona).name}</span><UiIcon name="close" size={12} /></button>}
-              </div>
-            )}
             <textarea ref={box} className="cx-ta tx" rows={1} value={text} placeholder={work ? 'Describe the big job. Coe will plan it and work through it' : empty ? 'Ask Coe anything, or add a picture or a file' : 'Write a reply'} aria-label="Message" onChange={(e) => setText(e.target.value)} onKeyDown={onKey} onPaste={onPaste} />
             <div className="cx-bar">
               <div className="cx-plus">
@@ -1021,6 +1128,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               </div>
               <input ref={fileIn} type="file" accept={`image/*,${KINDS},${MEDIA_KINDS}`} multiple hidden onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ''; void addFiles(f); }} />
               <input ref={cameraIn} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ''; void addFiles(f); }} />
+              {(work || web || persona !== 'coe') && (
+              <div className="cx-modes" role="group" aria-label="Switched on">
+                {work && <button type="button" className="cx-mode" aria-label="Turn off Deep Work" onClick={() => setWork(false)}><UiIcon name="bolt" size={14} /><span className="d">Deep Work</span><UiIcon name="close" size={12} /></button>}
+                {web && <button type="button" className="cx-mode" aria-label="Turn off web search" onClick={() => toggleWeb()}><UiIcon name="globe" size={14} /><span className="d">Web</span><UiIcon name="close" size={12} /></button>}
+                {persona !== 'coe' && <button type="button" className="cx-mode" aria-label="Go back to the usual style" onClick={() => pickPersona('coe')}><UiIcon name="graduate" size={14} /><span className="d">{personaOf(persona).name}</span><UiIcon name="close" size={12} /></button>}
+              </div>
+            )}
               <span className="cx-grow" />
               <button type="button" className={`tb${dict === 'rec' ? ' rec' : ''}`} aria-label={dict === 'rec' ? 'Stop dictating' : 'Dictate with your voice'} aria-pressed={dict === 'rec'} title={dict === 'rec' ? 'Stop' : dict === 'work' ? 'Reading…' : 'Dictate: speak and it types'} disabled={dict === 'work'} onClick={() => void toggleDict()}><UiIcon name={dict === 'rec' ? 'stop' : 'mic'} size={20} /></button>
               <button type="button" className="tb" aria-label="Talk with Coe out loud" title="Voice: talk with Coe out loud" onClick={() => setVoiceOpen(true)}><UiIcon name="wave" size={20} /></button>
@@ -1063,7 +1177,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
             <div className="cd-foot"><button type="button" className="btn gold" onClick={() => setTool(false)}><UiIcon name="left" size={18} />Back to chat</button></div>
           </div>
         )}
-        {shelf && <Workspace files={conv.files ?? {}} convTitle={conv.title} onChange={(f) => { const next = { ...convRef.current, files: f }; setConv(next); void persist(next); }} onClose={() => setShelf(false)} say={say} plan={planNow(settings)} />}
+        {shelf && <Workspace files={conv.files ?? {}} messages={conv.messages} tab={shelfTab} convTitle={conv.title} onChange={(f) => { const next = { ...convRef.current, files: f }; setConv(next); void persist(next); }} onClose={() => setShelf(false)} say={say} plan={planNow(settings)} />}
         {drop && <div className="cx-drop" aria-hidden><b className="d">Drop pictures or files to add them</b></div>}
         {toast && <div className="cx-toast tx" role="status">{toast}</div>}
       </section>

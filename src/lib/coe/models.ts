@@ -21,7 +21,7 @@ export const PLANS: Plan[] = [
     'A taste of the big stuff each day: 1 Deep Work run, 3 web searches, 2 made pictures, 5 PMC App runs', '3 pictures in each message'] },
   { key: 'pro', name: 'Pro', monthly: 10, yearly: 110, perDay: 6000000, images: 10, points: [
     '6,000,000 tokens a day: over 1,000 chats', 'Coe Deep, the biggest model (counts double)', 'Deep Work: long jobs planned, checked and finished in steps', 'Much longer replies',
-    'Search the web (100 a day)', 'Make pictures (40 a day)', 'Every PMC App inside the chat, with no daily limit', 'Google Docs, Sheets and Slides, live', 'GitHub: read code, commit and open pull requests',
+    'Search the web (100 a day)', 'Make pictures (40 a day)', 'Every PMC App inside the chat, with no daily limit',
     'Big files in: PDF, Word, Excel, PowerPoint, zip and whole code folders', '10 pictures in each message', 'Use your own AI key: OpenAI, Anthropic, Google and more', 'Everything in Free'] },
 ];
 /** Tokens in a short form people can read: 950, 12.4k, 3.2M. */

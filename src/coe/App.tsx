@@ -7,7 +7,6 @@ import { cloudOn, session, sync, takeLink } from '@/lib/coe/cloud';
 import { loadConv, loadIndex, type Conv, type ConvMeta } from './store';
 import type { ChatProps } from './Chat';
 import { ownerFromUrl } from '@/lib/coe/owner';
-import { Intro } from './Intro';
 import { startPwa } from '@/lib/coe/pwa';
 
 const SEEN = 'pmc:coe:intro';
@@ -58,5 +57,5 @@ function Boot() {
   // Tell the page that Coe is open, so the recovery help in the page's head stands down.
   useEffect(() => { if (load.ready && Chat) { try { document.documentElement.classList.add('coe-ready'); (window as unknown as { __coeHideStuck?: () => void }).__coeHideStuck?.(); } catch { /* ignore */ } } }, [load.ready, Chat]);
   if (!load.ready) return <CoeLoader title="Coe" steps={STEPS} index={load.index} error={load.error} onRetry={() => { made.current = {}; setTries((n) => n + 1); }} />;
-  return Chat ? <><Chat initialList={list ?? []} initialConv={conv ?? null} />{!first && <Intro />}</> : null;
+  return Chat ? <><Chat initialList={list ?? []} initialConv={conv ?? null} /></> : null;
 }

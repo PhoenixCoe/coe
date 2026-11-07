@@ -29,8 +29,12 @@ export interface Msg {
   fix?: string;
   /** Sent while Coe was still answering the message before it. */
   late?: boolean;
+  /** A summary standing in for the older messages of a long chat. */
+  compact?: boolean;
+  /** The person bookmarked this answer. */
+  marked?: boolean;
 }
-export interface Conv { id: string; title: string; created: number; updated: number; model: ModelKey; space?: 'chat' | 'aced'; pinned?: boolean; messages: Msg[]; /** The project folder: file name to text. */ files?: Record<string, string> }
+export interface Conv { id: string; title: string; created: number; updated: number; model: ModelKey; space?: 'chat' | 'aced'; pinned?: boolean; /** Coe or the person has chosen the name, so it is not changed again. */ named?: boolean; /** Set while a reply is being written, so another device can follow it live. */ live?: number; messages: Msg[]; /** The project folder: file name to text. */ files?: Record<string, string> }
 export interface ConvMeta { id: string; title: string; updated: number; space?: 'chat' | 'aced'; pinned?: boolean; count: number }
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);

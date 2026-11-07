@@ -19,8 +19,16 @@ export function feedbackDue(now = Date.now()): boolean {
 }
 export const feedbackShown = () => { const s = read(); s.lastAsk = Date.now(); s.asked++; s.replies = 0; write(s); };
 export const feedbackLater = () => { const s = read(); s.skipUntil = Date.now() + 3 * 86400_000; s.replies = 0; write(s); };
-export async function sendFeedback(settings: CoeSettings, rating: Rating): Promise<void> {
-  const s = read(); s.answered++; s.last = rating; write(s);
-  if (modeOf(settings) !== 'server' || !connection(settings).ok) return;
-  try { await serverPost(settings, '/feedback', { rating }); void refreshStatus(settings); } catch { /* the thanks is shown either way */ }
+export type FeedbackKind = 'idea' | 'problem' | 'other' | 'rating';
+const MAIL = 'contact@pmcstudios.uk';
+/** Opens the person's own email app, addressed to us. The fallback when the server cannot send mail. */
+export function mailtoFeedback(message: string, kind: FeedbackKind = 'other') {
+  location.href = `mailto:${MAIL}?subject=${encodeURIComponent('Coe feedback: ' + kind)}&body=${encodeURIComponent(message)}`;
+}
+/** A rating, and/or a written message. Resolves to whether the server emailed it. */
+export async function sendFeedback(settings: CoeSettings, rating?: Rating, message = '', kind: FeedbackKind = rating ? 'rating' : 'other'): Promise<{ emailed: boolean }> {
+  if (rating) { const s = read(); s.answered++; s.last = rating; write(s); }
+  if (modeOf(settings) !== 'server' || !connection(settings).ok) return { emailed: false };
+  try { const r = await serverPost<{ emailed?: boolean }>(settings, '/feedback', { rating, message: message.trim() || undefined, kind, page: location.pathname }); void refreshStatus(settings); return { emailed: !!r?.emailed }; }
+  catch { return { emailed: false }; }
 }

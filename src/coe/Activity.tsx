@@ -24,10 +24,10 @@ export function describeRun(r: ToolRun): Omit<Step, 'id' | 'status' | 'ms' | 'ru
     case 'image': return { icon: 'image', now: 'Making a picture', done: 'Made a picture', detail: short(a.prompt), command: pretty(a) };
     case 'place': return { icon: 'pin', now: 'Looking up places', done: 'Looked up places', detail: short(a.query), command: pretty(a) };
     case 'pmc_app': return { icon: 'apps', now: `Using ${short(a.slug, 30)}`, done: `Used ${short(a.slug, 30)}`, detail: short([a.fill && 'filled in fields', Array.isArray(a.click) && a.click.length && `pressed ${a.click.join(', ')}`, a.call && 'sent a command'].filter(Boolean).join(', ') || 'opened the app'), command: pretty(a) };
-    case 'github': return { icon: 'branch', now: 'Working with GitHub', done: 'Worked with GitHub', detail: short(`${a.action ?? ''} ${a.repo ?? ''}`), command: pretty(a) };
+    case 'chat': return { icon: 'chat', now: 'Changing a chat', done: 'Changed a chat', detail: short(`${a.action ?? ''} ${a.title ?? a.chat ?? ''}`), command: pretty(a) };
     case 'workspace': return { icon: 'folder', now: 'Working in the project folder', done: 'Worked in the project folder', detail: short(`${a.action ?? ''} ${a.path ?? ''}`), command: pretty(a) };
     case 'ask': return { icon: 'info', now: 'Asking you a question', done: 'Asked you a question', detail: short((a.questions as { question?: string }[] | undefined)?.[0]?.question ?? a.question), command: pretty(a) };
-    default: return { icon: 'cloud', now: r.tool.startsWith('google') ? 'Working with Google' : 'Using a tool', done: r.tool.startsWith('google') ? 'Worked with Google' : 'Used a tool', detail: short(a.title ?? a.url ?? ''), command: pretty(a) };
+    default: return { icon: 'cloud', now: 'Using a tool', done: 'Used a tool', detail: short(a.title ?? a.url ?? ''), command: pretty(a) };
   }
 }
 
@@ -54,6 +54,10 @@ export function BrowserWindow({ run }: { run: ToolRun }) {
       <div className="bw-top"><i /><i /><i /><span className="bw-bar tx"><UiIcon name="search" size={13} /><span className="bw-q">{q}</span></span></div>
       <div className="bw-load" aria-hidden />
       <div className="bw-body">
+        <span className={`bw-cursor${running ? ' go' : ''}`} aria-hidden>
+          <svg width="22" height="26" viewBox="0 0 22 26"><path d="M2 2 L2 21 L7.5 16 L11 24 L14.5 22.5 L11 14.8 L18.5 14.8 Z" fill="#171717" stroke="#F2E4CE" strokeWidth="1.8" strokeLinejoin="round" /></svg>
+          <b className="d">Coe</b>
+        </span>
         {running && !src.length && <p className="bw-wait tx">Looking at the web…</p>}
         {src.length > 0 && <ul className="bw-tabs">{src.slice(0, 6).map((s, i) => <li key={i}><a href={s.url} target="_blank" rel="noopener noreferrer"><span className="bw-fav d">{host(s.url).slice(0, 1).toUpperCase()}</span><span className="bw-t"><b className="d">{short(s.title, 60) || host(s.url)}</b><i>{host(s.url)}</i></span></a></li>)}</ul>}
         {text && <p className="bw-page tx">{short(text, 420)}</p>}
@@ -68,9 +72,9 @@ export function Activity({ steps, live, phaseNote }: { steps: Step[]; live: bool
   const [open, setOpen] = useState<boolean | null>(null);
   const [cmd, setCmd] = useState<Record<string, boolean>>({});
   const running = steps.find((s) => s.status === 'running');
-  const searching = [...steps].reverse().find((s) => s.run?.tool === 'search');
   useEffect(() => { if (!live) setOpen((o) => (o === null ? null : o)); }, [live]);
   if (!steps.length) return null;
+  if (live) return null;   // while a reply is made, the only thing that moves is the one generating line; the web view lives in the screen under the reply
   const isOpen = open ?? live;
   const total = steps.reduce((n, s) => n + (s.ms ?? 0), 0);
   const head = live ? (running ? `${running.now}${running.detail ? ': ' + running.detail : ''}` : phaseNote || 'Working') : `What Coe did: ${steps.length} ${steps.length === 1 ? 'step' : 'steps'}${total ? ` in ${sec(total)}` : ''}`;
@@ -81,7 +85,6 @@ export function Activity({ steps, live, phaseNote }: { steps: Step[]; live: bool
         <span className="act-t d">{head}</span>
         <UiIcon name="down" size={15} className="act-chev" />
       </button>
-      {live && searching?.run && (searching.status === 'running' || isOpen) && <BrowserWindow run={searching.run} />}
       {isOpen && (
         <ol className="act-list">
           {steps.map((s) => (
@@ -92,7 +95,6 @@ export function Activity({ steps, live, phaseNote }: { steps: Step[]; live: bool
                 <div className="act-sm tx">{s.status === 'running' ? 'Working…' : s.status === 'pending' ? 'Waiting for you' : s.status === 'error' ? 'Did not work' : s.status === 'check' ? 'Checked' : 'Done'}{s.ms ? ` · ${sec(s.ms)}` : ''}{s.note ? ` · ${s.note}` : ''}</div>
                 {s.command && <button type="button" className="act-cmdb" aria-expanded={!!cmd[s.id]} onClick={() => setCmd((o) => ({ ...o, [s.id]: !o[s.id] }))}><UiIcon name="code" size={13} />{cmd[s.id] ? 'Hide the command' : 'Show the command'}</button>}
                 {s.command && cmd[s.id] && <pre className="act-cmd"><code>{s.command.length > 4000 ? s.command.slice(0, 4000) + '\n…' : s.command}</code></pre>}
-                {!live && s.run?.tool === 'search' && cmd[s.id] && <BrowserWindow run={s.run} />}
               </div>
             </li>
           ))}

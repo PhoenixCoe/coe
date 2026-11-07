@@ -30,6 +30,13 @@ export function editFile(f: Files, path: unknown, find: unknown, replace: unknow
 }
 export function removeFile(f: Files, path: unknown): Files { const p = cleanPath(path); if (!(p in f)) throw new Error(`There is no file ${p}.`); const n = { ...f }; delete n[p]; return n; }
 export const listing = (f: Files) => { const k = Object.keys(f).sort(); return k.length ? k.map((p) => `${p} (${f[p].split('\n').length} lines)`).join('\n') : 'The project is empty.'; };
+/** The folders and files as a picture made of text, so the model can see the layout. */
+export function tree(f: Files): string {
+  type N = { [k: string]: N | null };
+  const root: N = {}; for (const p of Object.keys(f).sort()) { const bits = p.split('/'); let n = root; bits.forEach((b, i) => { if (b === '.keep') return; if (i === bits.length - 1) n[b] = null; else n = (n[b] ??= {}) as N; }); }
+  const out: string[] = []; const walk = (n: N, pre: string) => { const ks = Object.keys(n).sort((a, b) => (n[a] ? 0 : 1) - (n[b] ? 0 : 1) || a.localeCompare(b)); ks.forEach((k, i) => { const last = i === ks.length - 1; out.push(pre + (last ? '└─ ' : '├─ ') + k + (n[k] ? '/' : '')); if (n[k]) walk(n[k] as N, pre + (last ? '   ' : '│  ')); }); };
+  walk(root, ''); return out.join('\n') || 'Empty.';
+}
 export const hasFiles = (f?: Files) => !!f && Object.keys(f).length > 0;
 
 const rel = (from: string, to: string) => {
