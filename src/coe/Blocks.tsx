@@ -1,5 +1,5 @@
 'use client';
-import { createContext, memo, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Activity, BrowserWindow, turnSteps } from './Activity';
 import { UiIcon } from '@/ui/icons';
 import { CopyButton, downloadBlob, downloadText } from '@/ui/copy';
@@ -64,7 +64,40 @@ const Md = memo(function Md({ text, live }: { text: string; live?: boolean }) {
   const ctx = useContext(RichContext);
   const fx = ctx?.effects !== false, pics = ctx?.pics, box = useRef<HTMLDivElement>(null);
   useEffect(() => { if (hasMath(text)) void loadMath().then(() => setReady((n) => n + 1)); }, [text]);
-  const html = useMemo(() => renderMarkdown(text, fx), [text, ready, fx]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const base = useMemo(() => renderMarkdown(text, fx), [text, ready, fx]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // While the reply is written, three square blocks sit at the end of the last paragraph, like a cursor that writes.
+  const html = useMemo(() => {
+    if (!live) return base;
+    const at = Math.max(base.lastIndexOf('</p>'), base.lastIndexOf('</li>'), base.lastIndexOf('</h1>'), base.lastIndexOf('</h2>'), base.lastIndexOf('</h3>'));
+    const tail = base.slice(at + 4).trim();
+    if (at < 0 || /<pre|<table|<details/.test(tail)) return base;
+    return base.slice(0, at) + '<span class="wblk" aria-hidden="true"><i></i><i></i><i></i></span>' + base.slice(at);
+  }, [base, live]);
+  // New words arrive as a green block that drops away to show the word. Each chunk keeps its own clock, so a re-render never restarts it.
+  const seen = useRef(0), chunks = useRef<{ a: number; b: number; t: number }[]>([]);
+  useLayoutEffect(() => {
+    const el = box.current; if (!el) return;
+    if (!live || ctx?.effects === false) { seen.current = 0; chunks.current = []; return; }
+    const total = (el.textContent ?? '').length, now = performance.now();
+    if (total < seen.current) { seen.current = 0; chunks.current = []; }
+    if (total > seen.current) chunks.current.push({ a: seen.current, b: total, t: now });
+    seen.current = total;
+    chunks.current = chunks.current.filter((c) => now - c.t < 650);
+    for (const c of [...chunks.current].reverse()) {
+      const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let off = 0, n: Node | null;
+      const hits: { node: Text; from: number; to: number }[] = [];
+      while ((n = w.nextNode())) {
+        const t = n as Text, len = t.data.length, a = Math.max(c.a - off, 0), b = Math.min(c.b - off, len);
+        if (a < b && !t.parentElement?.closest('pre, .katex, .wblk')) hits.push({ node: t, from: a, to: b });
+        off += len; if (off >= c.b) break;
+      }
+      for (const h of hits.reverse()) {
+        let mid = h.node; if (h.from > 0) mid = mid.splitText(h.from); if (h.to - h.from < mid.data.length) mid.splitText(h.to - h.from);
+        const sp = document.createElement('span'); sp.className = 'wf'; sp.style.animationDelay = `-${Math.round(now - c.t)}ms`;
+        mid.parentNode?.insertBefore(sp, mid); sp.appendChild(mid);
+      }
+    }
+  }, [html, live]);   // eslint-disable-line react-hooks/exhaustive-deps
   // Pictures from this chat, and effects that play once they are on screen (never while the reply is still being written).
   useEffect(() => {
     const el = box.current; if (!el) return;
@@ -290,6 +323,8 @@ function titleOf(c: Call): string {
 function ToolCard({ msg, call, run }: { msg: Msg; call: Call; run?: ToolRun }) {
   const ctx = useContext(RichContext);
   const st = run?.status ?? 'running';
+  // Running code and working in an app are steps, not part of the answer: they sit under "What Coe did", unless they made files or a picture for you.
+  if (['js', 'maths', 'pmc_app'].includes(call.tool) && st !== 'error' && st !== 'pending' && run?.out?.kind !== 'files' && run?.out?.kind !== 'image') return null;
   const state = st === 'running' ? 'Working' : st === 'error' ? 'Did not work' : 'Done';
   return (
     <div className={`cx-tool ${st}`}>

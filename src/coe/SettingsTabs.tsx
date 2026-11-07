@@ -7,6 +7,7 @@ import { LEADS, loadLead, setLead, setSfx, sfxOn, type Lead } from '@/lib/coe/lo
 import { DEFAULTS, type CoeSettings } from '@/lib/coe/settings';
 import { FEATURES, FEATURE_GROUPS, type FeaturePlan } from '@/lib/coe/features';
 import { loadSettings } from '@/lib/coe/settings';
+import { EXT_FILE, useExtension } from '@/lib/coe/extension';
 import { mailtoFeedback, sendFeedback, type FeedbackKind } from '@/lib/coe/feedback';
 
 type Up = (patch: Partial<CoeSettings>) => void;
@@ -142,6 +143,48 @@ export function AboutTab() {
       })}
       <FeedbackForm />
       <p className="tx cx-small">Coe is made by PMC Studios. It can be wrong, so check anything important.</p>
+    </div>
+  );
+}
+
+/** Coe for Chrome: get it, and set it up from here. The extension answers through the page, so the two stay in step. */
+export function ChromeTab() {
+  const { state, version, prefs, change } = useExtension(true);
+  const [copied, setCopied] = useState(false);
+  const on = state === 'on';
+  const copy = async () => { try { await navigator.clipboard.writeText('chrome://extensions'); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* blocked */ } };
+  return (
+    <div className="set-list ex">
+      <div className={`ex-top${on ? ' on' : ''}`}>
+        <span className="ex-dot" aria-hidden />
+        <div><b className="d">{on ? 'Coe for Chrome is on' : state === 'checking' ? 'Looking for the extension' : 'Coe for Chrome'}</b>
+          <p className="tx">{on ? `Version ${version}. Your sign-in and these settings are shared with it.` : 'A small Coe that sits on any page. It finds the questions, gives hints and worked answers, and makes practice questions.'}</p></div>
+      </div>
+      {!on && (
+        <>
+          <a className="btn primary ex-get" href={`/${EXT_FILE}`} download><UiIcon name="download" size={18} />Get the Coe extension</a>
+          <ol className="ex-steps">
+            <li><span className="d">1</span><p className="tx">Open the file you got and choose <b>Extract all</b> (or double-click it on a Mac). You get a folder called <b>coe-extension</b>.</p></li>
+            <li><span className="d">2</span><p className="tx">In Chrome, go to <b>chrome://extensions</b>. <button type="button" className="ex-copy" onClick={copy}>{copied ? 'Copied' : 'Copy this address'}</button></p></li>
+            <li><span className="d">3</span><p className="tx">Turn on <b>Developer mode</b> (top right).</p></li>
+            <li><span className="d">4</span><p className="tx">Click <b>Load unpacked</b> and choose the <b>coe-extension</b> folder.</p></li>
+            <li><span className="d">5</span><p className="tx">Come back to this page. It spots the extension by itself and the settings show up here.</p></li>
+          </ol>
+        </>
+      )}
+      {on && prefs && (
+        <>
+          <Switch icon="globe" label="Appear on school sites" hint="Shows up by itself on Google Forms, Sparx and Seneca. Off means only when you ask." on={prefs.auto} onChange={(auto) => change({ auto })} />
+          <Row label="When it appears" icon="panel" hint="Open means the bar drops in ready. Small means just a little tab.">
+            <Select label="When it appears" value={prefs.start} onChange={(start) => change({ start })} options={[{ value: 'bar', label: 'Open bar', hint: 'Ready straight away' }, { value: 'small', label: 'Small tab', hint: 'Stays out of the way' }]} />
+          </Row>
+          <Row label="Speed" icon="bolt" hint="Quick answers or careful ones.">
+            <Select label="Speed" value={prefs.speed} onChange={(speed) => change({ speed })} options={[{ value: 'swift', label: 'Swift', hint: 'Fastest' }, { value: 'core', label: 'Core', hint: 'Everyday' }, { value: 'deep', label: 'Deep', hint: 'Careful, slower' }]} />
+          </Row>
+          <p className="tx cx-small">It uses your name, tone, answer length and standing instructions from the Chat tab, and your Coe tokens. Redos are free. Press <b>Ctrl+Shift+Y</b> (<b>Command+Shift+Y</b> on a Mac) on any page to show or hide it. &quot;Continue in Coe&quot; in the extension opens a new chat here with your question.</p>
+        </>
+      )}
+      {!on && state === 'off' && <p className="tx cx-small">Already added it? Reload this page once.</p>}
     </div>
   );
 }

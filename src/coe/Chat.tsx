@@ -18,6 +18,7 @@ import { KINDS, isReadable, readAny } from './readers';
 import { MEDIA_KINDS, isAudio, isVideo, readAudio, videoFrames } from './media';
 import { STEPS, execute, findTool, memoryPrompt, SHOW_PROMPT, toolsPrompt, type Call, type ChatOps } from '@/lib/coe/tools';
 import { memory, onMemory } from '@/lib/coe/links';
+import { onExtHandoff } from '@/lib/coe/extension';
 import { APPS_ORIGIN } from '@/lib/coe/pmc';
 import { Workspace } from './Workspace';
 import { hasFiles, type Files } from '@/lib/coe/workspace';
@@ -44,6 +45,7 @@ import { VOICE_PROMPT, browserListen, browserListens, canListen, listening, load
 import { pushProfile, cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
 import { knowledgeFor } from './knowledge';
 import { BASE_COE, CHECK_SYSTEM, REDO_NOTE, STARTERS, greeting, picsNote, preferencesPrompt, worthChecking } from './prompts';
+import { Halftone } from '@/ui/Halftone';
 import { Modal, SettingsPanel, Upgrade, type Tab } from './Panels';
 import { Select } from '@/ui/Controls';
 import { setFavicon } from '@/lib/coe/favicon';
@@ -97,7 +99,9 @@ function Rename({ value, onDone, className }: { value: string; onDone: (v: strin
     onKeyDown={(e) => { if (e.key === 'Enter') onDone(v); if (e.key === 'Escape') onDone(null); e.stopPropagation(); }} />;
 }
 
-type Queued = { id: string; text: string; pics: Img[]; atts: Attach[]; work: boolean; late?: boolean };
+/** Redo is for the long answers: an essay, a worked problem, code. A short reply is quicker to ask again. */
+const worthRedo = (t: string) => t.length > 1200 || /```/.test(t) || /\$\$|\\\[/.test(t) || (t.match(/^#{1,3} /gm)?.length ?? 0) >= 2;
+type Queued = { cid?: string; id: string; text: string; pics: Img[]; atts: Attach[]; work: boolean; late?: boolean };
 export interface ChatProps { initialList: ConvMeta[]; initialConv: Conv | null }
 
 export function Chat({ initialList, initialConv }: ChatProps) {
@@ -126,7 +130,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [slashAt, setSlashAt] = useState(0);
   useEffect(() => { setPersona(loadPersona()); }, []);
   const [reading, setReading] = useState('');                  // a file being read
-  const [busy, setBusy] = useState(false);
+  // Each chat runs on its own: opening another chat leaves a reply going, and it is all there when you come back.
+  const [runIds, setRunIds] = useState<string[]>([]);
+  const busy = runIds.includes(conv.id);
+  const aborts = useRef(new Map<string, AbortController>());
+  const liveWork = useRef(new Map<string, Conv>());
   const [infoFor, setInfoFor] = useState<string | null>(null);
   const [side, setSide] = useState(() => typeof window === 'undefined' || window.innerWidth >= 900);
   // A phone or a narrow window: the list folds away by itself, and stays folded when the screen is turned.
@@ -207,7 +215,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
   const nameRef = useRef<(c: Conv) => Promise<void>>(async () => {});
   const chatBits = useRef<{ patch: (id: string, p: Partial<Conv>) => Promise<void>; remove: (id: string) => Promise<void> }>({ patch: async () => {}, remove: async () => {} });
-  const abort = useRef<AbortController | null>(null);
+  const abort = useMemo(() => ({ get current(): AbortController | null { return aborts.current.get(convRef.current.id) ?? null; } }), []);
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const box = useRef<HTMLTextAreaElement>(null);
@@ -408,7 +416,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
     const mine = base.id, active = () => convRef.current.id === mine;
     let work: Conv = base;
-    const commit = (c: Conv) => { work = c; if (active()) setConv(c); };
+    const commit = (c: Conv) => { work = c; liveWork.current.set(mine, c); if (active()) setConv(c); };
+    const phaseA = (p: Phase) => { if (active()) setPhase(p); };
+    const noteA = (t: string) => { if (active()) setNote(t); };
     let killed = false;   // the person asked Coe to delete this very chat
     const ops: ChatOps = {
       list: async () => (await loadIndex()).map((m) => ({ id: m.id, title: m.title, pinned: !!m.pinned, current: m.id === base.id })),
@@ -417,14 +427,15 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       remove: async (id) => { if (id === base.id) killed = true; else await chatBits.current.remove(id); },
       compact: async () => { const c2 = await compactConv(s, work).catch(() => null); if (!c2) return false; commit(c2); return true; },
     };
-    const ctl = new AbortController(); abort.current = ctl; setBusy(true); setFavicon('busy'); stick.current = true;
+    const ctl = new AbortController(); aborts.current.set(mine, ctl); liveWork.current.set(mine, base); setRunIds((r) => [...r.filter((x) => x !== mine), mine]); setFavicon('busy'); stick.current = true;
+    void persist(base);   // the chat is in the list from the first word, so you can leave it and come back
     const cap = opts.work ? STEPS.work : STEPS[pn];
 
     // One question to the model, and the tool it asks for, if any. Returns true when it should go round again with the tool's answer.
     const turn = async (step: number): Promise<boolean> => {
-      setPhase('think');
+      phaseA('think');
       const { list: sent, trimmed } = context(work.messages, CONTEXT[pn]);
-      setNote(trimmed ? 'This chat is long, so the oldest messages were left out of this reply.' : '');
+      noteA(trimmed ? 'This chat is long, so the oldest messages were left out of this reply.' : '');
       const holder: Msg = { id: uid(), role: 'assistant', text: '', model, ts: Date.now(), work: opts.work || undefined };
       commit({ ...work, messages: [...work.messages, holder], updated: Date.now() });
       const patch = (p: Partial<Msg>) => commit({ ...work, messages: work.messages.map((m) => (m.id === holder.id ? { ...m, ...p } : m)) });
@@ -447,7 +458,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       const flush = () => { frame = 0; patch({ text: latest }); };
       try {
         const r = await stream(s, { model, system, messages: sent, maxTokens: opts.work ? MAX_WORK : MAX_REPLY[pn], signal: tctl.signal, redo: !!opts.free && step === 0, work: opts.work, step: step > 0 },
-          (t) => { latest = t; if (!wrote) { wrote = true; setPhase('write'); } if (!hit && findTool(t)) { hit = true; tctl.abort(); } else if (!hit && !frame) frame = requestAnimationFrame(flush); });
+          (t) => { latest = t; if (!wrote) { wrote = true; phaseA('write'); } if (!hit && findTool(t)) { hit = true; tctl.abort(); } else if (!hit && !frame) frame = requestAnimationFrame(flush); });
         if (frame) cancelAnimationFrame(frame);
         const userStopped = ctl.signal.aborted;
         const found = findTool(r.text);
@@ -462,7 +473,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           // A second look at its own answer before finishing: if it finds a mistake, it writes the answer again.
           const lastAsk = [...work.messages].reverse().find((m) => m.role === 'user' && !m.hidden)?.text ?? '';
           if (!r.cut && !voiceActive() && worthChecking(s.check, text, lastAsk, { work: opts.work, steps: step })) {
-            setPhase('check');
+            phaseA('check');
             let fr = 0, latestFix = '';
             const showFix = () => { fr = 0; const m = /^\s*FIX:[^\n]*\n+([\s\S]+)$/i.exec(latestFix); if (m) patch({ text: m[1] }); };
             try {
@@ -487,7 +498,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         const call = found.call;
         const run0: ToolRun = { id: uid(), tool: call?.tool ?? 'unknown', args: (call ?? {}) as Record<string, unknown>, status: 'running', t0: Date.now() };
         const setRun = (p: Partial<ToolRun>) => commit({ ...work, messages: work.messages.map((m) => (m.id === holder.id ? { ...m, runs: [{ ...(m.runs?.[0] ?? run0), ...p }] } : m)) });
-        setRun({}); setPhase(phaseOfTool(call?.tool ?? 'unknown'));
+        setRun({}); phaseA(phaseOfTool(call?.tool ?? 'unknown'));
         const res = call
           ? await execute(call, { settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId: run0.id, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), patch: setRun, say, chats: ops })
           : { status: 'error' as const, result: found.error ?? 'That tool block could not be read.', out: undefined, images: undefined };
@@ -512,7 +523,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       for (let step = 0; ; step++) { if (!(await turn(step))) break; }
     } finally {
       commit({ ...work, updated: Date.now() });
-      abort.current = null; setBusy(false); setPhase('idle'); sfx.done();
+      aborts.current.delete(mine); liveWork.current.delete(mine); setRunIds((r) => r.filter((x) => x !== mine)); phaseA('idle'); sfx.done();
       const lastM = work.messages[work.messages.length - 1];
       setFavicon(lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped ? 'done' : 'idle');
       if (lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped) { noteReply(); if (active() && feedbackDue()) { feedbackShown(); setFb(true); } }
@@ -547,21 +558,22 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const w = work, t = text, pp = pics, aa = atts;
     setText(''); setPics([]); setAtts([]); setWork(false); sfx.send();
     if (!busy) { sendBody(t, { pics: pp, atts: aa, work: w }); return; }
-    const item: Queued = { id: uid(), text: t.trim(), pics: pp, atts: aa, work: w };
+    const item: Queued = { cid: convRef.current.id, id: uid(), text: t.trim(), pics: pp, atts: aa, work: w };
     if (settings.whileBusy === 'interrupt') { setQueue((q) => [{ ...item, late: true }, ...q]); abort.current?.abort(); }
     else setQueue((q) => [...q, item]);
   }, [busy, reading, text, pics, atts, work, sendBody, settings.whileBusy]);
   useEffect(() => () => setFavicon('idle'), []);
-  askRef.current = (t: string) => { if (busy || reading) setQueue((q) => [...q, { id: uid(), text: t, pics: [], atts: [], work: false }]); else sendBody(t); };
+  askRef.current = (t: string) => { if (busy || reading) setQueue((q) => [...q, { cid: convRef.current.id, id: uid(), text: t, pics: [], atts: [], work: false }]); else sendBody(t); };
   const sendQueuedNow = useCallback((id: string) => { setQueue((q) => { const it = q.find((x) => x.id === id); return it ? [{ ...it, late: true }, ...q.filter((x) => x.id !== id)] : q; }); abort.current?.abort(); }, []);
   const dropQueued = useCallback((id: string) => setQueue((q) => q.filter((x) => x.id !== id)), []);
   useEffect(() => {
     if (busy || reading || !queue.length) return;
+    const at = queue.findIndex((x) => !x.cid || x.cid === convRef.current.id); if (at < 0) return;   // waiting for its own chat
     const last = convRef.current.messages[convRef.current.messages.length - 1];
-    if (last?.role === 'assistant' && last.error && !queue[0].late) return;    // a failed reply: wait for the person rather than failing again and again
-    const [next, ...rest] = queue; setQueue(rest);
+    if (last?.role === 'assistant' && last.error && !queue[at].late) return;    // a failed reply: wait for the person rather than failing again and again
+    const next = queue[at], rest = queue.filter((_, k) => k !== at); setQueue(rest);
     sendBody(next.text, { pics: next.pics, atts: next.atts, work: next.work, late: next.late });
-  }, [busy, reading, queue, sendBody]);
+  }, [busy, reading, queue, sendBody, conv.id]);
 
   // ---------------------------------------------------------------- voice: dictation, reading aloud, and voice mode
   const [voiceOpen, setVoiceOpen] = useState(false);
@@ -632,24 +644,29 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
   // ---------------------------------------------------------------- conversations
   const fresh = useCallback(() => {
-    abort.current?.abort();
     const c = convRef.current;
     if (!c.messages.length) { box.current?.focus(); return; }
     setConv(blank(c.model)); setText(''); setPics([]); setNote(''); stick.current = true;
     if (window.innerWidth < 900) setSide(false);
   }, [setConv]);
 
+  // The Coe extension can send a question and its answer into a new chat, and its Settings button opens the Chrome tab.
+  useEffect(() => {
+    if (location.hash === '#chrome') { setTab('ext'); setPanel('settings'); history.replaceState(null, '', location.pathname + location.search); }
+    return onExtHandoff((t) => { fresh(); setText(t); setPanel(null); window.setTimeout(() => box.current?.focus(), 60); });
+  }, [fresh]);
+
   const open = useCallback(async (id: string) => {
     if (id === convRef.current.id) { if (window.innerWidth < 900) setSide(false); return; }
-    abort.current?.abort();
-    const c = await loadConv(id); if (!c) { await refreshList(); return; }
-    setConv(c); setText(''); setPics([]); setNote(''); stick.current = true;
+    const c = liveWork.current.get(id) ?? await loadConv(id); if (!c) { await refreshList(); return; }
+    setConv(c); setText(''); setPics([]); setNote(''); stick.current = true; setPhase(aborts.current.has(id) ? 'write' : 'idle');
     if (window.innerWidth < 900) setSide(false);
     window.setTimeout(() => toBottom(), 30);
   }, [refreshList, setConv, toBottom]);
 
   const remove = useCallback(async (id: string) => {
-    if (id === convRef.current.id) { abort.current?.abort(); setConv(blank(convRef.current.model)); }
+    aborts.current.get(id)?.abort();
+    if (id === convRef.current.id) { setConv(blank(convRef.current.model)); }
     await deleteConv(id); await refreshList(); setMenu(null);
     if (cloudOn && session()) cloudRemove(id).catch(() => say('Could not remove it from your account just now.'));
   }, [refreshList, setConv, say]);
@@ -821,7 +838,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     try { const n = await importAll(JSON.parse(await f.text())); await refreshList(); say(n ? `Opened ${n} ${n === 1 ? 'conversation' : 'conversations'}.` : 'No conversations in that file.'); }
     catch { say('That file could not be read.'); }
   };
-  const wipe = async () => { abort.current?.abort(); await deleteAll(); if (cloudOn && session()) cloudRemoveAll().catch(() => say('Could not clear your account just now.')); await refreshList(); setConv(blank(convRef.current.model)); say('All conversations deleted.'); };
+  const wipe = async () => { aborts.current.forEach((c) => c.abort()); await deleteAll(); if (cloudOn && session()) cloudRemoveAll().catch(() => say('Could not clear your account just now.')); await refreshList(); setConv(blank(convRef.current.model)); say('All conversations deleted.'); };
 
   // ---------------------------------------------------------------- what is on screen
   const shown = useMemo(() => {
@@ -908,7 +925,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                   {renaming === m.id
                     ? <Rename value={m.title} onDone={(v) => rename(m.id, v)} />
                     : <button type="button" className="cx-open tx" aria-current={m.id === conv.id ? 'true' : undefined} onClick={() => open(m.id)} onDoubleClick={() => setRenaming(m.id)} title={m.title}>
-                      {m.pinned && <UiIcon name="pin" size={13} className="cx-pinned" />}<span>{m.title}</span></button>}
+                      {m.pinned && <UiIcon name="pin" size={13} className="cx-pinned" />}<span>{m.title}</span>{runIds.includes(m.id) && <i className="cx-run" role="img" aria-label="Writing a reply" />}</button>}
                   <button type="button" className="cx-more" aria-label={`Options for ${m.title}`} aria-haspopup="menu" aria-expanded={menu?.id === m.id}
                     onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.id === m.id ? null : { id: m.id, x: Math.min(r.right, window.innerWidth - 8), y: r.bottom + 4 }); }}><UiIcon name="more" size={18} /></button>
                 </div>
@@ -985,8 +1002,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           </div>
         )}
         <div className="cx-scroll" ref={scroller} onScroll={onScroll} onClick={onMessages}>
+          {empty && <Halftone className="ht-tr" />}
           {empty ? (
-            <div className="cx-empty home">
+            <div className="cx-empty home" key={conv.id}>
               <CoeWordmark className="home-logo" height={84} />
               <h2 className="home-h d">{greeting(settings.name, new Date().getHours(), hello)}</h2>
               <p className="home-lead tx">Ask anything, add a picture, or start from a block.</p>
@@ -1013,7 +1031,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               </div>
             </div>
           ) : (
-            <RichContext.Provider value={richCtx}><ol className="cx-msgs">
+            <RichContext.Provider value={richCtx}><ol className="cx-msgs" key={conv.id}>
               {groups.map((idxs) => {
                 // One question gets one answer: every step Coe took for it (its text, its screen, its files) is shown together under one name.
                 const i = idxs[idxs.length - 1], m = conv.messages[i], first = conv.messages[idxs[0]], parts = idxs.map((k) => conv.messages[k]);
@@ -1044,19 +1062,19 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                     ))}
                     {m.role === 'assistant' && m.checked && !live && <p className={`cx-checked tx ${m.checked}`}><UiIcon name={m.checked === 'ok' ? 'shield' : 'wand'} size={14} />{m.checked === 'ok' ? 'Double-checked' : <>Fixed before sending: {m.fix}</>}</p>}
                     {m.role === 'assistant' && !m.error && <Dock messages={conv.messages} convId={conv.id} live={live} from={idxs[0]} to={i} />}
-                    {live && !m.error && <Generating phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} empty={!parts.some((x) => x.text)} />}
+                    {live && !m.error && <Generating since={conv.messages[idxs[0]]?.ts} phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} empty={!parts.some((x) => x.text)} />}
                     {m.role === 'assistant' && turnEnd && !m.error && !(dk && dk.end >= turnFrom(i) && dk.end <= i) && <Activity steps={turnSteps(conv.messages, i)} live={live} phaseNote={PHASES[shownPhase === 'rest' ? 'idle' : shownPhase].label} />}
                     {m.role === 'assistant' && (m.stopped || m.cut) && !m.error && <p className="cx-flag tx">{m.stopped ? 'You stopped this reply.' : 'This reply reached its length limit. Say “continue” to carry on.'}</p>}
                     {!live && (
                       <div className="cx-acts">
                         {m.role === 'assistant' && agg.text && <button type="button" className="cx-act" onClick={() => copyMsg(agg)}><UiIcon name="copy" size={14} />Copy</button>}
                         {m.role === 'assistant' && agg.text && !m.error && <button type="button" className="cx-act" aria-pressed={aloud === m.id} onClick={() => readAloud(agg)}><UiIcon name={aloud === m.id ? 'stop' : 'volume'} size={14} />{aloud === m.id ? 'Stop' : 'Read aloud'}</button>}
+                        {m.role === 'assistant' && !m.error && lastOne && !busy && worthRedo(agg.text) && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className={`cx-act${left > 0 ? ' free' : ''}`} onClick={redo} title={left > 0 ? `Wrong? Redo it free. ${left} free ${left === 1 ? 'redo' : 'redos'} left today; after that a redo counts like a normal message.` : 'Redo it. Today\'s free redos are used, so this counts like a normal message.'}><UiIcon name="wand" size={14} />{left > 0 ? `Redo free (${left})` : 'Redo'}</button>; })()}
                         {m.role === 'assistant' && agg.text && !m.error && (
                           <details className="cx-more" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) { const d = e.currentTarget as HTMLDetailsElement; const off = (ev: Event) => { if (!d.contains(ev.target as Node)) { d.open = false; document.removeEventListener('pointerdown', off, true); } }; document.addEventListener('pointerdown', off, true); } }}>
                             <summary className="cx-act" aria-label="More for this answer"><UiIcon name="menu" size={14} />More</summary>
                             <div className="cx-more-menu" onClick={(e) => { (e.currentTarget.closest('details') as HTMLDetailsElement).open = false; }}>
                               {lastOne && !busy && <button type="button" className="cx-act" onClick={retry}><UiIcon name="refresh" size={14} />Again</button>}
-                              {lastOne && !busy && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className={`cx-act${left > 0 ? ' free' : ''}`} onClick={redo} title={left > 0 ? `Wrong? Redo it free. ${left} free ${left === 1 ? 'redo' : 'redos'} left today; after that a redo counts like a normal message.` : 'Redo it. Today\'s free redos are used, so this counts like a normal message.'}><UiIcon name="wand" size={14} />{left > 0 ? `Redo free (${left})` : 'Redo'}</button>; })()}
                               <button type="button" className="cx-act" onClick={() => mark(m.id)}><UiIcon name="bookmark" size={14} />{m.marked ? 'Remove bookmark' : 'Bookmark'}</button>
                               <button type="button" className="cx-act" onClick={() => void branchFrom(m.id)}><UiIcon name="branch" size={14} />Branch from here</button>
                               <button type="button" className="cx-act" onClick={() => setInfoFor(m.id)}><UiIcon name="info" size={14} />Info</button>
@@ -1069,7 +1087,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                     )}
                     {m.role === 'assistant' && lastOne && !live && !busy && !m.error && (() => {
                       const f = followupsOf(agg.text);
-                      return f.length ? <div className="cx-fu" role="group" aria-label="Ask next">{f.map((x) => <button key={x} type="button" className="fu" onClick={() => sendBody(x)}>{x}</button>)}</div> : null;
+                      return f.length ? <div className="cx-fu" role="group" aria-label="Ask next">{f.map((x) => <button key={x} type="button" className="fu" onClick={() => sendBody(x)}><span>{x}</span><UiIcon name="arrow" size={15} /></button>)}</div> : null;
                     })()}
                   </li>
                 );

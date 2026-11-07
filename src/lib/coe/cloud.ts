@@ -12,6 +12,10 @@ import { mergeStyles, stylesOut } from './personas';
 const URL_ = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 export const cloudOn = !!(URL_ && KEY);
+// The Coe Chrome extension reads this on the site, so it knows where to sign in and which server to ask.
+if (typeof window !== 'undefined') {
+  try { localStorage.setItem('pmc:coe:ext', JSON.stringify({ sb: URL_, key: KEY, server: (process.env.NEXT_PUBLIC_COE_SERVER ?? '').trim().replace(/\/+$/, '') })); } catch { /* storage blocked */ }
+}
 
 export interface Session { access: string; refresh: string; exp: number; email: string; uid: string }
 const SKEY = 'pmc:coe:session', SYNCED = 'pmc:coe:synced', ERRKEY = 'pmc:coe:autherr';

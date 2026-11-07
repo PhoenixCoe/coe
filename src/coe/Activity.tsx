@@ -74,6 +74,7 @@ export function Activity({ steps, live, phaseNote }: { steps: Step[]; live: bool
   const running = steps.find((s) => s.status === 'running');
   useEffect(() => { if (!live) setOpen((o) => (o === null ? null : o)); }, [live]);
   if (!steps.length) return null;
+  if (steps.length < 2 && !steps.some((x) => x.status === 'error' || x.status === 'pending')) return null;   // one step is not worth a section
   if (live) return null;   // while a reply is made, the only thing that moves is the one generating line; the web view lives in the screen under the reply
   const isOpen = open ?? live;
   const total = steps.reduce((n, s) => n + (s.ms ?? 0), 0);
