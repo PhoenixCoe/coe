@@ -6,6 +6,8 @@ import { Activity, describeRun, turnSteps } from './Activity';
 import { UiIcon } from '@/ui/icons';
 import { downloadText } from '@/ui/copy';
 import { CoeError, ask as askModel, stream, type ChatMsg } from '@/lib/coe/client';
+import { couldNot, honest } from '@/lib/coe/honest';
+import { addSidebarRefunds, giveBack, type Spent } from '@/lib/coe/refunds';
 import { COE_MODELS, FILE_TEXT, MAX_REPLY, MAX_WORK, QUOTAS, canUse, fmtTok, modelByKey, type ModelKey } from '@/lib/coe/models';
 import { applyCredits, bumpQuota, countReply, counted, creditsNow, limitNow, onStatus, planInfo, planNow, quotaLeft, refreshStatus, status } from '@/lib/coe/account';
 import { explain as describeErr, type ErrAct } from '@/lib/coe/errors';
@@ -18,23 +20,26 @@ import { KINDS, isReadable, readAny } from './readers';
 import { MEDIA_KINDS, isAudio, isVideo, readAudio, videoFrames } from './media';
 import { STEPS, execute, findTool, memoryPrompt, SHOW_PROMPT, toolsPrompt, type Call, type ChatOps } from '@/lib/coe/tools';
 import { memory, onMemory } from '@/lib/coe/links';
-import { onExtHandoff } from '@/lib/coe/extension';
+import { onExtChats, onExtHandoff, onExtProfile, onExtRefunds, type ExtChat } from '@/lib/coe/extension';
+import { MeetCoe, MET } from './MeetCoe';
 import { APPS_ORIGIN } from '@/lib/coe/pmc';
 import { Workspace } from './Workspace';
 import { hasFiles, type Files } from '@/lib/coe/workspace';
 const Check = lazy(() => import('./Check').then((m) => ({ default: m.Check })));   // the code checker is big, so it is fetched only when opened
-import { Account } from './Account';
+import { SignIn as Account } from './SignIn';
+import { toneOf } from './Usage';
 import { VoiceMode } from './VoiceMode';
 import { SelectBar } from './SelectBar';
 import { MathPad } from './MathPad';
 import { Palette, type Cmd } from './Palette';
+import { AttCard, AttPeek } from './Peek';
 import { Capture, canCamera, canScreen } from './Capture';
 import { Sketch } from './Sketch';
 import { SoundLab } from './SoundLab';
 import { runBlock } from './run';
 import { Gallery, piecesOf } from './Gallery';
 import { StudyHub } from './StudyHub';
-import { LEADS, applyDisplay, loadLead, setLead, setSfx, sfx, sfxOn, type Lead } from '@/lib/coe/look';
+import { LEADS, applyAccent, applyDisplay, loadAccent, loadLead, setLead, setSfx, sfx, sfxOn, type Lead } from '@/lib/coe/look';
 import { dueCount, streak, subscribeStudy } from '@/lib/coe/study';
 import { printChat, chatPage } from './export';
 import { PERSONAS, SLASH, loadPersona, loadStyles, personaOf, savePersona, type Persona } from '@/lib/coe/personas';
@@ -51,13 +56,19 @@ import { Select } from '@/ui/Controls';
 import { setFavicon } from '@/lib/coe/favicon';
 import { redoLeft, redoUsed } from '@/lib/coe/redo';
 import { Clamp } from './Clamp';
-import { madeCount } from './Workspace';
+import { filesOf, madeCount } from './Workspace';
 import { putLive as cloudLive, peek as cloudPeek } from '@/lib/coe/cloud';
 import { compactConv, tooLong } from '@/lib/coe/compact';
 import { Feedback } from './Feedback';
+import { CodePane } from './CodePane';
+import type { EDoc } from '@/lib/coe/editors';
+const Editor = lazy(() => import('./Editor'));
+import { Progress } from './Progress';
+import { madePictures, stepInfo } from '@/lib/coe/progress';   // the editor is big, so it is fetched only when opened
+import { LANG_NAME, codeIn, codeItems, extractCode } from '@/lib/coe/codesplit';
 import { AnswerInfo } from './AnswerInfo';
 import { feedbackDue, feedbackLater, feedbackShown, noteReply, sendFeedback } from '@/lib/coe/feedback';
-import { bucket, dataUrl, deleteAll, fillToday, deleteConv, exportAll, importAll, loadConv, loadIndex, saveConv, titleFrom, toMarkdown, uid, usage, type Attach, type Conv, type ConvMeta, type Img, type Msg, type ToolRun } from './store';
+import { bucket, dataUrl, deleteAll, fillToday, deleteConv, exportAll, importAll, loadConv, loadIndex, saveConv, titleFrom, toMarkdown, uid, usage, type Attach, type Conv, type ConvMeta, type Img, type Msg, type Perm, type ToolRun } from './store';
 
 const PICTURE_COST = 1600;             // a picture counts as this many characters when trimming
 const CONTEXT = { free: 80000, pro: 600000 };   // characters sent with each message; older ones are left out
@@ -116,7 +127,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [pics, setPics] = useState<Img[]>([]);
   const [atts, setAtts] = useState<Attach[]>([]);
   const [work, setWork] = useState(false);                    // Deep Work for the next message
-  const [web, setWeb] = useState(() => { try { return localStorage.getItem('pmc:coe:web') !== '0'; } catch { return true; } });
+  const web = true;                                           // web search is always on: Coe decides when to use it
   const [shelf, setShelf] = useState(false);                   // the Files window
   const [shelfTab, setShelfTab] = useState<'sent' | 'made' | 'project' | undefined>(undefined);
   const [mathOpen, setMathOpen] = useState(false);             // the maths keyboard
@@ -135,6 +146,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const busy = runIds.includes(conv.id);
   const aborts = useRef(new Map<string, AbortController>());
   const liveWork = useRef(new Map<string, Conv>());
+  const persistRef = useRef<(c: Conv) => Promise<void>>(async () => {});
+  const edOpenRef = useRef(false), cpOpenRef = useRef(false), edIdRef = useRef<string | null>(null), edOverRef = useRef(false), openEditorRef = useRef<(id?: string) => void>(() => {});
   const [infoFor, setInfoFor] = useState<string | null>(null);
   const [side, setSide] = useState(() => typeof window === 'undefined' || window.innerWidth >= 900);
   // A phone or a narrow window: the list folds away by itself, and stays folded when the screen is turned.
@@ -143,6 +156,34 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const fold = () => { if (q.matches) setSide(false); };
     fold(); q.addEventListener?.('change', fold);
     return () => q.removeEventListener?.('change', fold);
+  }, []);
+  // What you were typing stays with the chat it was for, so switching chats or closing the tab never loses it.
+  const draftFor = useRef('');
+  useEffect(() => {
+    draftFor.current = conv.id;
+    try { const d = localStorage.getItem(`pmc:coe:draft:${conv.id}`); if (d) setText(d); } catch { /* storage blocked */ }
+  }, [conv.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (draftFor.current !== conv.id) return;
+    const t = window.setTimeout(() => { try { const k = `pmc:coe:draft:${conv.id}`; if (text) localStorage.setItem(k, text.slice(0, 20000)); else localStorage.removeItem(k); } catch { /* storage blocked */ } }, 400);
+    return () => window.clearTimeout(t);
+  }, [text, conv.id]);
+  // Start typing anywhere and the words go into the box.
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.key.length !== 1) return;
+      const t = e.target as HTMLElement | null; if (t && (t.closest('input, textarea, select, [contenteditable="true"], [role="dialog"], button, a'))) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      box.current?.focus();
+    };
+    window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
+  }, []);
+  // The on-screen keyboard shrinks the visible screen: follow it, so the box you type in is never hidden and the page never jumps.
+  useEffect(() => {
+    const vv = window.visualViewport; if (!vv) return;
+    const fit = () => { document.documentElement.style.setProperty('--vvh', `${Math.round(vv.height)}px`); if (vv.offsetTop > 0) window.scrollTo(0, 0); };
+    fit(); vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit);
+    return () => { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); document.documentElement.style.removeProperty('--vvh'); };
   }, []);
   const [q, setQ] = useState('');
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; sure?: boolean } | null>(null);
@@ -164,6 +205,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const openSetup = (why?: string) => { if (modeOf(loadSettings()) === 'key') { setTab('ai'); setPanel('settings'); if (why) say(why); } else if (owner) { setTab('connect'); setPanel('settings'); if (why) say(why); } else say('Coe is not switched on yet. Try again later.'); };
   const [upgrade, setUpgrade] = useState('');
   const [big, setBig] = useState<Img | null>(null);
+  const [peek, setPeek] = useState<Attach | null>(null);
   const [drop, setDrop] = useState(false);
   const [away, setAway] = useState(false);
   const [note, setNote] = useState('');
@@ -188,7 +230,6 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [capture, setCapture] = useState<null | 'camera' | 'screen'>(null);
   const [galOpen, setGalOpen] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
-  const [moreStarters, setMoreStarters] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
   const [lead, setLeadState] = useState<Lead>('cream');
   const [soundOn, setSoundOn] = useState(false);
@@ -198,7 +239,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   useEffect(() => { try { if (new URLSearchParams(location.search).get('fb') === '1') setFb(true); } catch { /* no address bar */ } }, []);
   const cameraIn = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const look = () => { setLeadState(loadLead()); setSoundOn(sfxOn()); }; look();
+    const look = () => { setLeadState(loadLead()); setSoundOn(sfxOn()); applyAccent(loadAccent()); }; look();
     window.addEventListener('pmc:coe-look', look);
     const d = () => setDue(dueCount()); d();
     const off = subscribeStudy(d);
@@ -225,6 +266,91 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const setSettings = useCallback((s: CoeSettings) => { setSettingsState(s); saveSettings(s); }, []);
   const refreshList = useCallback(async () => setList(await loadIndex()), []);
   const say = useCallback((t: string) => { setToast(t); window.setTimeout(() => setToast((x) => (x === t ? '' : x)), 2600); }, []);
+
+  // ---------------------------------------------------------------- code beside the chat
+  // Send some code and it moves to the left, Coe's answer stays on the right, and the chat list folds away to make room.
+  const [cpOpen, setCpOpen] = useState(false), [cpSel, setCpSel] = useState(''), [cpChanges, setCpChanges] = useState(false), [cpNew, setCpNew] = useState(false), [checkKey, setCheckKey] = useState(0);
+  const [cpFrac, setCpFrac] = useState(() => { try { const v = Number(localStorage.getItem('coe:cp-w')); return v >= 0.25 && v <= 0.65 ? v : 0.46; } catch { return 0.46; } });
+  const [wide, setWide] = useState(() => typeof window === 'undefined' || window.innerWidth >= 700);
+  const [mainW, setMainW] = useState(0);
+  const mainRef = useRef<HTMLElement>(null), sideWas = useRef(false), sideNow = useRef(side), seenCoe = useRef('');
+  sideNow.current = side;
+  const cItems = useMemo(() => codeItems(conv.messages), [conv.messages]);
+  useEffect(() => { const q = window.matchMedia('(min-width: 700px)'); const f = () => setWide(q.matches); f(); q.addEventListener?.('change', f); return () => q.removeEventListener?.('change', f); }, []);
+  useEffect(() => {
+    const el = mainRef.current; if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setMainW(el.clientWidth)); ro.observe(el); setMainW(el.clientWidth); return () => ro.disconnect();
+  }, []);
+  const openCode = useCallback((id: string, o?: { auto?: boolean; changes?: boolean }) => {
+    setCpSel(id); setCpChanges(!!o?.changes); setCpNew(false);
+    if (o?.auto && window.innerWidth < 700) return;   // on a phone the answer stays in view; the code opens from its chip
+    setCpOpen(true); setShelf(false); setHdMore(false); setEdOpen(false);
+    if (sideNow.current) { if (window.innerWidth >= 900) sideWas.current = true; setSide(false); }
+  }, []);
+  const closeCode = useCallback(() => { setCpOpen(false); if (sideWas.current) { sideWas.current = false; if (window.innerWidth >= 900) setSide(true); } }, []);
+  const selectCode = useCallback((id: string) => { setCpSel(id); const it = cItems.find((x) => x.id === id); setCpChanges(!!it && it.from === 'coe' && !!it.base); }, [cItems]);
+  const sizeCode = useCallback((f: number | null) => { const v = f == null ? 0.46 : Math.min(0.65, Math.max(0.25, f)); setCpFrac(v); try { localStorage.setItem('coe:cp-w', String(v)); } catch { /* not saved */ } }, []);
+  const composeAbout = useCallback((t: string) => { setText((x) => (x ? x.replace(/\s*$/, ' ') : '') + t); if (window.innerWidth < 700) setCpOpen(false); window.setTimeout(() => { const el = box.current; el?.focus(); el?.setSelectionRange(el.value.length, el.value.length); }, 60); }, []);
+  const checkCode = useCallback((code: string) => { try { sessionStorage.setItem('coe:check', JSON.stringify({ code, lang: 'auto', notes: '' })); } catch { /* the page opens empty */ } setCheckKey((k) => k + 1); setTool(true); }, []);
+  // A different chat starts with the code put away.
+  useEffect(() => { seenCoe.current = [...cItems].reverse().find((i) => i.from === 'coe')?.id ?? ''; closeCode(); setCpSel(''); setCpNew(false); }, [conv.id]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // When Coe finishes an answer with code in it, the code beside the chat switches to that, with what changed marked.
+  useEffect(() => {
+    if (busy) return;
+    const last = [...cItems].reverse().find((i) => i.from === 'coe'); if (!last || last.id === seenCoe.current) return;
+    seenCoe.current = last.id;
+    if (cpOpen) { setCpSel(last.id); setCpChanges(!!last.base); } else setCpNew(true);
+  }, [busy, cItems]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // Opening the Files window puts the code away, so the two never fight for room.
+  useEffect(() => { if (shelf && cpOpen && window.innerWidth >= 700) closeCode(); }, [shelf]);   // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {   // on a phone the code covers the screen: Back and Esc close it
+    if (!cpOpen || wide) return;
+    try { window.history.pushState({ coeCode: 1 }, ''); } catch { /* no history */ }
+    const pop = () => setCpOpen(false);
+    window.addEventListener('popstate', pop);
+    return () => { window.removeEventListener('popstate', pop); try { if (window.history.state?.coeCode) window.history.back(); } catch { /* no history */ } };
+  }, [cpOpen, wide]);
+  const split = cpOpen && wide && cItems.length > 0;
+
+  // ---------------------------------------------------------------- the editor: documents, code, web pages and tables, on the right (the chat list stays)
+  const [edOpen, setEdOpen] = useState(false), [edId, setEdId] = useState<string | null>(null);
+  const [edW, setEdW] = useState(() => { try { const v = Number(localStorage.getItem('coe:ed-w')); return v >= 360 && v <= 1100 ? v : 600; } catch { return 600; } });
+  const docs = conv.docs ?? [];
+  const [progOpen, setProgOpen] = useState(false);
+  const prog = useMemo(() => stepInfo(conv.messages, busy), [conv.messages, busy]);
+  const nOut = docs.length + (Object.keys(conv.files ?? {}).length ? 1 : 0) + madePictures(conv).length;   // what the panel on the right can show
+  const pill = prog ? { label: prog.label, short: prog.short } : nOut ? { label: nOut === 1 ? '1 output' : `${nOut} outputs`, short: String(nOut) } : null;
+  edOpenRef.current = edOpen; cpOpenRef.current = cpOpen; edIdRef.current = edId;
+  const edOver = mainW > 0 ? mainW < 900 : !wide;               // too narrow to sit beside the chat: it covers the chat, with a big Back button
+  edOverRef.current = edOver;
+  const edShow = edOpen ? Math.max(360, Math.min(edW, (mainW || 1200) - 380)) : 0;
+  const docSave = useRef<number | undefined>(undefined);
+  const flushDocs = useCallback(() => { if (docSave.current === undefined) return; window.clearTimeout(docSave.current); docSave.current = undefined; const c = convRef.current; if (c.messages.length || c.docs?.length) void persistRef.current(c); }, []);
+  const setDocs = useCallback((d: EDoc[], forId?: string) => {
+    const c = convRef.current; if (forId && forId !== c.id) return;   // a save from a chat that was just left must not land in the next one
+    const next: Conv = { ...c, docs: d, updated: Date.now(), ...(!c.messages.length && !c.named ? { title: d[0]?.title || 'New conversation' } : {}) };
+    setConv(next);
+    window.clearTimeout(docSave.current); docSave.current = window.setTimeout(flushDocs, 700);
+  }, [setConv, flushDocs]);
+  const setPerm = useCallback((p: Perm) => { const next: Conv = { ...convRef.current, perm: p }; setConv(next); window.clearTimeout(docSave.current); docSave.current = window.setTimeout(flushDocs, 300); }, [setConv, flushDocs]);
+  const openEditor = useCallback((id?: string) => {
+    const c = convRef.current, pick = (id && c.docs?.find((d) => d.id === id)?.id) || null;
+    setEdId((cur) => pick ?? (cur && c.docs?.some((d) => d.id === cur) ? cur : c.docs?.[c.docs.length - 1]?.id ?? null));
+    setEdOpen(true); setShelf(false); setHdMore(false);
+    if (cpOpenRef.current) closeCode();
+  }, [closeCode]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const closeEditor = useCallback(() => { flushDocs(); setEdOpen(false); window.setTimeout(() => box.current?.focus({ preventScroll: true }), 40); }, [flushDocs]);
+  const sizeEditor = useCallback((w: number) => { const v = w <= 0 ? 600 : Math.max(360, Math.min(1100, Math.round(w))); setEdW(v); try { localStorage.setItem('coe:ed-w', String(v)); } catch { /* not saved */ } }, []);
+  openEditorRef.current = openEditor;
+  // A different chat starts with the editor put away; opening Files puts it away too, so the two never fight for room.
+  useEffect(() => { setEdOpen(false); setEdId(null); setProgOpen(false); }, [conv.id]);
+  useEffect(() => { if (shelf && edOpenRef.current) setEdOpen(false); }, [shelf]);
+  useEffect(() => { const on = (e: Event) => { const id = (e as CustomEvent<{ id?: string }>).detail?.id; if (id) openEditor(id); }; window.addEventListener('coe:open-doc', on); return () => window.removeEventListener('coe:open-doc', on); }, [openEditor]);
+  // If the document that is open is deleted (by you, or by Coe), the next one shows; with none left the editor goes away.
+  useEffect(() => { if (edOpen && !docs.length) setEdOpen(false); }, [docs.length, edOpen]);
+  useEffect(() => { if (edOpen && edId && !docs.some((d) => d.id === edId)) setEdId(docs[docs.length - 1]?.id ?? null); }, [docs, edOpen, edId]);
+  const edSend = useCallback((t: string) => { askRef.current(t); if (edOverRef.current) setEdOpen(false); }, []);
+  const edCompose = useCallback((t: string) => { if (edOverRef.current) setEdOpen(false); composeAbout(t); }, [composeAbout]);
   const doSync = useCallback(async () => { try { if (await cloudSync()) await refreshList(); } catch { /* offline: this device keeps its own copy */ } }, [refreshList]);
 
   useEffect(() => { void refreshStatus(settings); }, [me, settings.serverUrl, settings.code]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -270,7 +396,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         if (!fresh && !(r.updated > mine.updated)) return;
         if (d.messages.length === mine.messages.length && d.messages[d.messages.length - 1]?.text === mine.messages[mine.messages.length - 1]?.text && d.title === mine.title) return;
         const keep = (m: Msg) => { const o = mine.messages.find((x) => x.id === m.id); return o ? { ...m, ...(o.images?.length ? { images: o.images } : {}), ...(o.attach?.length ? { attach: o.attach } : {}), ...(o.runs?.length ? { runs: o.runs } : {}) } : m; };
-        const next: Conv = { ...mine, ...d, live: undefined, files: mine.files ?? d.files, messages: d.messages.map(keep) };
+        const next: Conv = { ...mine, ...d, live: undefined, files: mine.files ?? d.files, docs: mine.docs ?? d.docs, perm: mine.perm ?? d.perm, messages: d.messages.map(keep) };
         setConv(next); stick.current = true; if (!d.live) await saveConv(next);
       } catch { /* the next look tries again */ }
     }, 2000);
@@ -370,7 +496,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   };
 
   // ---------------------------------------------------------------- saving
-  const persist = useCallback(async (c: Conv) => { if (c.messages.length) { await saveConv(c); await refreshList(); if (cloudOn && session()) cloudPut(c).catch(() => say('Could not save to your account just now. It is kept on this device.')); } }, [refreshList, say]);
+  const persist = useCallback(async (c: Conv) => { if (c.messages.length || c.docs?.length) { await saveConv(c); await refreshList(); if (cloudOn && session()) cloudPut(c).catch(() => say('Could not save to your account just now. It is kept on this device.')); } }, [refreshList, say]);
+  persistRef.current = persist;
 
   // ---------------------------------------------------------------- asking
   /** Every picture in the chat, oldest first: what was attached, and what tools made. */
@@ -412,14 +539,19 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const model: ModelKey = opts.work ? 'deep' : base.model;
     if (!opts.work && !canUse(pn, base.model)) { setUpgrade(`${modelByKey(base.model).name} needs the Pro plan.`); return; }
     if (opts.work && pn !== 'pro' && quotaLeft('work', s).left <= 0) { setUpgrade('Deep Work is part of Pro. Free includes one run a day, and today\'s is used.'); return; }
-    if (!opts.free && modeOf(s) !== 'key' && !counted(s) && usage().today >= limitNow(s)) { setUpgrade(`You have used all ${fmtTok(limitNow(s))} tokens for today on ${pl.name}. They come back at midnight (UTC).`); return; }
+    if (!opts.free && modeOf(s) !== 'key' && !counted(s) && usage().today >= limitNow(s)) return;   // the one "out of tokens" line above the message box already says so
 
     const mine = base.id, active = () => convRef.current.id === mine;
     let work: Conv = base;
-    const commit = (c: Conv) => { work = c; liveWork.current.set(mine, c); if (active()) setConv(c); };
+    // What the person typed in the editor, or answered on a card, while Coe was working is kept: the live chat is the truth for documents and permissions.
+    const commit = (c: Conv, mine2 = false) => { if (!mine2 && active()) c = { ...c, docs: convRef.current.docs, perm: convRef.current.perm }; work = c; liveWork.current.set(mine, c); if (active()) setConv(c); };
+    const here = () => (active() ? convRef.current : work);
     const phaseA = (p: Phase) => { if (active()) setPhase(p); };
     const noteA = (t: string) => { if (active()) setNote(t); };
     let killed = false;   // the person asked Coe to delete this very chat
+    // What each call in this reply cost. If the reply goes wrong, all of it is given back at the end.
+    const spent: Spent[] = []; let failWhy = '', lastHolder = '';
+    let lastFail = null as { run: { tool: string; args: Record<string, unknown> }; why: string; gate: boolean } | null;
     const ops: ChatOps = {
       list: async () => (await loadIndex()).map((m) => ({ id: m.id, title: m.title, pinned: !!m.pinned, current: m.id === base.id })),
       rename: async (id, t) => { if (id === base.id) commit({ ...work, title: t.slice(0, 80), named: true }); else await chatBits.current.patch(id, { title: t.slice(0, 80), named: true }); },
@@ -437,12 +569,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       const { list: sent, trimmed } = context(work.messages, CONTEXT[pn]);
       noteA(trimmed ? 'This chat is long, so the oldest messages were left out of this reply.' : '');
       const holder: Msg = { id: uid(), role: 'assistant', text: '', model, ts: Date.now(), work: opts.work || undefined };
+      lastHolder = holder.id;
       commit({ ...work, messages: [...work.messages, holder], updated: Date.now() });
       const patch = (p: Partial<Msg>) => commit({ ...work, messages: work.messages.map((m) => (m.id === holder.id ? { ...m, ...p } : m)) });
       const now = new Date();
       const system = [
         BASE_COE, SHOW_PROMPT, personaOf(loadPersona()).prompt && `Working style the person chose (${personaOf(loadPersona()).name}): ${personaOf(loadPersona()).prompt}`, voiceActive() && VOICE_PROMPT,
-        toolsPrompt({ plan: pn, work: !!opts.work, web, files: work.files ?? {}, stepsLeft: cap - step, hasApps: !!APPS_ORIGIN }),
+        toolsPrompt({ plan: pn, work: !!opts.work, web, files: work.files ?? {}, stepsLeft: cap - step, hasApps: !!APPS_ORIGIN, docs: here().docs ?? [], activeId: edOpenRef.current && active() ? edIdRef.current : null, perm: here().perm ?? {} }),
         memoryPrompt(),
         knowledgeFor([...work.messages].reverse().find((m) => m.role === 'user' && !m.hidden)?.text ?? '', { hasApps: !!APPS_ORIGIN }),
         opts.wrong && `${REDO_NOTE}\n\nThe earlier answer was:\n${opts.wrong}`,
@@ -454,25 +587,33 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
       // The model is cut off the moment it finishes asking for a tool, so nothing it guesses after that is paid for.
       const tctl = new AbortController(); const link = () => tctl.abort(); ctl.signal.addEventListener('abort', link);
+      const callId = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);   // names this call, so the server can pay it back even though we stop listening early
       let frame = 0, latest = '', hit = false, wrote = false;
       const flush = () => { frame = 0; patch({ text: latest }); };
       try {
-        const r = await stream(s, { model, system, messages: sent, maxTokens: opts.work ? MAX_WORK : MAX_REPLY[pn], signal: tctl.signal, redo: !!opts.free && step === 0, work: opts.work, step: step > 0 },
+        const r = await stream(s, { model, system, messages: sent, maxTokens: opts.work ? MAX_WORK : MAX_REPLY[pn], signal: tctl.signal, redo: !!opts.free && step === 0, work: opts.work, step: step > 0, call: callId },
           (t) => { latest = t; if (!wrote) { wrote = true; phaseA('write'); } if (!hit && findTool(t)) { hit = true; tctl.abort(); } else if (!hit && !frame) frame = requestAnimationFrame(flush); });
         if (frame) cancelAnimationFrame(frame);
         const userStopped = ctl.signal.aborted;
         const found = findTool(r.text);
-        const text = found ? r.text.slice(0, found.end) : r.text;
+        let text = found ? r.text.slice(0, found.end) : r.text;
         patch({ text, stopped: (userStopped && r.stopped) || undefined, cut: r.cut || undefined, inTokens: r.inTokens, outTokens: r.outTokens });
+        const todayBefore = usage().today;
         countReply(s, r.credits, () => (r.inTokens ?? Math.ceil(JSON.stringify(sent).length / 4) + 700) + (r.outTokens ?? Math.ceil(r.text.length / 4)), !r.credits && ((r.stopped && !r.text) || (!!opts.free && step === 0)));
+        spent.push({ tokens: r.credits?.tokens ?? 0, receipt: r.credits?.receipt, call: callId, local: Math.max(0, usage().today - todayBefore) });
         setUse(usage()); setSettled({ id: holder.id, n: text.length });
         if (step === 0 && opts.work) bumpQuota('work');
         if (userStopped && !r.text) { commit({ ...work, messages: work.messages.filter((m) => m.id !== holder.id) }); return false; }
         if (userStopped) return false;
         if (!found) {
+          // Honest about a tool that did not work: the reply must say so, and says it first if it did not.
+          if (lastFail) { const said = honest(text, lastFail.run, lastFail.why); if (said !== text) { text = said; patch({ text }); } }
+          // Code that was cut off halfway, or a reply that never came, did not do its job: its tokens come back.
+          if (r.cut && (text.match(/```/g) ?? []).length % 2 === 1) failWhy = 'The code was cut off before it finished';
+          else if (!text.trim() && !lastFail) { failWhy = 'Coe sent nothing back'; patch({ error: 'Coe did not write anything back. Try again.', errKind: 'server' }); }
           // A second look at its own answer before finishing: if it finds a mistake, it writes the answer again.
           const lastAsk = [...work.messages].reverse().find((m) => m.role === 'user' && !m.hidden)?.text ?? '';
-          if (!r.cut && !voiceActive() && worthChecking(s.check, text, lastAsk, { work: opts.work, steps: step })) {
+          if (!r.cut && !lastFail && text.trim() && !voiceActive() && worthChecking(s.check, text, lastAsk, { work: opts.work, steps: step })) {
             phaseA('check');
             let fr = 0, latestFix = '';
             const showFix = () => { fr = 0; const m = /^\s*FIX:[^\n]*\n+([\s\S]+)$/i.exec(latestFix); if (m) patch({ text: m[1] }); };
@@ -500,9 +641,12 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         const setRun = (p: Partial<ToolRun>) => commit({ ...work, messages: work.messages.map((m) => (m.id === holder.id ? { ...m, runs: [{ ...(m.runs?.[0] ?? run0), ...p }] } : m)) });
         setRun({}); phaseA(phaseOfTool(call?.tool ?? 'unknown'));
         const res = call
-          ? await execute(call, { settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId: run0.id, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), patch: setRun, say, chats: ops })
+          ? await execute(call, { settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId: run0.id, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), docs: () => here().docs ?? [], setDocs: (d: EDoc[]) => commit({ ...work, docs: d, perm: here().perm }, true), attachments: () => work.messages.flatMap((m) => m.attach ?? []), perm: () => here().perm ?? {}, patch: setRun, say, chats: ops })
           : { status: 'error' as const, result: found.error ?? 'That tool block could not be read.', out: undefined, images: undefined };
         setRun({ t1: Date.now(), status: res.status, result: res.result, ...(res.shown ? { shown: res.shown } : {}), ...(res.out ? { out: res.out } : {}) });
+        if (res.status === 'error' && !ctl.signal.aborted) lastFail = { run: { tool: run0.tool, args: run0.args }, why: res.shown ?? res.result, gate: !!res.gate };
+        else if (res.status === 'ok') lastFail = null;
+        if (res.out?.kind === 'doc' && res.out.act !== 'edit' && active() && (here().perm?.editor === 'always' || edOpenRef.current)) openEditorRef.current(res.out.id);   // allowed once and for all, or already open: it just shows
         if (res.status === 'pending' || ctl.signal.aborted) return false;
         const hid: Msg = { id: uid(), role: 'user', text: `[Result of the ${run0.tool} tool]\n${res.result}`, images: res.images, hidden: true, ts: Date.now() };
         commit({ ...work, messages: [...work.messages, hid] });
@@ -513,6 +657,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         let why = err.message || '';
         if (err.kind === 'bad' && base.messages.some((m) => m.images?.length)) why = (why ? why + ' ' : '') + 'If the model cannot read pictures, take the pictures out or pick another model.';
         patch({ text: latest, error: why || describeErr(err.kind, '').text, errKind: err.kind }); sfx.error();
+        if ((err.kind === 'network' || err.kind === 'server') && spent.length) failWhy = err.kind === 'network' ? 'The connection dropped before the reply finished' : 'The model stopped with an error';
         if (err.kind === 'credits' && modeOf(s) === 'server' && !counted(s)) { fillToday(limitNow(s)); setUse(usage()); }   // turned away for tokens: this device's count agrees
         if (err.kind === 'credits' || err.kind === 'plan' || err.kind === 'signin') void refreshStatus(s);
         return false;
@@ -522,6 +667,12 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     try {
       for (let step = 0; ; step++) { if (!(await turn(step))) break; }
     } finally {
+      // A reply that went wrong is paid back. A tool that failed because of a limit (Pro only, used up) is not "wrong", and a reply the person stopped is theirs.
+      if (!failWhy && lastFail && !lastFail.gate) failWhy = `${couldNot(lastFail.run)}: ${lastFail.why}`.slice(0, 160);
+      if (failWhy && !ctl.signal.aborted && !killed && modeOf(s) === 'server') {
+        const back = await giveBack(s, spent, failWhy, work.title).catch(() => 0);
+        if (back > 0) { work = { ...work, messages: work.messages.map((m) => (m.id === lastHolder ? { ...m, refund: back } : m)) }; sfx.done(); }
+      }
       commit({ ...work, updated: Date.now() });
       aborts.current.delete(mine); liveWork.current.delete(mine); setRunIds((r) => r.filter((x) => x !== mine)); phaseA('idle'); sfx.done();
       const lastM = work.messages[work.messages.length - 1];
@@ -532,7 +683,22 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   }, [persist, say, setConv, web]);
 
   const askRef = useRef<(t: string) => void>(() => {});
-  const richCtx = useMemo<RichCtx>(() => ({ plan: planNow(settings), files: conv.files ?? {}, convId: conv.id, ask: (t: string) => askRef.current(t), pics: imagesOf(conv), effects: settings.effects }), [settings, conv.files, conv.id, conv.messages.length, status()]);   // eslint-disable-line react-hooks/exhaustive-deps
+  // A checklist that is rewritten later in the same turn shows once, as it stands now. This only changes when a message with a checklist comes or goes.
+  const planSig = conv.messages.map((m) => (m.role === 'assistant' ? (m.text.includes('```coe-plan') ? m.id : '') : m.hidden ? '' : '|')).filter(Boolean).join(',');
+  const oldPlans = useMemo(() => { const o = new Set<string>(); let prev = ''; for (const t of planSig.split(',')) { if (t === '|') { prev = ''; continue; } if (t) { if (prev) o.add(prev); prev = t; } } return o; }, [planSig]);
+  // The question cards: "Open the editor?" and "Open this app?" each have Yes, Always open in this chat, and Don't open. A click answers at once.
+  const decide = useCallback((what: 'editor' | 'app', choice: 'yes' | 'always' | 'never', arg?: string) => {
+    const pm: Perm = convRef.current.perm ?? {};
+    if (what === 'editor') {
+      if (choice === 'never') return;
+      if (choice === 'always') setPerm({ ...pm, editor: 'always' });
+      openEditor(arg); return;
+    }
+    if (choice === 'never') { askRef.current('Don’t open it. Carry on another way.'); return; }
+    if (choice === 'always') { setPerm({ ...pm, app: 'always' }); askRef.current('Always open apps in this chat. Go ahead.'); return; }
+    setPerm({ ...pm, ok: Array.from(new Set([...(pm.ok ?? []), arg ?? ''])).filter(Boolean) }); askRef.current('Yes, open it.');
+  }, [setPerm, openEditor]);
+  const richCtx = useMemo<RichCtx>(() => ({ plan: planNow(settings), files: conv.files ?? {}, convId: conv.id, ask: (t: string) => askRef.current(t), pics: imagesOf(conv), effects: settings.effects, oldPlans, docs: conv.docs, perm: conv.perm, edOpen, openDoc: (id: string) => openEditor(id), decide }), [settings, oldPlans, conv.files, conv.docs, conv.perm, edOpen, conv.id, conv.messages.length, status(), openEditor, decide]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const stop = useCallback(() => abort.current?.abort(), []);
 
@@ -543,10 +709,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     if (!connection(settings).ok) { openSetup(); return; }
     const c = convRef.current;
     const msg: Msg = { id: uid(), role: 'user', text: body, images: pp.length ? pp : undefined, attach: aa.length ? aa : undefined, ts: Date.now(), late: extra?.late || undefined };
-    const title = c.messages.length ? c.title : titleFrom(body || (aa[0]?.name ?? pp[0]?.name ?? 'Picture'));
+    const cx = extractCode(body), title = c.messages.length ? c.title : titleFrom((cx ? cx.rest || `${LANG_NAME[cx.blocks[0].lang] ?? 'Code'} code` : body) || (aa[0]?.name ?? pp[0]?.name ?? 'Picture'));
     const next: Conv = { ...c, title, messages: [...c.messages, msg], updated: Date.now() };
+    const sentCode = codeItems([msg])[0]; if (sentCode) openCode(sentCode.id, { auto: true });
     setConv(next); void run(next, { work: !!extra?.work });
-  }, [busy, reading, settings, run, setConv]);   // eslint-disable-line react-hooks/exhaustive-deps
+  }, [busy, reading, settings, run, setConv, openCode]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   askRef.current = sendBody;
 
@@ -645,24 +812,52 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // ---------------------------------------------------------------- conversations
   const fresh = useCallback(() => {
     const c = convRef.current;
-    if (!c.messages.length) { box.current?.focus(); return; }
-    setConv(blank(c.model)); setText(''); setPics([]); setNote(''); stick.current = true;
+    if (!c.messages.length && !c.docs?.length) { box.current?.focus(); return; }
+    flushDocs(); setConv(blank(c.model)); setText(''); setPics([]); setNote(''); stick.current = true;
     if (window.innerWidth < 900) setSide(false);
-  }, [setConv]);
+  }, [setConv, flushDocs]);
 
   // The Coe extension can send a question and its answer into a new chat, and its Settings button opens the Chrome tab.
   useEffect(() => {
     if (location.hash === '#chrome') { setTab('ext'); setPanel('settings'); history.replaceState(null, '', location.pathname + location.search); }
     return onExtHandoff((t) => { fresh(); setText(t); setPanel(null); window.setTimeout(() => box.current?.focus(), 60); });
   }, [fresh]);
+  useEffect(() => onExtRefunds((items) => addSidebarRefunds(items)), []);
+  // Chats made in the Coe Mini sidebar are added to the list here, each one once, and updated if it grows.
+  useEffect(() => onExtChats((items) => {
+    void (async () => {
+      for (const c of items as ExtChat[]) {
+        const id = 'x' + String(c.id).slice(0, 40), t = Number(c.t) || Date.now(), have = await loadConv(id);
+        if (have && have.updated >= t) continue;
+        const rows = c.msgs.filter((m) => m && typeof m.t === 'string' && m.t.trim()).slice(-60);
+        if (!rows.length) continue;
+        const msgs: Msg[] = rows.map((m, i) => ({ id: id + '-' + i, role: m.r === 'u' ? 'user' : 'assistant', text: String(m.t).slice(0, 6000), ts: Number(m.at) || t - (rows.length - i) * 1000 }));
+        await persistRef.current({ id, title: ('Mini: ' + String(c.title || 'Chat')).slice(0, 60), created: have?.created ?? msgs[0].ts, updated: t, model: 'core', named: true, pinned: have?.pinned, messages: msgs });
+      }
+    })();
+  }), []);
+  // About you answers changed in the sidebar: the newer copy wins.
+  useEffect(() => onExtProfile((me) => {
+    const cur = loadSettings(), at = Number(me.at) || 0; if (at <= (cur.profileAt || 0)) return;
+    const str = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n);
+    const one = <T extends string>(v: unknown, ok: readonly T[], fall: T): T => (ok.includes(String(v) as T) ? (String(v) as T) : fall);
+    setSettings({ ...cur, name: str(me.name, 30), ageBand: one(me.ageBand, ['', 'under11', '11-13', '14-16', '17-18', '19-24', '25+'] as const, ''), role: one(me.role, ['', 'student', 'teacher', 'parent', 'working', 'other'] as const, ''), yearOrJob: str(me.yearOrJob, 60), subjects: str(me.subjects, 100), length: one(me.length, ['short', 'balanced', 'detailed'] as const, cur.length), easy: !!me.easy, profileAt: at });
+  }), [setSettings]);
+  // The very first time: a few short, optional questions about you.
+  const [meet, setMeet] = useState(false);
+  useEffect(() => {
+    try { if (localStorage.getItem(MET)) return; if (loadSettings().name) { localStorage.setItem(MET, '1'); return; } } catch { return; }
+    const t = window.setTimeout(() => setMeet(true), 1400); return () => window.clearTimeout(t);
+  }, []);   // what the Chrome sidebar gave back is listed in Settings > Usage > Refunds
 
   const open = useCallback(async (id: string) => {
     if (id === convRef.current.id) { if (window.innerWidth < 900) setSide(false); return; }
+    flushDocs();
     const c = liveWork.current.get(id) ?? await loadConv(id); if (!c) { await refreshList(); return; }
     setConv(c); setText(''); setPics([]); setNote(''); stick.current = true; setPhase(aborts.current.has(id) ? 'write' : 'idle');
     if (window.innerWidth < 900) setSide(false);
     window.setTimeout(() => toBottom(), 30);
-  }, [refreshList, setConv, toBottom]);
+  }, [refreshList, setConv, toBottom, flushDocs]);
 
   const remove = useCallback(async (id: string) => {
     aborts.current.get(id)?.abort();
@@ -765,6 +960,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const onMessages = (e: React.MouseEvent) => {
     const pic = (e.target as Element).closest<HTMLElement>('img.cx-img'); if (pic) { pic.classList.toggle('zoom'); return; }
     const eq = (e.target as Element).closest('.katex'); if (eq) { const t = eq.querySelector('annotation[encoding="application/x-tex"]')?.textContent; if (t) { navigator.clipboard?.writeText(t).then(() => say('LaTeX copied.'), () => say('Could not copy.')); return; } }
+    const bs = (e.target as Element).closest<HTMLElement>('[data-beside]');
+    if (bs) { const mid = bs.closest<HTMLElement>('[data-mid]')?.dataset.mid; const code = (bs.closest('.cx-code')?.querySelector('code')?.textContent ?? '').replace(/\s+$/, ''); const it = cItems.find((x) => x.msgId === mid && x.code === code); if (it) openCode(it.id, { changes: !!it.base }); else say('That bit is too short to open on the side.'); return; }
     const rn = (e.target as Element).closest<HTMLElement>('[data-run]'); if (rn) { const box = rn.closest<HTMLElement>('.cx-code'); if (box) runBlock(box, rn.dataset.run === 'py' ? 'py' : 'js'); return; }
     const b = (e.target as Element).closest<HTMLElement>('[data-copy]'); if (!b) return;
     const code = b.closest('.cx-code')?.querySelector('code')?.textContent ?? '';
@@ -813,8 +1010,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     { id: 'find', group: 'Chat', title: 'Find in this chat', hint: 'search the messages, or your bookmarks', run: () => setFind({ q: '', i: 0, marks: false }) },
     { id: 'compact', group: 'Chat', title: 'Summarise the older messages', hint: 'keeps a long chat quick', run: () => { void (async () => { const c2 = await compactConv(loadSettings(), convRef.current).catch(() => null); if (!c2) { say('There is not enough chat to summarise yet.'); return; } setConv(c2); await persist(c2); say('The older messages are now a short summary.'); })(); } },
     { id: 'files', group: 'Tools', title: 'Files', run: () => { setShelfTab(undefined); setShelf(true); } },
-    { id: 'web', group: 'Tools', title: web ? 'Turn web search off' : 'Turn web search on', on: web, run: () => { const v = !web; setWeb(v); try { localStorage.setItem('pmc:coe:web', v ? '1' : '0'); } catch { /* storage blocked */ } } },
-    { id: 'work', group: 'Tools', title: 'Deep Work for the next message', on: work, run: () => setWork((w) => !w) },
+    { id: 'prog', group: 'Chat', title: 'Show progress and outputs', hint: 'steps, documents, what was used', run: () => setProgOpen(true) },
     ...SLASH.filter((c) => !c.go).map((c): Cmd => ({ id: 'sl-' + c.cmd, group: 'Start with', title: c.title, hint: '/' + c.cmd, run: () => useSlash(c) })),
     { id: 'ex-chat-quiz', group: 'This chat', title: 'Quiz me on this chat', run: () => sendBody('Make me a quiz (a quiz block, 6 questions, with the reason for each answer) on what we have covered in this chat.') },
     { id: 'ex-chat-cards', group: 'This chat', title: 'Make flash cards from this chat', run: () => sendBody('Make flash cards (a flashcards block, about 12 cards) from what we have covered in this chat.') },
@@ -831,7 +1027,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     { id: 'keys', group: 'Help', title: 'Keyboard shortcuts', hint: 'Ctrl+/', run: () => setKeysOpen(true) },
     { id: 'acct', group: 'Account', title: me ? 'Account' : 'Sign in', run: () => setAcct(true) },
     { id: 'plans', group: 'Account', title: 'Plans and tokens', run: () => { window.location.href = '/plans/'; } },
-    { id: 'set', group: 'Account', title: 'Settings', run: () => { setTab(keyOn ? 'ai' : 'connect'); setPanel('settings'); } },
+    { id: 'set', group: 'Account', title: 'Settings', run: () => { setTab('account'); setPanel('settings'); } },
   ];
   const exportEvery = async () => downloadText('coe-ai-conversations.json', JSON.stringify(await exportAll()), 'application/json');
   const importFile = async (f: File) => {
@@ -865,10 +1061,14 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   }, [conv.messages]);
   const lastUser = [...conv.messages].reverse().find((m) => m.role === 'user' && !m.hidden && !m.compact)?.id;
   const full = !keyOn && left <= 0;
+  const lastVis = [...conv.messages].reverse().find((x) => !x.hidden);
+  const lastErr = lastVis && lastVis.role === 'assistant' && lastVis.error && !busy ? lastVis : null;
+  const outBox = (full && !busy) || lastErr?.errKind === 'credits';   // "out of tokens" is said once, in one place
   const hasInput = text.trim().length > 0 || pics.length > 0 || atts.length > 0;
   const canSend = !reading && !full && hasInput;
   const wq = quotaLeft('work', settings), proNow = planNow(settings) === 'pro';
   const madeRef = useRef(0);
+  const nFiles = useMemo(() => { const f = filesOf(conv.messages); return f.sent.length + f.made.length + Object.keys(conv.files ?? {}).filter((k) => !k.endsWith('/.keep')).length; }, [conv.messages, conv.files]);
   const made = useMemo(() => { if (!busy) madeRef.current = piecesOf(conv).length; return madeRef.current; }, [conv, busy]);
   const days = streak().days;
   type IconName = Parameters<typeof UiIcon>[0]['name'];
@@ -882,8 +1082,6 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     { id: 'folder', icon: 'folder', title: 'Files', hint: 'Sent to Coe and sent back', run: () => setShelf((v) => !v), hide: !(proNow || hasFiles(conv.files)) },
   ];
 
-  const toggleWeb = () => { const v = !web; setWeb(v); try { localStorage.setItem('pmc:coe:web', v ? '1' : '0'); } catch { /* storage blocked */ } };
-  const toggleWork = () => { if (!work && !proNow && wq.left <= 0) { setUpgrade('Deep Work is part of Pro. Free includes one run a day, and today\'s is used.'); return; } setWork((w) => !w); };
   const shownPhase: Phase = reading ? 'read' : phase;
   const quick: { id: string; icon: IconName; title: string; n?: number; off?: boolean; run: () => void }[] = [
     { id: 'study', icon: 'study', title: 'Study', n: due, run: () => setStudyOpen(true) },
@@ -902,16 +1100,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
       {/* ------------------------------------------------ history */}
       <aside className="cx-side" aria-label="Conversations" aria-hidden={!side} {...(!side ? { inert: true } : {})}>
-        <div className="cx-brand"><CoeWordmark height={30} /></div>
+        <div className="cx-brand"><CoeWordmark height={30} spin /></div>
         <div className="cx-side-top">
           <button type="button" className="btn gold cx-new" onClick={fresh}><UiIcon name="plus" size={18} />New chat</button>
-          <div className="cx-quick" role="group" aria-label="Tools">
-            {quick.map((q) => (
-              <button key={q.id} type="button" className="cxk" disabled={q.off} onClick={() => { if (window.innerWidth < 900) setSide(false); q.run(); }}>
-                <UiIcon name={q.icon} size={18} /><span className="d">{q.title}</span>{!!q.n && <i className="cxk-n">{q.n}</i>}
-              </button>
-            ))}
-          </div>
           <label className="cx-find"><UiIcon name="search" size={16} /><span className="sr">Search conversations</span>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" spellCheck={false} /></label>
         </div>
@@ -934,52 +1125,51 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           ))}
         </nav>
         <div className="cx-side-foot">
-          <div className="cx-plan-row">
-            <span className="d cx-plan-name">{planName}</span><span className="tx cx-small">{keyOn ? 'No daily limit' : `${fmtTok(usedNow)} of ${fmtTok(perDay)} tokens today`}</span>
+          <div className="cx-me-row">
+            <button type="button" className="cx-me" title={me ? 'Your account' : 'Sign in'} onClick={() => { if (me) { setTab('account'); setPanel('settings'); } else setAcct(true); }}>
+              <span className="cx-av d" aria-hidden>{me ? me.slice(0, 1).toUpperCase() : <UiIcon name="user" size={18} />}</span>
+              <span className="cx-me-t"><b className="d">{me ? me.split('@')[0] : 'Sign in'}</b><small className="tx">{keyOn ? 'No daily limit' : `${fmtTok(Math.max(0, perDay - usedNow))} left today`}</small></span>
+            </button>
+            <button type="button" className="cx-fb" title="Settings" aria-label="Settings" onClick={() => { setTab('look'); setPanel('settings'); }}><UiIcon name="gear" size={20} /></button>
           </div>
-          {!keyOn && <div className="cx-meter" role="img" aria-label={`${fmtTok(usedNow)} of ${fmtTok(perDay)} tokens used today`}><i style={{ width: `${Math.min(100, (usedNow / perDay) * 100)}%` }} /></div>}
-          <button type="button" className="cx-acct tx" onClick={() => setAcct(true)}>{me ? <>Saved to <b>{me}</b></> : <>Saved on this device. <u>Sign in</u> to keep them in an account.</>}</button>
-          <div className="cx-foot-btns">
-            <a className="btn small" href="/plans/"><UiIcon name="card" size={15} />Plans</a>
-            <button type="button" className="btn small" onClick={() => { setTab('ai'); setPanel('settings'); }}><UiIcon name="gear" size={15} />Settings</button>
-          </div>
+          {!keyOn && <div className={`cx-meter ${toneOf(usedNow, perDay)}`} role="img" aria-label={`${fmtTok(usedNow)} of ${fmtTok(perDay)} tokens used today`}><i style={{ width: `${Math.min(100, (usedNow / perDay) * 100)}%` }} /></div>}
         </div>
       </aside>
 
       {/* ------------------------------------------------ chat */}
-      <section className={`cx-main${shelf ? " ws-open" : ""}`} aria-label="Chat">
-        <header className="cx-head hd">
-          <button type="button" className="hd-b" aria-label={side ? 'Hide the list' : 'Show the list'} aria-pressed={side} onClick={() => setSide((s) => !s)}><UiIcon name="panel" size={22} /><span className="hd-t d">Chats</span></button>
+      <section ref={mainRef} className={`cx-main${shelf ? " ws-open" : ""}${split ? " cp" : ""}${edOpen && !edOver ? " ed-open" : ""}`} style={split && mainW ? ({ '--cpw': `${Math.round(cpFrac * mainW)}px` } as React.CSSProperties) : edOpen && !edOver ? ({ '--edw': `${edShow}px` } as React.CSSProperties) : undefined} aria-label="Chat">
+        <header className="cx-isl" aria-label="Chat controls">
+          <button type="button" className="isl-b" title="Chats" aria-label={side ? 'Hide the list' : 'Show the list'} aria-pressed={side} onClick={() => { sideWas.current = false; setSide((s) => !s); }}><UiIcon name="panel" size={22} /></button>
           {titling && conv.messages.length
             ? <Rename className="cx-title-in" value={conv.title} onDone={(v) => rename(conv.id, v)} />
-            : <button type="button" className="cx-title hd-title d" disabled={!conv.messages.length} onClick={() => setTitling(true)} title={conv.messages.length ? 'Rename' : undefined}>{conv.title}</button>}
-          <span className="cx-grow" />
-          <Select className="cx-model" small block={false} align="right" label="Model" value={conv.model}
-            options={COE_MODELS.map((m) => ({ value: m.key, label: m.name, hint: m.blurb, badge: canUse(planNow(settings), m.key) ? m.tag : 'Pro' }))}
-            onChange={(k) => pickModel(k as ModelKey)} />
+            : <button type="button" className="isl-title d" disabled={!conv.messages.length} onClick={() => setTitling(true)} title={conv.messages.length ? 'Rename' : undefined}>{conv.messages.length ? conv.title : 'New chat'}</button>}
+          {cItems.length > 0 && <button type="button" className={`isl-b${cpOpen ? ' on' : ''}`} aria-label={cpOpen ? 'Hide the code' : 'Show the code'} title={cpOpen ? 'Hide the code' : 'Show the code'} aria-pressed={cpOpen} onClick={() => { if (cpOpen) { closeCode(); return; } const it = cItems.find((x) => x.id === cpSel) ?? cItems[cItems.length - 1]; openCode(it.id, { changes: it.from === 'coe' && !!it.base }); }}><UiIcon name="code" size={20} />{cpNew && <i className="isl-n dot" aria-label="New code from Coe" />}</button>}
+          {pill && <button type="button" className={`isl-step${progOpen ? ' on' : ''}${busy ? ' live' : ''}`} aria-pressed={progOpen} aria-label={`${pill.label}. Show progress`} title="Progress" onClick={() => setProgOpen((v) => !v)}><UiIcon name="list" size={16} /><span className="s-long">{pill.label}</span><span className="s-short">{pill.short}</span></button>}
+          <button type="button" className={`isl-b${shelf ? ' on' : ''}`} aria-label="Files" title="Files" aria-pressed={shelf} onClick={() => { setShelfTab(undefined); setShelf((v) => !v); }}><UiIcon name="folder" size={20} />{nFiles > 0 && <i className="isl-n">{nFiles}</i>}</button>
           <div className="hd-more">
-            <button type="button" className="hd-b hd-dots" aria-label="More" aria-haspopup="menu" aria-expanded={hdMore} onClick={() => setHdMore((o) => !o)}><UiIcon name="more" size={22} /></button>
+            <button type="button" className="isl-b" title="More" aria-label="More" aria-haspopup="menu" aria-expanded={hdMore} onClick={() => setHdMore((o) => !o)}><UiIcon name="more" size={22} /></button>
             {hdMore && (
               <ul className="cx-pop hd-pop" role="menu" aria-label="More">
                 {([
+                  ['Study', 'study', () => setStudyOpen(true), false],
+                  ['Code check', 'code', () => setTool(true), false],
+                  ['Made in Coe', 'layers', () => setGalOpen(true), !made],
+                  ['Talk out loud', 'wave', () => setVoiceOpen(true), false],
                   ['Save this chat as a file', 'download', exportOne, empty],
                   ...(cloudOn ? [['Share this chat as a link', 'share', shareThis, empty]] : []),
                   ['Commands', 'command', () => setPalOpen(true), false],
-                  ['Settings', 'gear', () => { setTab('ai'); setPanel('settings'); }, false],
+                  ['Settings', 'gear', () => { setTab('look'); setPanel('settings'); }, false],
                   ...(isInstalled() ? [] : [['Install Coe as an app', 'install', () => { void installCoe().then(say); }, false]]),
                 ] as [string, Parameters<typeof UiIcon>[0]['name'], () => void, boolean][]).map(([t, ic, run, off]) => (
                   <li key={t} role="none"><button type="button" role="menuitem" className="cx-opt hd-pop-i" disabled={off} onClick={() => { setHdMore(false); run(); }}><span className="d cx-opt-n"><UiIcon name={ic} size={17} />{t}</span></button></li>
                 ))}
-                {owner && <li role="none"><button type="button" role="menuitem" className={`cx-opt hd-pop-i${conn.ok ? '' : ' danger'}`} onClick={() => { setHdMore(false); setTab(keyOn ? 'ai' : 'connect'); setPanel('settings'); }}><span className="d cx-opt-n"><UiIcon name="shield" size={17} />{conn.ok ? 'Server ready' : 'Server not set up'}</span></button></li>}
+                {owner && <li role="none"><button type="button" role="menuitem" className={`cx-opt hd-pop-i${conn.ok ? '' : ' danger'}`} onClick={() => { setHdMore(false); setTab('account'); setPanel('settings'); }}><span className="d cx-opt-n"><UiIcon name="shield" size={17} />{conn.ok ? 'Server ready' : 'Server not set up'}</span></button></li>}
               </ul>
             )}
           </div>
-          {me
-            ? <button type="button" className="hd-b hd-me" aria-label={`Account: ${me}`} title={me} onClick={() => setAcct(true)}><span className="d">{me.slice(0, 1).toUpperCase()}</span></button>
-            : <button type="button" className="hd-b hd-in cx-signin" onClick={() => setAcct(true)}><span className="d">Sign in</span></button>}
         </header>
 
-        {!keyOn && livePct >= 90 && !usageOff && (
+        {!keyOn && livePct >= 90 && livePct < 100 && !usageOff && (
           <div className={`cx-usage${livePct >= 100 ? ' out' : ''}`} role="alert">
             <span className="cx-usage-ic" aria-hidden><UiIcon name="alert" size={22} /></span>
             <div className="cx-usage-t">
@@ -1005,29 +1195,23 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           {empty && <Halftone className="ht-tr" />}
           {empty ? (
             <div className="cx-empty home" key={conv.id}>
-              <CoeWordmark className="home-logo" height={84} />
+              <CoeStar size={220} className="home-star" spin />
               <h2 className="home-h d">{greeting(settings.name, new Date().getHours(), hello)}</h2>
               <p className="home-lead tx">Ask anything, add a picture, or start from a block.</p>
               {!conn.ok && owner && (
                 <div className="cx-connect">
                   <p className="tx"><b className="d">Not set up yet.</b> {conn.why}</p>
-                  <button type="button" className="btn gold" onClick={() => { setTab(keyOn ? 'ai' : 'connect'); setPanel('settings'); }}>Set up Coe</button>
+                  <button type="button" className="btn gold" onClick={() => { setTab('account'); setPanel('settings'); }}>Set up Coe</button>
                 </div>
               )}
               <div className="hbs" role="group" aria-label="Start from a block">
-                {(moreStarters ? STARTERS : STARTERS.slice(0, 9)).map((s, i) => (
-                  <button key={s.title} type="button" className="hb" title={s.hint} style={{ animationDelay: `${i * 40}ms` }}
+                {STARTERS.slice(0, 4).map((s, i) => (
+                  <button key={s.title} type="button" className={`hb t${i % 4}`} title={s.hint} style={{ animationDelay: `${i * 40}ms` }}
                     onClick={() => { if (s.tool === 'code') { setTool(true); return; } setText(s.text ?? ''); box.current?.focus(); if (s.pic) (canCamera() ? setCapture('camera') : fileIn.current?.click()); }}>
-                    <UiIcon name={s.icon} size={18} />
-                    <b className="d">{s.title}</b>
+                    <span className="hb-art" aria-hidden><UiIcon name={s.icon} size={34} /></span>
+                    <b className="d">{s.title}</b><small className="tx">{s.hint}</small>
                   </button>
                 ))}
-                {!moreStarters && STARTERS.length > 9 && <button type="button" className="hb more" onClick={() => setMoreStarters(true)}><b className="d">{STARTERS.length - 9} more</b></button>}
-              </div>
-              <div className="home-strip">
-                <button type="button" className="strip-b" onClick={() => setStudyOpen(true)}><UiIcon name="flame" size={22} /><b className="d">{days}</b><span className="tx">day streak</span></button>
-                <button type="button" className="strip-b" onClick={() => setStudyOpen(true)}><UiIcon name="study" size={22} /><b className="d">{due}</b><span className="tx">cards due</span></button>
-                <span className="strip-cr tx">{keyOn ? 'No daily limit' : `${fmtTok(Math.max(0, left))} tokens left today`}</span>
               </div>
             </div>
           ) : (
@@ -1043,7 +1227,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                 const rr = m.runs?.[0], liveRun = live && rr?.status === 'running' ? describeRun(rr) : null;
                 return (
                   <li key={first.id} data-mid={first.id} className={`cx-msg ${m.role}${Date.now() - m.ts < 2500 ? ' new' : ''}`}>
-                    <div className="cx-who d">{m.role === 'user' ? 'You' : <><CoeStar size={20} />Coe{m.marked ? <UiIcon name="bookmark" size={14} /> : null}{m.work ? <i>Deep Work</i> : m.model ? <i>{modelByKey(m.model).name.replace(/^Coe /, '')}</i> : null}</>}</div>
+                    {m.role === 'assistant' && (m.marked || m.work) && <div className="cx-who d">{m.marked ? <UiIcon name="bookmark" size={14} /> : null}{m.work ? <i>Deep Work</i> : null}</div>}
                     {parts.map((pt) => (
                     <div key={pt.id} data-mid={pt.id} className="cx-part">
                     {pt.images?.length ? (
@@ -1051,37 +1235,39 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                         <button type="button" key={k} className="cx-pic" onClick={() => setBig(im)} aria-label={`Open ${im.name}`}><img src={dataUrl(im)} alt={im.name} /></button>
                       ))}</div>
                     ) : null}
-                    {pt.attach?.length ? <div className="cx-atts">{pt.attach.map((a, k) => <span key={k} className="cx-att tx"><UiIcon name="file" size={15} /><b>{a.name}</b><i>{a.kind}{a.cut ? ', cut short' : ''}</i></span>)}</div> : null}
+                    {pt.attach?.length ? <div className="cx-atts">{pt.attach.map((a, k) => <AttCard key={k} a={a} onOpen={() => setPeek(a)} />)}</div> : null}
                     {pt.role === 'user'
-                      ? (pt.text && <Clamp limit={260}><p className="cx-says tx">{pt.text}</p></Clamp>)
+                      ? (() => { const x = codeIn(pt), t = x ? x.rest : pt.text; return <>
+                        {t && <Clamp limit={260}><p className="cx-says tx">{t}</p></Clamp>}
+                        {x && <div className="cx-cchips">{x.items.map((it) => <button key={it.id} type="button" className={`cx-cchip${cpOpen && cpSel === it.id ? ' on' : ''}`} title="Open this code on the side" onClick={() => openCode(it.id)}><UiIcon name="code" size={16} /><b className="d">{it.file ?? LANG_NAME[it.lang] ?? 'Code'}</b><span className="tx">{it.code.split('\n').length} lines</span></button>)}</div>}
+                      </>; })()
                       : (pt.text ? <Clamp live={live && pt === m}><Rich text={pt.text} msg={pt} live={live && pt === m} /></Clamp>: null)}
-                    {pt.error && (
-                      <ErrorBox own={keyOn} kind={pt.errKind} text={pt.error} canRetry={lastOne && !busy && pt === m} onAct={errAct} />
-                    )}
+                    {pt.error && !(lastOne && pt === m) && !(outBox && pt.errKind === 'credits') && <ErrorBox small own={keyOn} kind={pt.errKind} text={pt.error} canRetry={false} onAct={errAct} />}
                     </div>
                     ))}
                     {m.role === 'assistant' && m.checked && !live && <p className={`cx-checked tx ${m.checked}`}><UiIcon name={m.checked === 'ok' ? 'shield' : 'wand'} size={14} />{m.checked === 'ok' ? 'Double-checked' : <>Fixed before sending: {m.fix}</>}</p>}
                     {m.role === 'assistant' && !m.error && <Dock messages={conv.messages} convId={conv.id} live={live} from={idxs[0]} to={i} />}
                     {live && !m.error && <Generating since={conv.messages[idxs[0]]?.ts} phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} empty={!parts.some((x) => x.text)} />}
                     {m.role === 'assistant' && turnEnd && !m.error && !(dk && dk.end >= turnFrom(i) && dk.end <= i) && <Activity steps={turnSteps(conv.messages, i)} live={live} phaseNote={PHASES[shownPhase === 'rest' ? 'idle' : shownPhase].label} />}
+                    {m.role === 'assistant' && turnEnd && parts.some((x) => x.refund) && <p className="cx-refund tx"><UiIcon name="refresh" size={14} /><span>{fmtTok(parts.reduce((n, x) => n + (x.refund ?? 0), 0))} tokens given back.</span><button type="button" className="cx-link" onClick={() => { setTab('usage'); setPanel('settings'); }}>See refunds</button></p>}
                     {m.role === 'assistant' && (m.stopped || m.cut) && !m.error && <p className="cx-flag tx">{m.stopped ? 'You stopped this reply.' : 'This reply reached its length limit. Say “continue” to carry on.'}</p>}
                     {!live && (
                       <div className="cx-acts">
-                        {m.role === 'assistant' && agg.text && <button type="button" className="cx-act" onClick={() => copyMsg(agg)}><UiIcon name="copy" size={14} />Copy</button>}
-                        {m.role === 'assistant' && agg.text && !m.error && <button type="button" className="cx-act" aria-pressed={aloud === m.id} onClick={() => readAloud(agg)}><UiIcon name={aloud === m.id ? 'stop' : 'volume'} size={14} />{aloud === m.id ? 'Stop' : 'Read aloud'}</button>}
-                        {m.role === 'assistant' && !m.error && lastOne && !busy && worthRedo(agg.text) && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className={`cx-act${left > 0 ? ' free' : ''}`} onClick={redo} title={left > 0 ? `Wrong? Redo it free. ${left} free ${left === 1 ? 'redo' : 'redos'} left today; after that a redo counts like a normal message.` : 'Redo it. Today\'s free redos are used, so this counts like a normal message.'}><UiIcon name="wand" size={14} />{left > 0 ? `Redo free (${left})` : 'Redo'}</button>; })()}
+                        {m.role === 'assistant' && agg.text && <button type="button" className="cx-act" title="Copy" aria-label="Copy" onClick={() => copyMsg(agg)}><UiIcon name="copy" size={14} />Copy</button>}
+                        {m.role === 'assistant' && agg.text && !m.error && <button type="button" className="cx-act" title={aloud === m.id ? 'Stop reading' : 'Read aloud'} aria-label={aloud === m.id ? 'Stop reading' : 'Read aloud'} aria-pressed={aloud === m.id} onClick={() => readAloud(agg)}><UiIcon name={aloud === m.id ? 'stop' : 'volume'} size={14} />{aloud === m.id ? 'Stop' : 'Read aloud'}</button>}
+                        {m.role === 'assistant' && !m.error && lastOne && !busy && worthRedo(agg.text) && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className="cx-act" onClick={redo} aria-label="Try again" title={left > 0 ? `Not right? Try again, free. ${left} free ${left === 1 ? 'try' : 'tries'} left today.` : 'Try again. Today\'s free tries are used, so this counts like a normal message.'}><UiIcon name="refresh" size={14} /></button>; })()}
                         {m.role === 'assistant' && agg.text && !m.error && (
                           <details className="cx-more" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) { const d = e.currentTarget as HTMLDetailsElement; const off = (ev: Event) => { if (!d.contains(ev.target as Node)) { d.open = false; document.removeEventListener('pointerdown', off, true); } }; document.addEventListener('pointerdown', off, true); } }}>
-                            <summary className="cx-act" aria-label="More for this answer"><UiIcon name="menu" size={14} />More</summary>
+                            <summary className="cx-act" title="More" aria-label="More for this answer"><UiIcon name="menu" size={14} />More</summary>
                             <div className="cx-more-menu" onClick={(e) => { (e.currentTarget.closest('details') as HTMLDetailsElement).open = false; }}>
-                              {lastOne && !busy && <button type="button" className="cx-act" onClick={retry}><UiIcon name="refresh" size={14} />Again</button>}
+                              {lastOne && !busy && <button type="button" className="cx-act" onClick={retry} title="Again"><UiIcon name="refresh" size={14} /><span className="lb">Again</span></button>}
                               <button type="button" className="cx-act" onClick={() => mark(m.id)}><UiIcon name="bookmark" size={14} />{m.marked ? 'Remove bookmark' : 'Bookmark'}</button>
                               <button type="button" className="cx-act" onClick={() => void branchFrom(m.id)}><UiIcon name="branch" size={14} />Branch from here</button>
                               <button type="button" className="cx-act" onClick={() => setInfoFor(m.id)}><UiIcon name="info" size={14} />Info</button>
                             </div>
                           </details>
                         )}
-                        {m.role === 'user' && m.id === lastUser && !busy && <button type="button" className="cx-act" onClick={() => edit(m.id)}><UiIcon name="edit" size={14} />Edit</button>}
+                        {m.role === 'user' && m.id === lastUser && !busy && <button type="button" className="cx-act" title="Edit" aria-label="Edit" onClick={() => edit(m.id)}><UiIcon name="edit" size={14} />Edit</button>}
                         {m.role === 'assistant' && agg.outTokens ? <span className="cx-tok tx">{agg.outTokens} tokens</span> : null}
                       </div>
                     )}
@@ -1100,7 +1286,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           {away && <button type="button" className="cx-jump btn small" onClick={() => { stick.current = true; toBottom(true); setAway(false); }}><UiIcon name="down" size={15} />Latest</button>}
           {remoteLive && !busy && <p className="cx-flag tx" role="status">Coe is replying to this chat on another device. It shows here as it is written.</p>}
           {note && <p className="cx-flag tx">{note}</p>}
-          {full && <p className="cx-limit tx" role="status">All {fmtTok(perDay)} tokens for today are used. <a className="cx-link" href="/plans/">See plans</a></p>}
+          {outBox
+            ? <ErrorBox small own={keyOn} kind="credits" text={lastErr?.errKind === 'credits' ? lastErr.error ?? '' : ''} canRetry={false} onAct={errAct} />
+            : lastErr ? <ErrorBox small own={keyOn} kind={lastErr.errKind} text={lastErr.error ?? ''} canRetry onAct={errAct} /> : null}
           {fb && !busy && !empty && <Feedback onRate={(r) => void sendFeedback(loadSettings(), r)} onMessage={async (r, t) => (await sendFeedback(loadSettings(), undefined, `[${r}] ${t}`, 'problem')).emailed} onLater={() => { feedbackLater(); setFb(false); }} onDone={() => setFb(false)} />}
           {queue.length > 0 && (
             <ul className="cx-queue" aria-label="Messages waiting to be sent">
@@ -1117,14 +1305,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           <div className="cx-box">
             {pics.length > 0 && (
               <div className="cx-chips">{pics.map((p, i) => (
-                <span key={i} className="cx-chipic"><img src={dataUrl(p)} alt={p.name} />
+                <span key={i} className="cx-chipic"><img src={dataUrl(p)} alt={p.name} role="button" tabIndex={0} title="Look closer" onClick={() => setBig(p)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setBig(p); } }} />
                   <button type="button" aria-label={`Remove ${p.name}`} onClick={() => setPics((x) => x.filter((_, k) => k !== i))}><UiIcon name="close" size={12} /></button></span>
               ))}</div>
             )}
             {(atts.length > 0 || reading) && (
               <div className="cx-chips">
-                {atts.map((a, i) => <span key={i} className="cx-att tx"><UiIcon name="file" size={15} /><b>{a.name}</b><i>{a.kind}{a.cut ? ', cut short' : ''}</i>
-                  <button type="button" aria-label={`Remove ${a.name}`} onClick={() => setAtts((x) => x.filter((_, k) => k !== i))}><UiIcon name="close" size={12} /></button></span>)}
+                {atts.map((a, i) => <AttCard key={i} a={a} onOpen={() => setPeek(a)} onRemove={() => setAtts((x) => x.filter((_, k) => k !== i))} />)}
                 {reading && <span className="cx-att tx"><CoeStar size={18} mode="read" /><b>{reading.endsWith('…') ? reading : `Reading ${reading}`}</b></span>}
               </div>
             )}
@@ -1144,9 +1331,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                     {plusItems.filter((i) => !i.hide).map((i) => (
                       <li key={i.id} role="none"><button type="button" role="menuitem" className="cx-opt" onClick={() => { setPlusOpen(false); i.run(); }}><span className="d cx-opt-n"><UiIcon name={i.icon} size={18} />{i.title}</span><span className="tx cx-small">{i.hint}</span></button></li>
                     ))}
-                    <li role="presentation" className="cx-pop-h d">Ways to work</li>
-                    <li role="none"><button type="button" role="menuitemcheckbox" aria-checked={work} className={`cx-opt cx-tgl${work ? ' on' : ''}`} onClick={() => { setPlusOpen(false); toggleWork(); }}><span className="d cx-opt-n"><UiIcon name="bolt" size={18} />Deep Work<em className="cx-tg">{work ? 'On' : proNow ? 'Off' : `${wq.left} left`}</em></span><span className="tx cx-small">Plans a big job, uses tools, checks its work</span></button></li>
-                    <li role="none"><button type="button" role="menuitemcheckbox" aria-checked={web} className={`cx-opt cx-tgl${web ? ' on' : ''}`} onClick={() => { setPlusOpen(false); toggleWeb(); }}><span className="d cx-opt-n"><UiIcon name="globe" size={18} />Web search<em className="cx-tg">{web ? 'On' : 'Off'}</em></span><span className="tx cx-small">Let Coe look things up online</span></button></li>
+                    <li role="presentation" className="cx-pop-h d">How Coe works</li>
                     <li role="none"><button type="button" role="menuitem" className={`cx-opt cx-tgl${persona !== 'coe' ? ' on' : ''}`} onClick={() => { setPlusOpen(false); setPerPick(true); }}><span className="d cx-opt-n"><UiIcon name="graduate" size={18} />Style<em className="cx-tg">{persona === 'coe' ? 'Coe' : personaOf(persona).name}</em></span><span className="tx cx-small">Tutor, maths mentor, examiner and more</span></button></li>
                   </ul>
                 )}
@@ -1161,16 +1346,17 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               </div>
               <input ref={fileIn} type="file" accept={`image/*,${KINDS},${MEDIA_KINDS}`} multiple hidden onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ''; void addFiles(f); }} />
               <input ref={cameraIn} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ''; void addFiles(f); }} />
-              {(work || web || persona !== 'coe') && (
+              {persona !== 'coe' && (
               <div className="cx-modes" role="group" aria-label="Switched on">
-                {work && <button type="button" className="cx-mode" aria-label="Turn off Deep Work" onClick={() => setWork(false)}><UiIcon name="bolt" size={14} /><span className="d">Deep Work</span><UiIcon name="close" size={12} /></button>}
-                {web && <button type="button" className="cx-mode" aria-label="Turn off web search" onClick={() => toggleWeb()}><UiIcon name="globe" size={14} /><span className="d">Web</span><UiIcon name="close" size={12} /></button>}
                 {persona !== 'coe' && <button type="button" className="cx-mode" aria-label="Go back to the usual style" onClick={() => pickPersona('coe')}><UiIcon name="graduate" size={14} /><span className="d">{personaOf(persona).name}</span><UiIcon name="close" size={12} /></button>}
               </div>
             )}
               <span className="cx-grow" />
+              <Select className="cx-model" small block={false} align="right" label="Model" value={conv.model}
+                options={COE_MODELS.map((m) => ({ value: m.key, label: m.name, hint: m.blurb, badge: canUse(planNow(settings), m.key) ? m.tag : 'Pro' }))}
+                onChange={(k) => pickModel(k as ModelKey)} />
+
               <button type="button" className={`tb${dict === 'rec' ? ' rec' : ''}`} aria-label={dict === 'rec' ? 'Stop dictating' : 'Dictate with your voice'} aria-pressed={dict === 'rec'} title={dict === 'rec' ? 'Stop' : dict === 'work' ? 'Reading…' : 'Dictate: speak and it types'} disabled={dict === 'work'} onClick={() => void toggleDict()}><UiIcon name={dict === 'rec' ? 'stop' : 'mic'} size={20} /></button>
-              <button type="button" className="tb" aria-label="Talk with Coe out loud" title="Voice: talk with Coe out loud" onClick={() => setVoiceOpen(true)}><UiIcon name="wave" size={20} /></button>
               {busy && <button type="button" className="cx-send stop" aria-label="Stop" title="Stop (Esc)" onClick={stop}><UiIcon name="stop" size={20} /></button>}
               {(!busy || hasInput) && <button type="button" className={`cx-send${busy ? ' later' : ''}`} aria-label={busy ? (settings.whileBusy === 'interrupt' ? 'Send now' : 'Send next') : 'Send'} title={busy ? (settings.whileBusy === 'interrupt' ? 'Send now: Coe stops this reply, keeps it, and answers both' : 'Send next: it goes after this reply') : 'Send'} disabled={!canSend} onClick={send}><UiIcon name="send" size={20} /></button>}
             </div>
@@ -1206,9 +1392,16 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               <button type="button" className="btn small cd-x" aria-label="Close Code check" onClick={() => setTool(false)}><UiIcon name="close" size={18} />Close</button>
             </header>
             <p className="cd-explain tx">Paste or type some code and Coe finds the mistakes and shows how to fix them. Nothing is sent anywhere until you ask Coe. Press <b>Back to chat</b> (or Esc, or your phone's Back button) when you are done. Your code is kept.</p>
-            <Suspense fallback={<p className="tx" role="status">Opening Code check…</p>}><Check settings={settings} onUsed={() => setUse(usage())} onSettings={() => { setTool(false); openSetup(); }} onUpgrade={setUpgrade} say={say} /></Suspense>
+            <Suspense fallback={<p className="tx" role="status">Opening Code check…</p>}><Check key={checkKey} settings={settings} onUsed={() => setUse(usage())} onSettings={() => { setTool(false); openSetup(); }} onUpgrade={setUpgrade} say={say} /></Suspense>
             <div className="cd-foot"><button type="button" className="btn gold" onClick={() => setTool(false)}><UiIcon name="left" size={18} />Back to chat</button></div>
           </div>
+        )}
+        {cpOpen && cItems.length > 0 && <CodePane items={cItems} sel={cpSel} changes={cpChanges} narrow={!wide} frac={cpFrac} onSel={selectCode} onChanges={setCpChanges} onClose={closeCode} onSize={sizeCode} onCompose={composeAbout} onAsk={(t) => askRef.current(t)} onCheck={checkCode} say={say} />}
+        {progOpen && <Progress info={prog} conv={conv} busy={busy} onClose={() => { setProgOpen(false); }} onDoc={(id) => { setProgOpen(false); openEditor(id); }} onFiles={() => { setShelfTab('project'); setShelf(true); }} onZoom={(im) => setBig(im)} onGallery={() => setGalOpen(true)} />}
+        {edOpen && (
+          <Suspense fallback={<aside className={`cx-ed${edOver ? ' over' : ''}`} style={edOver ? undefined : { width: edShow }} aria-label="Editor"><div className="ed-load" role="status"><CoeStar size={46} live mode="code" /><span className="ed-dots" aria-hidden><i /><i /><i /></span><b className="d">Opening the editor</b></div></aside>}>
+            <Editor key={conv.id} docs={docs} activeId={edId} over={edOver} width={edShow} onDocs={(d) => setDocs(d, conv.id)} onActive={setEdId} onClose={closeEditor} onSize={sizeEditor} send={edSend} compose={edCompose} toast={say} />
+          </Suspense>
         )}
         {shelf && <Workspace files={conv.files ?? {}} messages={conv.messages} tab={shelfTab} convTitle={conv.title} onChange={(f) => { const next = { ...convRef.current, files: f }; setConv(next); void persist(next); }} onClose={() => setShelf(false)} say={say} plan={planNow(settings)} />}
         {drop && <div className="cx-drop" aria-hidden><b className="d">Drop pictures or files to add them</b></div>}
@@ -1239,7 +1432,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
       {acct && <Account onClose={() => setAcct(false)} onChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} />}
       {upgrade && <Upgrade note={upgrade} onClose={() => setUpgrade('')} />}
-      {panel === 'settings' && <SettingsPanel owner={owner} settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
+      {meet && !panel && !acct && !upgrade && <MeetCoe s={settings} save={(p) => setSettings({ ...loadSettings(), ...p })} onClose={() => setMeet(false)} />}
+      {panel === 'settings' && <SettingsPanel owner={owner} settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} used={usedNow} limit={perDay} onSignIn={() => setAcct(true)} onAccountChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
+      {peek && <AttPeek a={peek} onClose={() => setPeek(null)} />}
       {big && <Modal title={big.name} onClose={() => setBig(null)} wide><img className="cx-big" src={dataUrl(big)} alt={big.name} /></Modal>}
     </div>
   );

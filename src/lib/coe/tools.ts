@@ -9,7 +9,7 @@
  * This works with any model, because it is only text. Tools that change something outside Coe (a Google file, a GitHub repository)
  * wait for the person to press a button.
  */
-import type { Img, ToolOut, ToolRun } from '@/coe/store';
+import type { Attach, Img, Perm, ToolOut, ToolRun } from '@/coe/store';
 import { serverPost } from './billing';
 import { lookupPlaces } from './places';
 import { bumpQuota, countOther, quotaLeft } from './account';
@@ -17,6 +17,9 @@ import { COST_IMAGE, COST_SEARCH, QUOTAS, type PlanKey, type QuotaKey } from './
 import type { CoeSettings } from './settings';
 import { memory, remember } from './links';
 import { runJs } from './sandbox';
+import { KINDS, STARTER_WEB, docText, findDoc, makeDoc, replaceInDoc, toDocHtml, wordsInDoc, type EDoc, type EKind } from './editors';
+import { guessLang, normLang } from './codesplit';
+import { shootHtml } from './shot';
 import * as ws from './workspace';
 import { APPS_URL, appBySlug, catalogPrompt, describe, frameFor, nearApps, openFrame, type AppFile, type DoMsg } from './pmc';
 
@@ -42,7 +45,7 @@ export function findTool(text: string): Found | null {
 export interface Def { name: string; pro?: boolean; confirm?: boolean; quota?: QuotaKey }
 export const TOOLS: Def[] = [
   { name: 'js' }, { name: 'maths' }, { name: 'remember' }, { name: 'search', quota: 'search' }, { name: 'image', quota: 'image' }, { name: 'place' }, { name: 'pmc_app', quota: 'app' },
-  { name: 'chat' }, { name: 'workspace', pro: true },
+  { name: 'chat' }, { name: 'workspace', pro: true }, { name: 'editor' }, { name: 'read' }, { name: 'screenshot' },
 ];
 export const defOf = (n: string) => TOOLS.find((t) => t.name === n);
 /** Steps one request may take before Coe must wrap up. */
@@ -53,6 +56,10 @@ export interface Ctx {
   settings: CoeSettings; signal: AbortSignal; plan: PlanKey; convId: string; runId: string;
   files: () => ws.Files; setFiles: (f: ws.Files) => void;
   images: () => Img[];                    // pictures in the chat, newest last: what the person attached, and what was made
+  docs: () => EDoc[];                     // what is open in the editor
+  setDocs: (d: EDoc[]) => void;
+  attachments: () => Attach[];            // files the person attached, with all the words that were read
+  perm: () => Perm;                       // what the person allowed Coe to open in this chat
   patch: (p: Partial<ToolRun>) => void;
   say: (t: string) => void;
   chats?: ChatOps;
@@ -66,21 +73,31 @@ export interface ChatOps {
   /** Squeeze the older messages of this chat into a summary. */
   compact: () => Promise<boolean>;
 }
-export interface Done { status: 'ok' | 'error' | 'pending'; result: string; shown?: string; out?: ToolOut; images?: Img[] }
+export interface Done { status: 'ok' | 'error' | 'pending'; result: string; shown?: string; out?: ToolOut; images?: Img[]; /** It did not work because of a limit (Pro only, or used up for today), not because something went wrong. Nothing is refunded for those. */ gate?: boolean }
 
 const fail = (result: string): Done => ({ status: 'error', result });
-const pro = (what: string): Done => ({ status: 'error', result: `${what} is part of Pro, and this person is on Free. Tell them so in one short sentence and offer what you can do without it. Do not try again.`, shown: `${what} is part of Pro.` });
+const pro = (what: string): Done => ({ gate: true, status: 'error', result: `${what} is part of Pro, and this person is on Free. Tell them so in one short sentence and offer what you can do without it. Do not try again.`, shown: `${what} is part of Pro.` });
 const str = (v: unknown, n = 100000) => (typeof v === 'string' ? v : v == null ? '' : String(v)).slice(0, n);
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 const trim = (s: string, n = 7000) => (s.length > n ? s.slice(0, n) + `\n[... ${s.length - n} more characters cut]` : s);
 
 // ---------------------------------------------------------------- running a tool
+/** Said to the model after any tool that did not work, so its reply is honest: it did not happen, and here is why. */
+export const FAILED_RULE = 'Nothing was made or done. Start your reply with one short sentence that says you could not do it and why, in words a child could follow. Say it once and do not repeat the reason. Never say it worked, and never say "here it is" or "here is your ...". Then give one thing the person can do next. Do not repeat this message.';
+
+/** Runs a tool. When it does not work, the model is told so in a way it cannot misread, and the person sees only the plain reason. */
 export async function execute(c: Call, x: Ctx): Promise<Done> {
+  const r = await go(c, x);
+  if (r.status !== 'error' || /^Stopped\.$/.test(r.result) || r.result.startsWith('FAILED')) return r;
+  return { ...r, shown: r.shown ?? r.result, result: `FAILED. ${r.result} ${FAILED_RULE}` };
+}
+
+async function go(c: Call, x: Ctx): Promise<Done> {
   const d = defOf(c.tool);
   if (!d) return fail(`There is no tool called "${c.tool}". The tools are: ${TOOLS.map((t) => t.name).join(', ')}.`);
   if (d.pro && x.plan !== 'pro') return pro(`The ${c.tool} tool`);
   try {
-    if (d.quota && !(await takeQuota(d.quota, x))) { const m = `${QUOTAS[d.quota].unit[0].toUpperCase() + QUOTAS[d.quota].unit.slice(1)} for today are used up on this plan. ${x.plan === 'free' ? 'Pro has far more.' : 'They come back at midnight (UTC).'}`; return { status: 'error', result: m + ' Tell the person and carry on without it.', shown: m }; }
+    if (d.quota && !(await takeQuota(d.quota, x))) { const m = `${QUOTAS[d.quota].unit[0].toUpperCase() + QUOTAS[d.quota].unit.slice(1)} for today are used up on this plan. ${x.plan === 'free' ? 'Pro has far more.' : 'They come back at midnight (UTC).'}`; return { status: 'error', gate: true, result: m + ' Do not try that tool again today.', shown: m }; }
     switch (c.tool) {
       case 'js': return await toolJs(c, x);
       case 'maths': return await toolMaths(c);
@@ -90,9 +107,12 @@ export async function execute(c: Call, x: Ctx): Promise<Done> {
       case 'place': return await toolPlace(c, x);
       case 'pmc_app': return await toolApp(c, x);
       case 'workspace': return await toolWorkspace(c, x);
+      case 'editor': return await toolEditor(c, x);
+      case 'read': return toolRead(c, x);
+      case 'screenshot': return await toolShot(c, x);
       case 'chat': return await toolChat(c, x);
     }
-  } catch (e) { if ((e as Error).name === 'AbortError') return fail('Stopped.'); return fail((e as Error).message || 'That did not work.'); }
+  } catch (e) { if ((e as Error).name === 'AbortError') return fail('Stopped.'); const m = (e as Error).message || ''; if (/^(credits|plan|signin|check_cap)$/.test((e as { code?: string }).code ?? '')) return { ...fail(m || 'That is not available on this plan right now.'), gate: true }; return fail(!m || /cannot read|undefined|null|is not a function|not iterable/i.test(m) ? 'That did not work. Try again in a moment.' : m); }
   return fail('That tool did nothing.');
 }
 
@@ -127,6 +147,7 @@ async function toolSearch(c: Call, x: Ctx): Promise<Done> {
 async function toolImage(c: Call, x: Ctx): Promise<Done> {
   const prompt = str(c.prompt, 4000).trim(); if (!prompt) return fail('Say what to draw.');
   const r = await serverPost<{ data: string; type: string }>(x.settings, '/image', { prompt });
+  if (!r || !r.data || !r.type) return fail('The picture service sent nothing back. Try again, or describe it a little differently.');
   bumpQuota('image'); countOther(x.settings, COST_IMAGE);
   const ext = r.type.split('/')[1]?.replace('svg+xml', 'svg').replace('jpeg', 'jpg') || 'png';
   return { status: 'ok', result: 'The picture was made and is now shown to the person under your message. You cannot see it, so do not describe details you cannot know. Ask if they want changes.', out: { kind: 'image', img: { name: `picture.${ext}`, type: r.type, data: r.data } } };
@@ -162,6 +183,11 @@ async function toolApp(c: Call, x: Ctx): Promise<Done> {
   if (!app) return fail(`There is no app called "${slug}".${nearApps(slug).length ? ' Did you mean: ' + nearApps(slug).join(', ') + '?' : ''} Use a name from the list.`);
   const key = `${x.convId}:${slug}`;
   const reuse = openFrame(key);
+  if (!reuse) {   // opening an app is asked first: the person gets Yes / Always open in this chat / Don't open
+    const pm = x.perm();
+    if (pm.app === 'never') return fail('The person chose not to let you open apps in this chat. Do not open any. Say so in one short sentence and either do the job another way or ask what they would like.');
+    if (pm.app !== 'always' && !(pm.ok ?? []).includes(slug)) return { status: 'pending', result: `Waiting for the person to say whether you may open ${app.title}. Do not call it again until they answer.`, out: { kind: 'permit', what: 'app', slug, title: app.title } };
+  }
   // A second step in an app that is already open does not count as another run.
   if (!reuse) {
     const mode = x.settings.serverUrl.trim();
@@ -231,6 +257,90 @@ async function toolWorkspace(c: Call, x: Ctx): Promise<Done> {
   }
 }
 
+
+// ---------------------------------------------------------------- the editor: documents, code, web pages and tables beside the chat
+const kindOf = (v: unknown): EKind => (['doc', 'code', 'web', 'data'] as const).find((k) => k === v) ?? 'doc';
+const text40 = (s: string) => (s.length > 40000 ? s.slice(0, 40000) + `\n[... ${s.length - 40000} more characters cut]` : s);
+const bodyOf = (d: EDoc) => (d.kind === 'doc' ? docText(d.text) : d.text);
+
+async function toolEditor(c: Call, x: Ctx): Promise<Done> {
+  const a = str(c.action, 20) || 'list', docs = x.docs();
+  const ref = c.id ?? c.name ?? c.title;
+  const note = (r: string, shown?: string, out?: ToolOut): Done => ({ status: 'ok', result: r, shown, out: out ?? { kind: 'text', text: shown ?? r.split('\n')[0] } });
+  const need = (): EDoc | Done => { const d = findDoc(docs, c.id ?? c.name); return d ?? fail(docs.length ? `No document matches "${str(ref, 60)}". The documents are: ${docs.map((q) => `${q.id} "${q.title}"`).join(', ')}.` : 'There are no documents yet. Use create first.'); };
+  const isDone = (v: EDoc | Done): v is Done => 'status' in v;
+  const save = (d: EDoc, text: string, extra: Partial<EDoc> = {}) => x.setDocs(docs.map((q) => (q.id === d.id ? { ...q, text, prev: q.text, by: 'coe' as const, at: Date.now(), rev: q.rev + 1, ...extra } : q)));
+  switch (a) {
+    case 'list': return note(docs.length ? docs.map((d) => `${d.id} · ${KINDS[d.kind].name} · "${d.title}" · ${wordsInDoc(d)} words`).join('\n') : 'No documents yet.', `${docs.length} in the editor`);
+    case 'create': {
+      const kind = kindOf(c.kind); let text = str(c.content, 300000);
+      if (kind === 'doc') text = await toDocHtml(text); else if (kind === 'web' && !text.trim()) text = STARTER_WEB;
+      const lang = kind === 'code' ? normLang(str(c.lang, 30) || guessLang(text)) : kind === 'web' ? 'html' : undefined;
+      const d = makeDoc(kind, docs, { title: str(c.title, 80), text, lang, by: 'coe' });
+      x.setDocs([...docs, d]);
+      return { status: 'ok', result: `Made the ${KINDS[kind].name.toLowerCase()} "${d.title}" (id ${d.id}, ${wordsInDoc(d)} words). It is in the editor, and a card under your message lets the person open it. Do not paste its content into the chat again. To change it later use editor with edit, append or rewrite and this id. Tell the person in one short sentence what you made.`, shown: `Made ${KINDS[kind].name.toLowerCase()} “${d.title}”`, out: { kind: 'doc', id: d.id, title: d.title, dk: kind, act: 'created' } };
+    }
+    case 'open': { const d = need(); if (isDone(d)) return d; return { status: 'ok', result: `"${d.title}" is shown to the person with an Open button.`, shown: `Opened “${d.title}”`, out: { kind: 'doc', id: d.id, title: d.title, dk: d.kind, act: 'open' } }; }
+    case 'read': { const d = need(); if (isDone(d)) return d; return note(`"${d.title}" (${KINDS[d.kind].name}${d.lang ? ', ' + d.lang : ''}):\n${text40(bodyOf(d))}`, `Read “${d.title}”`); }
+    case 'rename': { const d = need(); if (isDone(d)) return d; const t = str(c.to ?? c.new_title, 80).trim(); if (!t) return fail('Say the new name in "to".'); x.setDocs(docs.map((q) => (q.id === d.id ? { ...q, title: t } : q))); return note(`Renamed to "${t}".`, `Renamed to “${t}”`); }
+    case 'delete': { const d = need(); if (isDone(d)) return d; x.setDocs(docs.filter((q) => q.id !== d.id)); return note(`Deleted "${d.title}".`, `Deleted “${d.title}”`); }
+    case 'edit': {
+      const d = need(); if (isDone(d)) return d;
+      const find = str(c.find, 100000), rep = str(c.replace, 100000), every = c.all === true;
+      if (!find) return fail('Give the exact text to change in "find".');
+      if (d.kind === 'doc') { const r = replaceInDoc(d.text, find, (await toDocInline(rep)), every, true); if ('error' in r) return fail(r.error); save(d, r.html); return note(`Changed ${r.n} place${r.n === 1 ? '' : 's'} in "${d.title}".`, `Edited “${d.title}”`); }
+      const n = d.text.split(find).length - 1;
+      if (n === 0) return fail('That text is not in the file. Read it again and copy the lines exactly, with the same spaces.');
+      if (n > 1 && !every) return fail(`That text appears ${n} times. Add more lines around it so it is in one place only, or set "all": true.`);
+      save(d, every ? d.text.split(find).join(rep) : d.text.replace(find, () => rep)); return note(`Changed ${every ? n : 1} place${(every ? n : 1) === 1 ? '' : 's'} in "${d.title}".`, `Edited “${d.title}”`);
+    }
+    case 'append': {
+      const d = need(); if (isDone(d)) return d; const add = str(c.content, 300000); if (!add.trim()) return fail('Give the text to add in "content".');
+      save(d, d.kind === 'doc' ? d.text.replace(/<p><br><\/p>$/, '') + (await toDocHtml(add)) : d.text.replace(/\s*$/, '\n') + add.replace(/^\n+/, '') + (add.endsWith('\n') ? '' : '\n'));
+      return note(`Added to "${d.title}".`, `Added to “${d.title}”`);
+    }
+    case 'rewrite': {
+      const d = need(); if (isDone(d)) return d; const all = str(c.content, 300000); if (!all.trim()) return fail('Give the whole new text in "content".');
+      save(d, d.kind === 'doc' ? await toDocHtml(all) : all, c.lang && d.kind === 'code' ? { lang: normLang(str(c.lang, 30)) } : {}); return note(`Rewrote "${d.title}".`, `Rewrote “${d.title}”`);
+    }
+    default: return fail('editor actions are: create, open, read, edit, append, rewrite, rename, delete, list.');
+  }
+}
+/** Text Coe wants put inside a document, as safe inline HTML (no paragraph wrapper). */
+async function toDocInline(t: string): Promise<string> { const h = await toDocHtml(t); const m = /^<p>([\s\S]*)<\/p>$/.exec(h.trim()); return m && !/<\/p>/.test(m[1]) ? m[1] : h; }
+
+function toolRead(c: Call, x: Ctx): Done {
+  const q = str(c.name ?? c.file ?? c.path, 200).trim().toLowerCase();
+  const atts = x.attachments(), docs = x.docs(), files = x.files(), names = [...atts.map((a) => a.name), ...docs.map((d) => `${d.title} (editor)`), ...Object.keys(files)];
+  if (!q) return { status: 'ok', result: names.length ? 'Files you can read: ' + names.join(', ') : 'There are no files to read yet.', out: { kind: 'text', text: `${names.length} files` } };
+  const a = atts.find((f) => f.name.toLowerCase() === q) ?? atts.filter((f) => f.name.toLowerCase().includes(q))[0];
+  if (a) return { status: 'ok', result: `${a.name} (${a.kind}${a.cut ? ', the text was cut short when it was read in' : ''}):\n${text40(a.text)}`, shown: `Read ${a.name}`, out: { kind: 'text', text: `Read ${a.name}` } };
+  const d = findDoc(docs, q); if (d) return { status: 'ok', result: `"${d.title}" (${KINDS[d.kind].name}):\n${text40(bodyOf(d))}`, shown: `Read “${d.title}”`, out: { kind: 'text', text: `Read “${d.title}”` } };
+  const p = ws.cleanPath(q); const pf = p in files ? p : Object.keys(files).find((k) => k.toLowerCase() === q);
+  if (pf) return { status: 'ok', result: text40(files[pf]), shown: `Read ${pf}`, out: { kind: 'text', text: `Read ${pf}` } };
+  return fail(`There is no file called "${str(c.name ?? c.file ?? c.path, 80)}". ${names.length ? 'Files: ' + names.join(', ') + '.' : 'No files have been attached or made yet.'}`);
+}
+
+async function toolShot(c: Call, x: Ctx): Promise<Done> {
+  let html = '', label = 'the page';
+  if (typeof c.html === 'string' && c.html.trim()) html = str(c.html, 400000);
+  else if (c.id || c.name || (!c.path && x.docs().some((d) => d.kind === 'web'))) {
+    const docs = x.docs(); const d = c.id || c.name ? findDoc(docs, c.id ?? c.name) : docs.filter((q) => q.kind === 'web').slice(-1)[0];
+    if (!d) return fail('There is no web page in the editor with that id. Make one first with editor create, kind "web".');
+    if (d.kind !== 'web') return fail(`"${d.title}" is not a web page. Screenshots work for web pages (kind "web").`);
+    html = d.text; label = d.title;
+  } else {
+    const f = x.files(), e = c.path ? ws.cleanPath(c.path) : ws.entryOf(f);
+    if (!e || !(e in f)) return fail('Give an editor "id", a project "path" to an HTML file, or "html".');
+    html = ws.inlinePage(f, e); label = e;
+  }
+  const width = c.width === 'phone' ? 390 : c.width === 'tablet' ? 768 : Number(c.width) || 1024;
+  try {
+    const r = await shootHtml(html, { width });
+    return { status: 'ok', result: `A screenshot of ${label} at ${r.width} pixels wide is attached. Look at it carefully (layout, spacing, colours, anything cut off or missing) and fix what is wrong. Pictures from other websites do not show up in screenshots, so a missing photo is not a fault.`, images: [r.img], out: { kind: 'image', img: r.img }, shown: `Took a screenshot of ${label}` };
+  } catch (e) { return fail((e as Error).message || 'The screenshot could not be taken.'); }
+}
+
 // ---------------------------------------------------------------- the chat list
 async function toolChat(c: Call, x: Ctx): Promise<Done> {
   const ops = x.chats; if (!ops) return fail('Chats cannot be changed here.');
@@ -254,7 +364,7 @@ async function toolChat(c: Call, x: Ctx): Promise<Done> {
 }
 
 // ---------------------------------------------------------------- what Coe is told
-export interface PromptOpts { plan: PlanKey; work: boolean; web: boolean; files: ws.Files; stepsLeft: number; hasApps: boolean }
+export interface PromptOpts { plan: PlanKey; work: boolean; web: boolean; files: ws.Files; stepsLeft: number; hasApps: boolean; docs?: EDoc[]; activeId?: string | null; perm?: Perm }
 
 export function toolsPrompt(o: PromptOpts): string {
   const P = o.plan === 'pro';
@@ -264,13 +374,13 @@ export function toolsPrompt(o: PromptOpts): string {
   if (o.stepsLeft <= 0) { add('You have used all the tool steps for this request. Do not use any more tools. Write the final answer now with what you have, and say what is left undone.'); return t.join('\n'); }
   add('You can use tools. To use one, end your message with exactly one block like this, then stop writing. Never write the result yourself and never write anything after the block:');
   add('```coe-tool\n{"tool":"js","code":"return 6*7"}\n```');
-  add('The page runs it and sends you the result as the next message, then you carry on. Use a tool only when it really helps. Most questions need none. The block must be valid JSON (escape quotes and write line breaks inside strings as \\n). You have up to ' + o.stepsLeft + ' more steps for this request.');
+  add('The page runs it and sends you the result as the next message, then you carry on. You decide which tools to use and when; nobody switches them on for you. Use one when it makes the answer better or surer: search for anything that may have changed or that you are not certain of, maths or js for any number that matters, an app when one fits the job. Skip them when you already know the answer. Most questions need none. The block must be valid JSON (escape quotes and write line breaks inside strings as \\n). You have up to ' + o.stepsLeft + ' more steps for this request.');
   add('');
   add('Tools you can use now:');
   add('- js {"code": "..."}: runs JavaScript in a safe box (no network). Use console.log, and "return" a value. Use it for exact maths, data work, simulations, parsing, and to check your own answers. Do not guess a calculation you can run.');
   add('- maths {"op": "...", "expr": "..."}: an exact maths engine. ops: eval (numbers, units like "5 km to miles", matrices like "det([[1,2],[3,4]])", statistics like "std([2,4,4,5])"), solve ("expr": "x^2-5x+6=0", "variable": "x"; a system: "exprs": ["x+y=3","x-y=1"], "vars": ["x","y"]), simplify, expand, factor, diff ("variable", optional "at"), integrate (optional "from" and "to" for a definite integral), limit ("at"), sum ("from", "to"). Use * for times and ^ for powers. Prefer it to working out hard algebra, calculus or arithmetic in your head, then explain the method in steps and give the result in LaTeX.');
   add('- remember {"fact": "..."}: saves something the person asked you to remember about them or how they like things done. Only when they ask, or clearly state a lasting preference.');
-  add('- search {"q": "..."}: searches the web (needs the web switched on, and counts toward a small daily limit' + (P ? '' : ' on Free') + '). Use it for anything recent or that you are unsure of. Then cite your sources.');
+  add('- search {"q": "..."}: searches the web (always available, and counts toward a small daily limit' + (P ? '' : ' on Free') + '). Use it for anything recent or that you are unsure of. Then cite your sources.');
   add('- place {"query": "...", "limit": 5, "near": [lat, lng]}: looks up real places and businesses on OpenStreetMap: exact position, address, brand, opening hours, website. Put the town or country in the query ("Greggs, Ipswich, UK"). Use it before you show anything on a map or give a location. Free, and needs no web switch.');
   add('- image {"prompt": "..."}: makes a picture. Write a full prompt: subject, style, colours, composition, mood, any words to show. It is shown to the person under your message.');
   if (o.hasApps) {
@@ -279,13 +389,32 @@ export function toolsPrompt(o: PromptOpts): string {
     add('  Pixel Art Maker also takes a drawing: {"tool":"pmc_app","slug":"pixel-art-maker","call":{"load":{"palette":{"a":"#a33a2b","b":"#171717"},"frames":[["..aa..","..aa..", "...one string of letters per row, \\".\\" is empty..."]],"fps":6}}}. More than one frame makes an animation. Then click "GIF" for the animated file, or "PNG" or "Sheet".');
   }
   add('- chat {"action": "rename"|"pin"|"unpin"|"delete"|"compact"|"list", "title": "new name", "chat": "part of another chat\'s name; leave out for this chat"}: changes the chats in the side list. If the person asks you to rename, pin, unpin or delete a chat, do it straight away. If they have not asked but it would clearly help (a chat whose name no longer fits, one they keep coming back to, one that was only a test), you may suggest it in one short sentence and ask, for example "Want me to rename this chat to X?". Then do nothing until they say yes. Never change, pin or delete a chat without one of those two things, and never delete unless they said delete or remove (or said yes to your question). If it is not clear which chat they mean, ask. Confirm what you did in one short sentence. compact squeezes the older messages of this chat into a summary; you may use it yourself when the chat has become very long, and you must say you did.');
+  add('- editor {"action": "create"|"open"|"read"|"edit"|"append"|"rewrite"|"rename"|"delete"|"list", ...}: documents the person can open in the editor beside the chat, and that you and they can both change. kinds: "doc" (a Word-style document: essay, letter, report, story, notes, worksheet), "code" (any language; give "lang"), "web" (one complete HTML page with a live preview), "data" (a table as CSV or JSON). create {kind, title, content}: for a doc write the content as Markdown (headings, lists, **bold**, tables) or HTML. edit {id, find, replace, all?}: find must be exact and in one place (in a doc it must sit inside one piece of formatting). append {id, content}. rewrite {id, content}: the whole new text. read {id}. Use the editor whenever the person asks for something they will keep working on (an essay, a program, a page, a table), or says "in the editor". Short answers and small snippets stay in the chat. After you make or change something, say in one short sentence what you did and do NOT paste it into the chat again. To change something you already made, edit it, do not make a new copy. The person sees a card under your message and decides whether to open the editor; you never need to ask. The person cannot open the editor on their own: it opens only when you make or open a document. Everything you made stays in the Outputs list on the right of the chat, where they can open it again. So when they ask to change or look at something in the editor, open it (editor open) rather than saying you cannot.');
+  add('- read {"name": "..."}: reads a file the person attached (all of it, even when it was long), a document in the editor, or a project file. Use it before you answer about a file you only half saw. Call it with no name to list what can be read.');
+  add('- screenshot {"id": "...", "width": "phone"|"tablet"|1024}: takes a picture of a web page in the editor (or {"path": "index.html"} in the project folder, or {"html": "..."}) and shows it to you so you can check it. After you build or change a page, take a screenshot, look at it, and fix anything that is wrong (cut-off text, bad spacing, missing parts) before you say it is done. Pictures that load from other sites do not appear in screenshots.');
   if (P) {
     add('- workspace {"action": ...}: a project folder for this chat, so you can build real projects. write {path, content} (a path like src/app/main.js makes the folders itself), edit {path, find, replace} (find must appear exactly once), read {path}, list, tree, mkdir {path}, move {path, to}, search {q, regex?} (finds text in every file with line numbers), delete {path}, run {path or code} (runs JavaScript with readFile(path) and listFiles()), preview {path} (shows an HTML page live, with its own CSS and JS files). The person can download the folder as a zip or commit it to GitHub. Work in steps: write, run, read the result, fix, repeat. Check your work before you say it is done.');
     const names = Object.keys(o.files);
     add(names.length ? 'The project folder now holds:\n' + ws.listing(o.files) : 'The project folder is empty.');
   }
+  const dl = o.docs ?? [];
+  add(dl.length ? 'The editor holds:\n' + dl.map((d) => `- ${d.id}: ${KINDS[d.kind].name} "${d.title}" (${wordsInDoc(d)} words)${d.id === o.activeId ? ', open on screen now' : ''}`).join('\n') : 'The editor is empty.');
+  const act = dl.find((d) => d.id === o.activeId);
+  if (act) add(`The person has "${act.title}" open. Its text right now${act.kind === 'doc' ? ' (as plain text)' : ''}:\n${(act.kind === 'doc' ? docText(act.text) : act.text).slice(0, 6000)}${(act.kind === 'doc' ? docText(act.text) : act.text).length > 6000 ? '\n[... cut; use editor read for all of it]' : ''}`);
   add('');
   add('When the person asks for something that needs a tool you do not have (a project folder), say it is part of Pro, in one sentence.');
+  add('');
+  add('# When a tool does not work');
+  add('A tool result that starts with FAILED means nothing was made or done. Say that first, in one plain sentence with the reason (for example "I couldn\'t make the picture. Pictures for today are used up on this plan."), then one thing the person can do. Do not say you made, drew, ran, found or saved anything unless a result says it worked, and never write "here is your picture" when there is no picture. If the reason is a limit (Pro only, used up for today), do not try that tool again: do the job another way if you can. If it was a slip you can fix (a typo in code, a wrong name), fix it and try once more. The tokens for a reply that goes wrong are given back automatically.');
+  const pm = o.perm ?? {};
+  if (o.hasApps) {
+    add('Opening a PMC App: the page asks the person first, with the buttons Yes, Always open in this chat, and Don\'t open. You do not ask yourself: just call pmc_app. ' + (pm.app === 'always' ? 'They chose Always for this chat, so apps open straight away.' : pm.app === 'never' ? 'They chose Don\'t open for this chat, so do not open any app; do the job another way.' : 'If the call comes back waiting, stop and wait for their answer.'));
+    add('Pixel art: if the person asks for pixel art (a sprite, pixel character, pixel icon, tile, retro game art, pixel animation), use the PMC Pixel Art Maker (pmc_app with slug pixel-art-maker) by default, unless they say to make it another way (SVG, code, a picture, another app).');
+  }
+  if (!o.work) {
+    add('');
+    add('When a job has three or more real parts (a project, a long task), write a plan first as a block: ```coe-plan\n{"steps":["...","..."],"done":0}\n```, then work through it, repeating the block with "done" raised as you finish steps. For anything smaller, just answer.');
+  }
   if (o.work) {
     add('');
     add('# Deep Work');

@@ -5,17 +5,20 @@
 import { STAR } from '@/ui/Mark';
 
 export type FavState = 'idle' | 'busy' | 'done';
-const G1 = '#337957', G2 = '#1A4934', CREAM = '#F2E4CE', INK = '#171717', GOLD = '#B49A57';
+import { loadAccent } from './look';
+const G = () => loadAccent();
+const mixDark = (h: string) => { const n = parseInt(h.slice(1), 16); const f = (v: number) => Math.round(v * 0.58).toString(16).padStart(2, '0'); return '#' + f((n >> 16) & 255) + f((n >> 8) & 255) + f(n & 255); };
+const CREAM = '#F2E4CE', INK = '#171717', GOLD = '#B49A57';
 let state: FavState = 'idle', timer: number | undefined, frame = 0, link: HTMLLinkElement | null = null, stash: HTMLLinkElement[] = [], clear: number | undefined, wired = false;
 let canvas: HTMLCanvasElement | null = null;
 const calm = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.motion === 'off'; } catch { return false; } };
 
 function mark(c: CanvasRenderingContext2D) {
-  c.fillStyle = G1; c.fillRect(0, 0, 64, 64);
+  c.fillStyle = G(); c.fillRect(0, 0, 64, 64);
   const k = (64 * 0.68) / 780; c.save(); c.translate(64 * 0.16 - 406 * k, 64 * 0.16 - 8 * k); c.scale(k, k); c.fillStyle = CREAM; c.fill(new Path2D(STAR), 'evenodd'); c.restore();
 }
 function dots(c: CanvasRenderingContext2D, f: number) {
-  c.fillStyle = G1; c.fillRect(0, 0, 64, 64);
+  c.fillStyle = G(); c.fillRect(0, 0, 64, 64);
   for (let i = 0; i < 3; i++) {
     const on = calm() ? 1 : Math.max(0, Math.sin(((f / 6) - i / 3) * Math.PI * 2));     // each dot rises in turn
     const s = 13 + on * 3, x = 8 + i * 19, y = 32 - s / 2 - on * 7;
@@ -25,7 +28,7 @@ function dots(c: CanvasRenderingContext2D, f: number) {
 function tick(c: CanvasRenderingContext2D) {
   c.fillStyle = INK; c.fillRect(30, 30, 34, 34);                // a border, so it shows against the star
   c.fillStyle = '#FFFFFF'; c.fillRect(33, 33, 28, 28);
-  c.strokeStyle = G2; c.lineWidth = 6; c.lineCap = 'butt'; c.lineJoin = 'miter'; c.beginPath(); c.moveTo(38, 47); c.lineTo(45, 54); c.lineTo(57, 38); c.stroke();
+  c.strokeStyle = mixDark(G()); c.lineWidth = 6; c.lineCap = 'butt'; c.lineJoin = 'miter'; c.beginPath(); c.moveTo(38, 47); c.lineTo(45, 54); c.lineTo(57, 38); c.stroke();
 }
 function paint() {
   if (!canvas) { canvas = document.createElement('canvas'); canvas.width = canvas.height = 64; }

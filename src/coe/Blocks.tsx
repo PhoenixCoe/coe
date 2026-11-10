@@ -1,6 +1,6 @@
 'use client';
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Activity, BrowserWindow, turnSteps } from './Activity';
+import { Activity, turnSteps } from './Activity';
 import { UiIcon } from '@/ui/icons';
 import { CopyButton, downloadBlob, downloadText } from '@/ui/copy';
 import { cleanSvg, hasMath, loadMath, renderMarkdown } from './markdown';
@@ -9,14 +9,15 @@ import { SlidesBlock } from './Slides';
 import { DataBlock } from './DataTable';
 import { AskCard } from './AskCard';
 import { MapBlock } from './MapBlock';
-import { dataUrl, type Img, type Msg, type ToolOut, type ToolRun } from './store';
+import { dataUrl, type Img, type Msg, type Perm, type ToolOut, type ToolRun } from './store';
+import { KINDS, type EDoc } from '@/lib/coe/editors';
 import { appsFrameSrc, defOf, findTool, type Call } from '@/lib/coe/tools';
 import { APPS_URL, appBySlug, makeFrame, registerFrame } from '@/lib/coe/pmc';
 import { entryOf, hasFiles, inlinePage, type Files } from '@/lib/coe/workspace';
 import type { PlanKey } from '@/lib/coe/models';
 
 // ---------------------------------------------------------------- what the blocks need from the chat
-export interface RichCtx { shared?: boolean; /** Pictures in this chat, oldest first: ![](pic:1) shows the first. */ pics?: Img[]; /** Text effects on or off. */ effects?: boolean; plan: PlanKey; files: Files; convId: string; ask?: (text: string) => void }
+export interface RichCtx { shared?: boolean; /** Pictures in this chat, oldest first: ![](pic:1) shows the first. */ pics?: Img[]; /** Text effects on or off. */ effects?: boolean; plan: PlanKey; files: Files; convId: string; ask?: (text: string) => void; /** Messages whose checklist was replaced by a newer one in the same turn. */ oldPlans?: Set<string>; /** The documents in the editor, what the person allowed, and how to open one or answer a question about opening. */ docs?: EDoc[]; perm?: Perm; openDoc?: (id: string) => void; /** The editor is on screen right now. */ edOpen?: boolean; decide?: (what: 'editor' | 'app', choice: 'yes' | 'always' | 'never', arg?: string) => void }
 export const RichContext = createContext<RichCtx | null>(null);
 
 // ---------------------------------------------------------------- splitting a reply into words and special blocks
@@ -123,6 +124,7 @@ const Md = memo(function Md({ text, live }: { text: string; live?: boolean }) {
 export const Rich = memo(function Rich({ text, msg, live }: { text: string; msg?: Msg; live?: boolean }) {
   const segs = useMemo(() => splitBlocks(text), [text]);
   const ctx = useContext(RichContext);
+  const lastPlan = segs.reduce((n, s, i) => (s.t === 'block' && s.lang === 'coe-plan' && s.closed ? i : n), -1);   // a checklist that is rewritten shows once, as it stands now
   return (
     <>
       {segs.map((s, i) => {
@@ -137,7 +139,7 @@ export const Rich = memo(function Rich({ text, msg, live }: { text: string; msg?
         if (s.lang === 'data') return <DataBlock key={i} code={s.code} closed={s.closed && !live} ask={ctx?.ask} />;
         if (s.lang === 'map') return <MapBlock key={i} code={s.code} closed={s.closed && !live} />;
         if (s.lang === 'ask') return <AskCard key={i} code={s.code} closed={s.closed && !live} id={`${msg?.id ?? 'x'}:${s.n}`} send={ctx?.ask} />;
-        if (s.lang === 'coe-plan') return s.closed ? <PlanCard key={i} code={s.code} /> : null;
+        if (s.lang === 'coe-plan') return s.closed && i === lastPlan && !(msg && ctx?.oldPlans?.has(msg.id)) ? <PlanCard key={i} code={s.code} /> : null;
         if (s.lang === 'coe-tool') return msg ? <ToolSlot key={i} msg={msg} n={s.n} closed={s.closed} code={s.code} /> : null;
         return null;
       })}
@@ -320,11 +322,38 @@ function titleOf(c: Call): string {
   return TITLES[c.tool] ?? c.tool;
 }
 
+/** The web, in one small card: what Coe looked up and the sites it read. Nothing else; the answer is the reply. */
+function WebCard({ call, run }: { call: Call; run?: ToolRun }) {
+  const st = run?.status ?? 'running';
+  const q = str(call.q).replace(/\s+/g, ' ').trim();
+  const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
+  const sites: { url: string; title: string; host: string }[] = [];
+  if (run?.out?.kind === 'search') for (const s of run.out.sources) { const h = host(s.url); if (h && !sites.some((x) => x.host === h)) sites.push({ url: s.url, title: s.title, host: h }); }
+  return (
+    <div className={`web ${st}`} role="group" aria-label={st === 'running' ? 'Searching the web' : 'The web'}>
+      <div className="web-h">
+        <UiIcon name={st === 'error' ? 'alert' : 'globe'} size={16} />
+        <b className="d">{st === 'running' ? 'Searching the web' : st === 'error' ? 'Could not search the web' : 'Searched the web'}</b>
+        {q && <span className="web-q tx" title={q}>{q}</span>}
+      </div>
+      {st === 'error' && run?.result && <p className="web-e tx" title={run.shown ?? run.result}>{run.shown ?? run.result}</p>}
+      {sites.length > 0 && <ul className="web-s">{sites.slice(0, 6).map((s) => <li key={s.host}><a href={s.url} target="_blank" rel="noopener noreferrer" title={s.title || s.host}><i className="d" aria-hidden>{s.host[0].toUpperCase()}</i>{s.host}</a></li>)}</ul>}
+      {st === 'running' && <i className="web-bar" aria-hidden />}
+    </div>
+  );
+}
+
 function ToolCard({ msg, call, run }: { msg: Msg; call: Call; run?: ToolRun }) {
   const ctx = useContext(RichContext);
   const st = run?.status ?? 'running';
+  if ((st as string) === 'error') return null;   // a step that did not work is said once, in the reply. No red card that says it again.
   // Running code and working in an app are steps, not part of the answer: they sit under "What Coe did", unless they made files or a picture for you.
-  if (['js', 'maths', 'pmc_app'].includes(call.tool) && st !== 'error' && st !== 'pending' && run?.out?.kind !== 'files' && run?.out?.kind !== 'image') return null;
+  if (['js', 'maths'].includes(call.tool) && st !== 'error' && st !== 'pending' && run?.out?.kind !== 'files' && run?.out?.kind !== 'image') return null;
+  if (call.tool === 'pmc_app' && st !== 'error' && st !== 'pending') return null;   // its result is the card under the reply, with Open app
+  if (run?.out?.kind === 'permit') return <PermitCard run={run} ctx={ctx} />;
+  if (call.tool === 'editor') return run?.out?.kind === 'doc' ? <DocCard out={run.out} ctx={ctx} /> : st === 'error' ? <div className="cx-tool error"><div className="cx-tool-h"><UiIcon name="alert" size={16} /><b className="d">Editor</b><span className="cx-grow" /><i className="cx-tool-st">Did not work</i></div><p className="cx-tool-err tx">{run?.shown ?? run?.result}</p></div> : null;   // changes to a document are steps, shown under "What Coe did"
+  if (call.tool === 'read' || call.tool === 'screenshot') return st === 'error' ? <div className="cx-tool error"><div className="cx-tool-h"><UiIcon name="alert" size={16} /><b className="d">{call.tool === 'read' ? 'Reading a file' : 'Screenshot'}</b><span className="cx-grow" /><i className="cx-tool-st">Did not work</i></div><p className="cx-tool-err tx">{run?.shown ?? run?.result}</p></div> : null;
+  if (call.tool === 'search') return <WebCard call={call} run={run} />;
   const state = st === 'running' ? 'Working' : st === 'error' ? 'Did not work' : 'Done';
   return (
     <div className={`cx-tool ${st}`}>
@@ -335,6 +364,45 @@ function ToolCard({ msg, call, run }: { msg: Msg; call: Call; run?: ToolRun }) {
       <ToolBody msg={msg} call={call} run={run} ctx={ctx} />
     </div>
   );
+}
+
+
+// ---------------------------------------------------------------- a document Coe made, and the question before the editor opens
+const asked = (k: string) => { try { return localStorage.getItem(`pmc:coe:asked:${k}`); } catch { return null; } };
+const mark = (k: string, v: string) => { try { localStorage.setItem(`pmc:coe:asked:${k}`, v); } catch { /* not saved */ } };
+
+/** Three buttons that answer at once. Keys 1, 2 and 3 work too. */
+export function Choice({ id, title, text, icon, yes, onPick, done, doneTitle }: { id: string; title: string; text: string; icon: string; yes: string; onPick: (c: 'yes' | 'always' | 'never') => void; done?: React.ReactNode; doneTitle?: string }) {
+  const [got, setGot] = useState<string | null>(() => asked(id));
+  const pick = (c: 'yes' | 'always' | 'never') => { mark(id, c); setGot(c); onPick(c); };
+  if (got) return <div className="dk" role="status"><div className="dk-h"><span className="dk-ic"><UiIcon name={icon as never} size={20} /></span><span className="dk-n"><b className="d">{doneTitle ?? title}</b><i className="tx">{got === 'never' ? 'You chose not to open it.' : got === 'always' ? 'Opened. It will open by itself in this chat.' : 'Opened.'}</i></span></div>{done}</div>;
+  return (
+    <div className="dk" role="group" aria-label={title} tabIndex={-1} onKeyDown={(e) => { const n = Number(e.key); if (n >= 1 && n <= 3) { e.preventDefault(); pick((['yes', 'always', 'never'] as const)[n - 1]); } }}>
+      <div className="dk-h"><span className="dk-ic"><UiIcon name={icon as never} size={20} /></span><span className="dk-n"><b className="d">{title}</b></span></div>
+      <p className="dk-q tx">{text}</p>
+      <div className="dk-acts">
+        <button type="button" className="btn gold" onClick={() => pick('yes')}>{yes}</button>
+        <button type="button" className="btn" onClick={() => pick('always')}>Always open in this chat</button>
+        <button type="button" className="btn" onClick={() => pick('never')}>Don’t open</button>
+      </div>
+    </div>
+  );
+}
+
+function DocCard({ out, ctx }: { out: Extract<ToolOut, { kind: 'doc' }>; ctx: RichCtx | null }) {
+  const d = ctx?.docs?.find((x) => x.id === out.id), name = d?.title ?? out.title, kind = KINDS[d?.kind ?? out.dk];
+  if (ctx?.perm?.editor || ctx?.edOpen) return (
+    <div className="dk"><div className="dk-h"><span className="dk-ic"><UiIcon name={kind.icon} size={20} /></span><span className="dk-n"><b className="d">{name}</b><i className="tx">{kind.name}{d ? '' : ' (deleted)'}</i></span><span className="cx-grow" />
+      {d && <button type="button" className="btn gold" onClick={() => ctx?.openDoc?.(out.id)}><UiIcon name="edit" size={16} />Open in editor</button>}</div></div>
+  );
+  return <Choice id={`doc:${out.id}`} icon={kind.icon} title={`Open “${name}” in the editor?`} text={`Coe made a ${kind.name.toLowerCase()}. The editor opens on the right and the chat stays here.`} yes="Yes, open it" doneTitle={name}
+    done={d ? <div className="dk-acts"><button type="button" className="btn" onClick={() => ctx?.openDoc?.(out.id)}><UiIcon name="edit" size={16} />Open in editor</button></div> : undefined}
+    onPick={(c) => ctx?.decide?.('editor', c, out.id)} />;
+}
+
+function PermitCard({ run, ctx }: { run: ToolRun; ctx: RichCtx | null }) {
+  const o = run.out as Extract<ToolOut, { kind: 'permit' }>;
+  return <Choice id={`app:${run.id}`} icon="apps" title={`Open ${o.title}?`} text={`Coe wants to open ${o.title} here in the chat to do this. You can say no.`} yes="Yes, open it" onPick={(c) => ctx?.decide?.('app', c, o.slug)} />;
 }
 
 function Files({ items }: { items: Extract<ToolOut, { kind: 'files' }>['items'] }) {
@@ -363,12 +431,6 @@ function ToolBody({ msg, call, run, ctx }: { msg: Msg; call: Call; run?: ToolRun
   if (tool === 'js') return <>
     <details className="cx-tool-d"><summary className="tx">Code</summary><pre className="cx-pv-code"><code>{str(call.code)}</code></pre></details>
     {out?.kind === 'text' && <pre className="cx-tool-out">{out.text}</pre>}
-  </>;
-  if (tool === 'search') return <>
-    {out?.kind === 'search' && <>
-      <div className="cx-md tx cx-tool-text" dangerouslySetInnerHTML={{ __html: renderMarkdown(out.text.slice(0, 3000)) }} />
-      {out.sources.length > 0 && <ul className="cx-sources">{out.sources.map((s, i) => <li key={i}><a href={s.url} target="_blank" rel="noopener noreferrer"><UiIcon name="link" size={13} />{s.title.slice(0, 80)}</a></li>)}</ul>}
-    </>}{err}
   </>;
   if (tool === 'image') return <>
     {out?.kind === 'image' && <figure className="cx-gen"><img alt={str(call.prompt).slice(0, 120)} src={dataUrl(out.img)} />
@@ -425,38 +487,54 @@ export function AppFrame({ run, app, slug, fullscreen, convId, call }: { run: To
 }
 
 /**
- * The screen: what Coe is looking at (a PMC App it opened, or the web it searched), at the end of the one reply it belongs to, under the text.
+ * The screen: what Coe is looking at (a PMC App it opened), at the end of the one reply it belongs to, under the text.
  * The steps and commands that went with it are under the picture, shut until you open them. Hide it with Hide.
  */
-/** What the screen shows now: the latest app Coe opened, or the web it searched in the latest turn. */
+/** What the screen shows now: the latest app Coe opened. An app stays until the chat moves on to something else. */
 export function dockTarget(messages: Msg[]): { run: ToolRun; end: number; app: boolean } | null {
-  let app: ToolRun | undefined, web: ToolRun | undefined, end = -1;
-  messages.forEach((m, i) => (m.runs ?? []).forEach((r) => {
-    if (r.tool === 'pmc_app' && r.note === 'open') { app = r; web = undefined; end = i; }
-    if (r.tool === 'search') { web = r; app = undefined; end = i; }
-  }));
-  let lastUser = -1; for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === 'user' && !messages[i].hidden) { lastUser = i; break; }
-  if (web && end < lastUser) web = undefined;   // the web view is for the latest turn; an app stays until the chat moves on to something else
-  const run = app ?? web;
-  return run ? { run, end, app: !!app } : null;
+  let app: ToolRun | undefined, end = -1;
+  messages.forEach((m, i) => (m.runs ?? []).forEach((r) => { if (r.tool === 'pmc_app' && r.note === 'open') { app = r; end = i; } }));
+  return app ? { run: app, end, app: true } : null;
+}
+
+/** What a PMC App made, as a result: pictures shown, other files as chips. The live app is kept out of sight until you press Open app. */
+function AppResult({ run, title, slug, extra }: { run: ToolRun; title: string; slug: string; extra: { name: string; type: string; size: number; data: string }[] }) {
+  const items = extra;
+  const pics = items.filter((f) => f.type.startsWith('image/')), others = items.filter((f) => !f.type.startsWith('image/'));
+  const said = String((run.status === 'error' ? run.shown : undefined) ?? run.result ?? '').replace(/\s+/g, ' ').trim();
+  const dl = (f: { name: string; type: string; data: string }) => { const bin = atob(f.data); const u = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k); downloadBlob(f.name, new Blob([u], { type: f.type })); };
+  return (
+    <div className="cx-res">
+      {pics.length > 0 && <div className="cx-res-pics">{pics.map((p, k) => /* eslint-disable-next-line @next/next/no-img-element */ <img key={k} src={`data:${p.type};base64,${p.data}`} alt={p.name} />)}</div>}
+      {others.length > 0 && <div className="cx-res-files">{others.map((f, k) => <button key={k} type="button" className="cx-res-f" onClick={() => dl(f)} aria-label={`Download ${f.name}`}><UiIcon name="file" size={16} /><b className="d">{f.name}</b><i className="tx">{Math.max(1, Math.round(f.size / 1024))} KB</i><UiIcon name="download" size={15} /></button>)}</div>}
+      {!items.length && run.status !== 'running' && said && <p className="cx-res-t tx">{said.length > 180 ? said.slice(0, 179) + '…' : said}</p>}
+      {run.status === 'running' && <p className="cx-res-t tx">Working in {title}…</p>}
+      <span className="cx-res-by tx">{slug}</span>
+    </div>
+  );
 }
 
 export function Dock({ messages, convId, live, from, to }: { messages: Msg[]; convId: string; live: boolean; from: number; to: number }) {
-  const [hidden, setHidden] = useState<string | null>(null);
+  const [openApp, setOpenApp] = useState<string | null>(null);
   const t = dockTarget(messages);
-  if (!t || t.end < from || t.end > to || hidden === t.run.id) return null;
-  const { run, end } = t, app = t.app ? run : undefined;
+  if (!t || t.end < from || t.end > to) return null;
+  const { run } = t;
   const steps = turnSteps(messages, to);   // the steps of the whole turn this belongs to
-  const slug = str(run.args.slug), meta = app ? appBySlug(slug) : undefined;
-  if (app && !meta) return null;
+  const slug = str(run.args.slug), meta = appBySlug(slug);
+  if (!meta) return null;
+  const filesIn: { name: string; type: string; size: number; data: string }[] = [];
+  for (let k = Math.max(0, from); k <= to; k++) for (const r of messages[k]?.runs ?? []) if (r.tool === 'pmc_app' && str(r.args.slug) === slug && r.out?.kind === 'files') for (const f of r.out.items) if (!filesIn.some((x) => x.name === f.name)) filesIn.push(f);
+  const open = openApp === run.id;
   return (
-    <section className="cx-dock" aria-label={app ? `${meta!.title}, open` : 'What Coe found on the web'}>
-      <div className="cx-dock-bar"><b className="d">{app ? meta!.title : 'The web'}</b><span className="cx-grow" />
-        <button type="button" className="cx-act" onClick={() => setHidden(run.id)} aria-label="Hide the screen"><UiIcon name="down" size={14} />Hide</button></div>
-      <div className="cx-dock-body">
-        {app ? <AppFrame key={run.id} run={run} app={meta!.title} slug={slug} fullscreen={meta!.fullscreen} convId={convId} call={run.args as Call} /> : <BrowserWindow run={run} />}
+    <section className={`cx-dock app${open ? ' open' : ''}`} aria-label={`${meta!.title}, result`}>
+      <div className="cx-dock-bar"><b className="d">{meta!.title}</b><span className="cx-grow" />
+        <button type="button" className="cx-act cx-open" onClick={() => setOpenApp(open ? null : run.id)} aria-expanded={open} title={open ? 'Close the app' : 'Open the app with these changes'}><UiIcon name={open ? 'close' : 'expand'} size={14} /><span>{open ? 'Close app' : 'Open app'}</span></button></div>
+      {!open && <AppResult run={run} title={meta!.title} slug={slug} extra={filesIn} />}
+      {/* the app stays running out of sight, so Coe can keep using it and "Open app" shows it exactly as Coe left it */}
+      <div className={open ? 'cx-dock-body' : 'cx-app-hold'}>
+        <AppFrame key={run.id} run={run} app={meta!.title} slug={slug} fullscreen={meta!.fullscreen} convId={convId} call={run.args as Call} />
       </div>
-      {!live && steps.length > 0 && <div className="cx-dock-steps"><Activity steps={steps} live={false} /></div>}
+      {!live && steps.length > 5 && <div className="cx-dock-steps"><Activity steps={steps} live={false} /></div>}
     </section>
   );
 }

@@ -16,11 +16,11 @@ export const DEFAULT_MODEL_IDS: Record<ModelKey, string> = { swift: 'gpt-6-luna'
 
 export interface Plan { key: PlanKey; name: string; monthly: number; yearly: number; perDay: number; images: number; points: string[] }
 export const PLANS: Plan[] = [
-  { key: 'free', name: 'Free', monthly: 0, yearly: 0, perDay: 300000, images: 3, points: [
-    '300,000 tokens a day: about 50 chats', 'Coe Swift and Coe Core', 'Step-by-step study help and Code check', 'Charts, diagrams and live page previews',
+  { key: 'free', name: 'Free', monthly: 0, yearly: 0, perDay: 120000, images: 3, points: [
+    '120,000 tokens a day: about 20 chats', 'Coe Swift and Coe Core', 'Step-by-step study help and Code check', 'Charts, diagrams and live page previews',
     'A taste of the big stuff each day: 1 Deep Work run, 3 web searches, 2 made pictures, 5 PMC App runs', '3 pictures in each message'] },
-  { key: 'pro', name: 'Pro', monthly: 10, yearly: 110, perDay: 6000000, images: 10, points: [
-    '6,000,000 tokens a day: over 1,000 chats', 'Coe Deep, the biggest model (counts double)', 'Deep Work: long jobs planned, checked and finished in steps', 'Much longer replies',
+  { key: 'pro', name: 'Pro', monthly: 10, yearly: 110, perDay: 2000000, images: 10, points: [
+    '2,000,000 tokens a day: about 300 chats', 'Coe Deep, the biggest model (counts double)', 'Deep Work: long jobs planned, checked and finished in steps', 'Much longer replies',
     'Search the web (100 a day)', 'Make pictures (40 a day)', 'Every PMC App inside the chat, with no daily limit',
     'Big files in: PDF, Word, Excel, PowerPoint, zip and whole code folders', '10 pictures in each message', 'Use your own AI key: OpenAI, Anthropic, Google and more', 'Everything in Free'] },
 ];

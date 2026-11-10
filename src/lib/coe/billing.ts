@@ -3,7 +3,7 @@ import { token } from './cloud';
 import type { CoeSettings } from './settings';
 
 /** What the server says about the signed-in person: their plan and how many credits are left today. */
-export interface Me { billing: boolean; canBuy?: boolean; given?: boolean; signedIn: boolean; plan: PlanKey; used: number; limit: number; email?: string; renews?: string; quotas?: Record<string, { used: number; limit: number }>; week?: { day: string; used: number }[] }
+export interface Me { billing: boolean; canBuy?: boolean; given?: boolean; signedIn: boolean; plan: PlanKey; used: number; limit: number; email?: string; renews?: string; quotas?: Record<string, { used: number; limit: number }>; week?: { day: string; used: number }[]; refunds?: { day: string; used: number }[] }
 
 const base = (s: CoeSettings) => s.serverUrl.trim().replace(/\/+$/, '');
 async function call<T>(s: CoeSettings, path: string, init: RequestInit = {}): Promise<T> {

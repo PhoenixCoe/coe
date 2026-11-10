@@ -22,6 +22,15 @@ export interface CoeSettings {
   models: Record<string, Partial<Record<ModelKey, string>>>;
   /** Standing instructions added to every conversation. */
   system: string;
+  /** What Coe should know about you: year, subjects, goals. Added to every conversation. */
+  about: string;
+  /** Who Coe is talking to. Set here, in the first-visit questions, or in the Coe Mini sidebar (the newest answer wins). */
+  ageBand: '' | 'under11' | '11-13' | '14-16' | '17-18' | '19-24' | '25+';
+  role: '' | 'student' | 'teacher' | 'parent' | 'working' | 'other';
+  yearOrJob: string;
+  subjects: string;
+  /** When those answers last changed, so the newest copy wins between this site and the sidebar. */
+  profileAt: number;
   /** How adventurous replies are. 'default' leaves it to the model. */
   creativity: 'default' | 'precise' | 'balanced' | 'creative';
   /** What Coe calls you in its greeting. */
@@ -62,7 +71,7 @@ export interface CoeSettings {
 
 export const DEFAULTS: CoeSettings = {
   mode: 'server', serverUrl: (process.env.NEXT_PUBLIC_COE_SERVER ?? '').trim().replace(/\/+$/, ''), code: '', provider: 'openai', keys: {}, bases: {}, models: {},
-  system: '', creativity: 'default', name: '', size: 'normal', enter: 'send',
+  system: '', about: '', ageBand: '', role: '', yearOrJob: '', subjects: '', profileAt: 0, creativity: 'default', name: '', size: 'normal', enter: 'send',
   check: 'smart', length: 'balanced', tone: 'friendly', level: 'auto', replyLang: '', effects: true, asks: 'sometimes', motion: 'full', scale: 100, compact: false, easy: false, goal: 10, whileBusy: 'queue', maxWords: 0, contrast: false,
 };
 export const CREATIVITY: Record<CoeSettings['creativity'], number | undefined> = { default: undefined, precise: 0.2, balanced: 0.7, creative: 1 };
@@ -88,7 +97,11 @@ export function loadSettings(): CoeSettings {
   } catch { /* storage blocked or damaged */ }
   return { ...DEFAULTS, keys: {}, bases: {}, models: {} };
 }
-export function saveSettings(s: CoeSettings) { try { localStorage.setItem(KEY, JSON.stringify(s)); window.dispatchEvent(new Event('pmc:coe-settings')); } catch { /* storage blocked */ } }
+export const PROFILE_KEYS = ['name', 'ageBand', 'role', 'yearOrJob', 'subjects', 'length', 'easy'] as const;
+export function saveSettings(s: CoeSettings) {
+  // When About you changes, remember when, so this site and the Coe Mini sidebar can tell which copy is newer.
+  try { const prev = JSON.parse(localStorage.getItem(KEY) || 'null') as Partial<CoeSettings> | null; if (prev && s.profileAt === (prev.profileAt ?? 0) && PROFILE_KEYS.some((k) => (prev[k] ?? DEFAULTS[k]) !== s[k])) s = { ...s, profileAt: Date.now() }; } catch { /* nothing before */ }
+  try { localStorage.setItem(KEY, JSON.stringify(s)); window.dispatchEvent(new Event('pmc:coe-settings')); } catch { /* storage blocked */ } }
 
 /** May your own key be used right now? Only for Pro members. The account page sets this once the server has said who is signed in. */
 let keyAllowed = false;

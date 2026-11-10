@@ -15,7 +15,7 @@ export async function loadMarkdown() {
       code({ text, lang }: { text: string; lang?: string }) {
         const l = (lang || '').split(/\s+/)[0].replace(/[^\w+#.-]/g, '');
         const run = /^(js|javascript|mjs|node)$/i.test(l) ? 'js' : /^(py|python|python3)$/i.test(l) ? 'py' : '';
-        return `<div class="cx-code"><div class="cx-code-top"><span>${esc(l || 'code')}</span><span class="cx-code-btns">${run ? `<button type="button" data-run="${run}">Run</button>` : ''}<button type="button" data-copy>Copy</button></span></div><pre><code>${esc(text)}</code></pre></div>`;
+        return `<div class="cx-code"><div class="cx-code-top"><span>${esc(l || 'code')}</span><span class="cx-code-btns">${text.split('\n').length >= 4 ? '<button type="button" data-beside>Side by side</button>' : ''}${run ? `<button type="button" data-run="${run}">Run</button>` : ''}<button type="button" data-copy>Copy</button></span></div><pre><code>${esc(text)}</code></pre></div>`;
       },
       link({ href, title, text }: { href: string; title?: string | null; text: string }) {
         return `<a href="${esc(href)}"${title ? ` title="${esc(title)}"` : ''} target="_blank" rel="noopener noreferrer">${text}</a>`;

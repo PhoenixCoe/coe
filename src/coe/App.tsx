@@ -9,9 +9,6 @@ import type { ChatProps } from './Chat';
 import { ownerFromUrl } from '@/lib/coe/owner';
 import { startPwa } from '@/lib/coe/pwa';
 
-const SEEN = 'pmc:coe:intro';
-const introSeen = () => { try { return localStorage.getItem(SEEN) === '1'; } catch { return false; } };
-
 const LAST = 'pmc:coe:last';
 const frame = () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
 
@@ -31,8 +28,7 @@ async function again<T>(f: () => Promise<T>, tries = 3): Promise<T> {
 }
 
 function Boot() {
-  // The server draws the loader, so a phone sees it before any script has run. First visit or not only matters once the page is up.
-  const [first] = useState(() => (typeof window === 'undefined' ? false : !introSeen()));
+  // The loader is only there for a slow start: it stays hidden for the first moments (see .ld in the styles), and nothing is held back to show it.
   const [tries, setTries] = useState(0);
   const made = useRef<{ Chat?: ComponentType<ChatProps>; list?: ConvMeta[]; conv?: Conv | null }>({});
   const plan = useRef<LoadStep[] | null>(null);
@@ -51,8 +47,7 @@ function Boot() {
       { label: STEPS[4], run: async () => { connection(loadSettings()); await frame(); } },
     ];
   }
-  const load = useLoadSequence(plan.current, first ? 1000 : 0, tries);
-  useEffect(() => { if (load.ready) { try { localStorage.setItem(SEEN, '1'); } catch { /* storage blocked */ } } }, [load.ready]);
+  const load = useLoadSequence(plan.current, 0, tries);
   const { Chat, list, conv } = made.current;
   // Tell the page that Coe is open, so the recovery help in the page's head stands down.
   useEffect(() => { if (load.ready && Chat) { try { document.documentElement.classList.add('coe-ready'); (window as unknown as { __coeHideStuck?: () => void }).__coeHideStuck?.(); } catch { /* ignore */ } } }, [load.ready, Chat]);

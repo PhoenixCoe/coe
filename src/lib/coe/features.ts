@@ -95,7 +95,7 @@ const R: Row[] = [
   ['senses', 'camera', 'Take a picture', 'Use the camera and ask about what you see.', 'free'],
   ['senses', 'screen', 'Capture your screen', 'Show Coe a window and ask what is wrong.', 'free'],
   ['senses', 'eye', 'Reads pictures', 'Photos, screenshots, diagrams and handwriting.', 'free', true],
-  ['senses', 'file', 'Reads your files', 'PDF, Word, Excel, PowerPoint, text, code and whole folders.', 'both'],
+  ['senses', 'file', 'Reads your files', 'PDF, Word, Excel, PowerPoint, text, code and zip files.', 'both'],
   // ---- world
   ['world', 'search', 'Search the web', 'Coe looks things up and shows its sources.', 'both', true],
   ['world', 'place', 'Maps with business cards', 'Photo, rating, phone, website and opening hours in small cards, and a map to match.', 'free', true],

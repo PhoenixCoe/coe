@@ -8,7 +8,7 @@ import { loadSettings } from '@/lib/coe/settings';
 import { openPortal, startCheckout } from '@/lib/coe/billing';
 import { limitNow, onStatus, refreshStatus, status, type Status } from '@/lib/coe/account';
 import { cloudOn, session } from '@/lib/coe/cloud';
-import { Account } from './Account';
+import { SignIn as Account } from './SignIn';
 import { usage } from './store';
 
 type PIcon = Parameters<typeof UiIcon>[0]['name'];

@@ -45,21 +45,41 @@ async function sha(text) {
   return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join("");
 }
 
+// A reply that goes wrong is paid back. Every charge is remembered under a call id that only this server can work out (and a receipt only it can sign), so a refund can never be more than what was charged, and never twice.
+const REFUND_SHARE = 0.5;        // at most this much of a day's tokens can come back as refunds, so a refund can never be a free ride
+const hex = (buf) => [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, "0")).join("");
+async function hmac(secret, text) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode("coe-receipt|" + secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return hex(await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(text)));
+}
+
+const EXTENSION_IDS = ["ahmngjbjogpihonafedkcmhllmbccboa", "coe-mini@pmcstudios.uk"];   // Coe Mini: the Chrome-based id, and the Firefox id
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
     const origin = request.headers.get("Origin") || "";
     const allowed = (env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+    // The Coe Chrome sidebar is allowed too. Its address never changes (the key in its manifest fixes it), so nothing needs adding in Cloudflare.
+    const extIds = [...EXTENSION_IDS, ...(env.EXTENSION_IDS || "").split(",").map((s) => s.trim()).filter(Boolean)];
+    // Firefox gives every install its own random address (moz-extension://...), so there the extension says who it is in a header instead (the check-ahead request cannot carry it, so that one is let through).
+    const fromExt = origin
+      ? (origin.startsWith("chrome-extension://") && extIds.includes(origin.slice(19))) || (origin.startsWith("moz-extension://") && (request.method === "OPTIONS" || extIds.includes(request.headers.get("x-coe-ext") || "")))
+      : extIds.includes(request.headers.get("x-coe-ext") || "");
+    const okOrigin = allowed.includes(origin) || fromExt;
     const cors = {
-      "Access-Control-Allow-Origin": allowed.includes(origin) ? origin : "null",
-      "Access-Control-Allow-Headers": "content-type, x-coe-code, x-coe-redo, x-coe-step, x-coe-check, x-coe-lang, authorization",
+      "Access-Control-Allow-Origin": origin && okOrigin ? origin : "null",
+      "Access-Control-Allow-Headers": "content-type, x-coe-code, x-coe-redo, x-coe-step, x-coe-check, x-coe-lang, x-coe-ext, x-coe-call, authorization",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Expose-Headers": "x-coe-used, x-coe-limit, x-coe-plan",
       "Vary": "Origin",
     };
     const reply = (status, data, extra) => json(status, data, { ...cors, ...extra });
     const fail = (status, message, code) => reply(status, { error: { message, ...(code ? { code } : {}) } });
+    // What went wrong for the owner goes to the Cloudflare log. People using Coe only ever see a plain sentence.
+    const note = (why) => { try { console.error("[coe owner] " + why); } catch { /* none */ } };
+    const keyMsg = () => { note("The AI key was refused. Check the API_KEY variable in Cloudflare."); return "Coe is not available right now. Try again later."; };
 
     // ---- the database (Supabase), reached with the service key, only from here
     const sbUrl = (env.SUPABASE_URL || "").replace(/\/+$/, "");
@@ -67,8 +87,11 @@ export default {
     // Old-style keys (long, with dots) go in both headers. New "sb_secret_" keys are not tokens, so they go in apikey only.
     const sbKey = (env.SUPABASE_SERVICE_KEY || "").trim();
     const sb = (p, init = {}) => fetch(sbUrl + p, { ...init, headers: { apikey: sbKey, ...(sbKey.startsWith("sb_") ? {} : { authorization: "Bearer " + sbKey }), "content-type": "application/json", ...(init.headers || {}) } });
-    // Tokens a day. Free is plenty for a normal day of study; Pro is meant to never run out.
-    const limits = { free: num(env.FREE_DAILY_TOKENS, 300000), pro: num(env.PRO_DAILY_TOKENS, 6000000), anon: num(env.ANON_DAILY_TOKENS, 150000) };
+    // Tokens a day. Free covers a normal study session (about 20 chats); Pro covers a heavy day (about 300). Signing in doubles what a visitor gets.
+    const limits = { free: num(env.FREE_DAILY_TOKENS, 120000), pro: num(env.PRO_DAILY_TOKENS, 2000000), anon: num(env.ANON_DAILY_TOKENS, 50000) };
+    const receiptSecret = sbKey + "|" + String(env.API_KEY || "");
+    const callKey = async (sub, id) => (await hmac(receiptSecret, "call|" + sub + "|" + id)).slice(0, 20);
+    const callId = /^[a-z0-9]{8,32}$/.test(request.headers.get("x-coe-call") || "") ? request.headers.get("x-coe-call") : "";
     const quotas = { ...QUOTA, app: { free: num(env.APPS_FREE, QUOTA.app.free), pro: QUOTA.app.pro } };
     const stripeBase = env.STRIPE_URL || "https://api.stripe.com";
     const stripe = (p, form, method = "POST") => fetch(stripeBase + p, {
@@ -133,7 +156,7 @@ export default {
 
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     if (request.method === "GET" && path === "/") return new Response("Coe server is running.", { headers: cors });
-    if (!allowed.includes(origin)) return fail(403, "This site is not on the allowed list.");
+    if (!okOrigin) { note("A request came from a site that is not in ALLOWED_ORIGINS: " + (request.headers.get("origin") || "no origin")); return fail(403, "Coe is not available from here."); }
     if (env.ACCESS_CODE && request.headers.get("x-coe-code") !== env.ACCESS_CODE) return fail(401, "That access code is not right.");
 
     // ---- who is asking: nobody, or a signed-in person
@@ -191,7 +214,13 @@ export default {
         const r = await sb("/rest/v1/usage?select=day,used&subject=eq." + encodeURIComponent(who.id) + "&day=gte." + since + "&order=day.asc");
         if (r.ok) week = await r.json();
       }
-      return reply(200, { billing: true, canBuy: !!env.STRIPE_SECRET_KEY, signedIn: !!who, email: who?.email, plan, given: !!pl.given, used: who ? await usedToday(who.id) : 0, limit: (who ? limits[plan] : limits.anon) + (await bonusToday()), renews: pl.sub && plan === "pro" ? pl.sub.period_end : undefined, quotas: q, week });
+      let refunds = [];
+      if (who) {
+        const since2 = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+        const r2 = await sb("/rest/v1/usage?select=day,used&subject=eq." + encodeURIComponent("refunded:" + who.id) + "&day=gte." + since2 + "&order=day.asc");
+        if (r2.ok) refunds = await r2.json();
+      }
+      return reply(200, { billing: true, canBuy: !!env.STRIPE_SECRET_KEY, signedIn: !!who, email: who?.email, plan, given: !!pl.given, used: who ? await usedToday(who.id) : 0, limit: (who ? limits[plan] : limits.anon) + (await bonusToday()), renews: pl.sub && plan === "pro" ? pl.sub.period_end : undefined, quotas: q, week, refunds });
     }
 
     if (request.method === "POST" && path === "/checkout") {
@@ -248,7 +277,7 @@ export default {
       } catch (e) { await undo(); return fail(502, "The search could not be reached. Try again in a moment."); }
       if (!r.ok) {
         await undo();
-        if (r.status === 401 || r.status === 403) return fail(503, "Coe's AI key was not accepted. The owner needs to check the API_KEY variable in Cloudflare.");
+        if (r.status === 401 || r.status === 403) return fail(503, keyMsg());
         return fail(502, "Web search is not available on this key right now.");
       }
       const j = await r.json(); let text = "", sources = [];
@@ -286,15 +315,15 @@ export default {
       if (!r.ok) {
         await undo();
         let m = ""; try { m = (await r.json())?.error?.message || ""; } catch { /* none */ }
-        if (r.status === 401) return fail(503, "Coe's AI key was not accepted. The owner needs to check the API_KEY variable in Cloudflare.");
-        if (r.status === 403) return fail(503, "This key is not allowed to make pictures yet. The owner may need to verify the organisation in the OpenAI dashboard.");
+        if (r.status === 401) return fail(503, keyMsg());
+        if (r.status === 403) return fail(503, (note("Pictures were refused. The OpenAI organisation may need verifying in the OpenAI dashboard."), "The picture service is not available right now. Try again later."));
         if (r.status === 400 && /safety|policy|moderation/i.test(m)) return fail(400, "That picture was turned down by the safety rules. Try a different idea.");
-        return fail(502, "The picture could not be made. Try again in a moment.");
+        return fail(502, "The picture service had a problem. Try again in a moment.");
       }
       const j = await r.json(); const d = j.data && j.data[0];
       let data = d && d.b64_json;
       if (!data && d && d.url) { try { const f = await fetch(d.url); const buf = new Uint8Array(await f.arrayBuffer()); let bin = ""; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode(...buf.subarray(k, k + 8192)); data = btoa(bin); } catch (e) { /* below */ } }
-      if (!data) { await undo(); return fail(502, "The picture could not be made. Try again in a moment."); }
+      if (!data) { await undo(); return fail(502, "The picture service had a problem. Try again in a moment."); }
       const type = data.startsWith("/9j/") ? "image/jpeg" : data.startsWith("UklGR") ? "image/webp" : data.startsWith("R0lGOD") ? "image/gif" : data.startsWith("PHN2Zy") || data.startsWith("PD94bWw") ? "image/svg+xml" : "image/png";
       return reply(200, { data, type });
     }
@@ -325,7 +354,7 @@ export default {
       }
       if (!r || !r.ok) {
         if (paid) await giveBack("voice");
-        if (r && r.status === 401) return fail(503, "Coe's AI key was not accepted. The owner needs to check the API_KEY variable in Cloudflare.");
+        if (r && r.status === 401) return fail(503, keyMsg());
         return fail(502, "The voice could not be read. Try again in a moment.");
       }
       let j = {}; try { j = await r.json(); } catch { /* none */ }
@@ -350,7 +379,7 @@ export default {
         r = await fetch(env.OPENAI_URL || "https://api.openai.com/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + String(env.API_KEY || "").trim().replace(/^["']|["']$/g, "") },
           body: JSON.stringify({ model: env.MODEL_AUDIO || "gpt-audio-mini", modalities: ["text"], messages: [{ role: "user", content: [{ type: "text", text: ask }, { type: "input_audio", input_audio: { data: btoa(bin), format: "wav" } }] }] }) });
       } catch (e) { if (paid) await giveBack("hear"); return fail(502, "Listening could not be reached. Try again in a moment."); }
-      if (!r.ok) { if (paid) await giveBack("hear"); return fail(r.status === 401 ? 503 : 502, r.status === 401 ? "Coe's AI key was not accepted. The owner needs to check the API_KEY variable in Cloudflare." : "Coe could not listen to that just now. Try again in a moment."); }
+      if (!r.ok) { if (paid) await giveBack("hear"); return fail(r.status === 401 ? 503 : 502, r.status === 401 ? keyMsg() : "Coe could not listen to that just now. Try again in a moment."); }
       let j = {}; try { j = await r.json(); } catch { /* none */ }
       let said = String(j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content || "").trim();
       said = said.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
@@ -376,7 +405,7 @@ export default {
       if (typeof b.style === "string" && b.style.trim()) payload.instructions = b.style.trim().slice(0, 300);
       try { r = await fetch(env.OPENAI_SPEECH_URL || "https://api.openai.com/v1/audio/speech", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + String(env.API_KEY || "").trim().replace(/^["']|["']$/g, "") }, body: JSON.stringify(payload) }); }
       catch (e) { if (paid) await giveBack("voice"); return fail(502, "The voice could not be reached. Try again in a moment."); }
-      if (!r.ok) { if (paid) await giveBack("voice"); return fail(r.status === 401 ? 503 : 502, r.status === 401 ? "Coe's AI key was not accepted. The owner needs to check the API_KEY variable in Cloudflare." : "The voice could not be made. Try again in a moment."); }
+      if (!r.ok) { if (paid) await giveBack("voice"); return fail(r.status === 401 ? 503 : 502, r.status === 401 ? keyMsg() : "The voice could not be made. Try again in a moment."); }
       return new Response(r.body, { status: 200, headers: { ...cors, "content-type": r.headers.get("content-type") || "audio/mpeg", "cache-control": "no-store" } });
     }
 
@@ -407,7 +436,7 @@ export default {
       let r; try {
         r = await fetch((env.PLACES_URL || "https://places.googleapis.com/v1/") + "places:searchText", { method: "POST", headers: { "content-type": "application/json", "X-Goog-Api-Key": String(env.GOOGLE_PLACES_KEY).trim(), "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri,places.priceLevel,places.regularOpeningHours.weekdayDescriptions,places.regularOpeningHours.openNow,places.photos,places.primaryTypeDisplayName,places.googleMapsUri,places.editorialSummary,places.businessStatus" }, body: JSON.stringify(body) });
       } catch (e) { return fail(502, "The business look-up could not be reached."); }
-      if (!r.ok) return fail(r.status === 403 || r.status === 400 ? 503 : 502, r.status === 403 || r.status === 400 ? "The owner needs to check the GOOGLE_PLACES_KEY (Places API (New) must be switched on for it)." : "The business look-up failed. Try again in a moment.");
+      if (!r.ok) return fail(r.status === 403 || r.status === 400 ? 503 : 502, r.status === 403 || r.status === 400 ? (note("Business look-up was refused. Check GOOGLE_PLACES_KEY and that Places API (New) is switched on."), "The business look-up is not available right now. Try again later.") : "The business look-up failed. Try again in a moment.");
       let j = {}; try { j = await r.json(); } catch { /* none */ }
       const price = { PRICE_LEVEL_FREE: "Free", PRICE_LEVEL_INEXPENSIVE: "£", PRICE_LEVEL_MODERATE: "££", PRICE_LEVEL_EXPENSIVE: "£££", PRICE_LEVEL_VERY_EXPENSIVE: "££££" };
       const places = (j.places || []).map((p) => ({
@@ -431,6 +460,48 @@ export default {
     }
 
     // ---- delete the account and what is saved with it
+    // ---- a reply went wrong: the tokens it used come back. Each receipt works once, and only for the person it was made for.
+    if (request.method === "POST" && path === "/refund") {
+      if (!billing) return fail(404, "Not found.");
+      let b = {}; try { b = await request.json(); } catch { /* none */ }
+      const subject = await subjectOf(), today = new Date().toISOString().slice(0, 10);
+      const list = Array.isArray(b.receipts) ? [...new Set(b.receipts.map(String))].slice(0, 24) : [];
+      const ids = Array.isArray(b.calls) ? [...new Set(b.calls.map(String).filter((x) => /^[a-z0-9]{8,32}$/.test(x)))].slice(0, 24) : [];
+      const good = [], seen = new Set();
+      for (const rc of list) {
+        const [t, nonce, day, sig] = rc.split(".");
+        const tokens = Number(t);
+        if (!(tokens > 0) || tokens > 5e6 || !nonce || day !== today || !sig || seen.has(nonce)) continue;
+        if (sig !== (await hmac(receiptSecret, [subject, tokens, nonce, day].join("|")))) continue;
+        seen.add(nonce); good.push({ tokens, nonce });
+      }
+      // Calls the page never got a receipt for (it stopped the model early). The cost was written down on this side, so it is read back from there.
+      for (let tries = 0; tries < 3; tries++) {
+        let missing = 0;
+        for (const id of ids) {
+          const nonce = await callKey(subject, id);
+          if (seen.has(nonce)) continue;
+          const tokens = await usedToday("call:" + nonce);
+          if (tokens > 0) { seen.add(nonce); good.push({ tokens, nonce }); } else missing++;
+        }
+        if (!missing || tries === 2) break;
+        await new Promise((ok) => setTimeout(ok, 700));      // the charge for a call that was stopped is written a moment after it
+      }
+      const pl = await planOf(), plan = pl.plan;
+      const cap = Math.round(((who ? limits[plan] : limits.anon) + (await bonusToday())) * REFUND_SHARE);
+      let paid = 0, taken = 0;
+      try {
+        const room = Math.max(0, cap - (await usedToday("refunded:" + subject)));
+        for (const g of good) {
+          if ((await spend("rc:" + g.nonce, 1, 1)) < 0) continue;          // already paid back
+          taken += g.tokens;
+        }
+        paid = Math.min(taken, room);
+        if (paid > 0) { await spend("refunded:" + subject, paid, 1e12); await spend(subject, -paid, 1e12); }
+      } catch (e) { return fail(503, "Your tokens could not be given back just now. Try again in a moment."); }
+      return reply(200, { refunded: paid, capped: taken > paid, used: await usedToday(subject), limit: (who ? limits[plan] : limits.anon) + (await bonusToday()), plan });
+    }
+
     if (request.method === "POST" && path === "/account/delete") {
       if (!billing) return fail(503, "Accounts are not switched on.");
       if (!who) return fail(401, "Sign in first.", "signin");
@@ -502,7 +573,7 @@ export default {
     if (!upstream || !upstream.ok) {
       if (tasted) await giveBack("work");
       if (!upstream) return fail(502, "The model could not be reached. Try again in a moment.");
-      if (upstream.status === 401 || upstream.status === 403) return fail(503, "Coe's AI key was not accepted. The owner needs to check the API_KEY variable in Cloudflare.");
+      if (upstream.status === 401 || upstream.status === 403) return fail(503, keyMsg());
     }
     const credit = billing && who ? { "x-coe-used": String(used), "x-coe-limit": String(limit), "x-coe-plan": plan } : {};
     const headers = { ...cors, ...credit, "content-type": upstream.headers.get("content-type") || "application/json" };
@@ -513,19 +584,29 @@ export default {
     const guess = Math.ceil(JSON.stringify(body.messages).length / 4);
     ctx.waitUntil((async () => {
       const w = writable.getWriter(), r = upstream.body.getReader(), dec = new TextDecoder(), enc = new TextEncoder();
-      let tail = "", bytes = 0, charged = false;
+      let tail = "", bytes = 0, charged = false, ended = false;
       const charge = async (tokens) => {
         charged = true;
         const weighted = freebie ? 0 : Math.max(1, Math.ceil(tokens * (WEIGHT[tier] || 1)));
         let total = used; try { total = weighted ? await spend(subject, weighted, 1e12) : used; } catch { /* the reply still goes through */ }
-        return { tokens: weighted, used: total, limit, plan };
+        let receipt;
+        if (weighted) {
+          try {
+            const day = new Date().toISOString().slice(0, 10);
+            // The page names each call. What it cost is kept under a key only this server can make, so even when the page was told to stop listening (it stops the model the moment it asks for a tool) the call can still be paid back.
+            const nonce = callId ? await callKey(subject, callId) : hex(crypto.getRandomValues(new Uint8Array(8)));
+            if (callId) { try { await spend("call:" + nonce, weighted, 1e12); } catch { /* no record, so no refund by id */ } }
+            receipt = [weighted, nonce, day, await hmac(receiptSecret, [subject, weighted, nonce, day].join("|"))].join(".");
+          } catch { /* no receipt, so no refund */ }
+        }
+        return { tokens: weighted, used: total, limit, plan, ...(receipt ? { receipt } : {}) };
       };
       try {
         for (;;) {
-          const { done, value } = await r.read(); if (done) break;
+          const { done, value } = await r.read(); if (done) { ended = true; break; }
           bytes += value.length;
           const text = dec.decode(value, { stream: true }); tail = (tail + text).slice(-3000);
-          if (!charged && text.includes("[DONE]")) {
+          if (!charged && tail.includes("[DONE]")) {
             const all = [...tail.matchAll(/"total_tokens"\s*:\s*(\d+)/g)];
             const pin = [...tail.matchAll(/"prompt_tokens"\s*:\s*(\d+)/g)], pout = [...tail.matchAll(/"completion_tokens"\s*:\s*(\d+)/g)];
             const real = all.length ? Number(all[all.length - 1][1]) : pin.length && pout.length ? Number(pin[pin.length - 1][1]) + Number(pout[pout.length - 1][1]) : guess + Math.ceil(bytes / 8);
@@ -535,7 +616,8 @@ export default {
         }
       } catch { /* the person closed the page or pressed stop */ }
       finally {
-        if (!charged) await charge(guess + Math.ceil(bytes / 8));
+        // The page stopped listening (the person pressed stop, or Coe cut the model off after it asked for a tool): what was written is still paid for. A line that dropped on the model's side is not (the loop above only ends that way when the model finished).
+        if (!charged && !ended) await charge(guess + Math.ceil(bytes / 8));
         try { await w.close(); } catch { /* already closed */ }
       }
     })());

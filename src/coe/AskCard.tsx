@@ -3,7 +3,7 @@
  * Coe asking you something: ```ask {"questions":[{"id","type":"choice|multi|slider|yesno|text","question",...}]}
  * It is a box in the chat, not a message, so it costs no tokens to answer until you press Send answers.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { UiIcon } from '@/ui/icons';
 import { Slider } from '@/ui/Controls';
 
@@ -28,50 +28,64 @@ const said = (q: Q, a: A): string => (a === null || a === '' || (Array.isArray(a
 export function AskCard({ code, closed, id, send }: { code: string; closed: boolean; id: string; send?: (text: string) => void }) {
   const qs = useMemo(() => (closed ? parse(code) : null), [code, closed]);
   const [ans, setAns] = useState<Record<string, A>>({});
+  const [at, setAt] = useState(0);
   const [done, setDone] = useState<string | null>(() => { try { return localStorage.getItem(keyOf(id)); } catch { return null; } });
+  const timer = useRef<number | null>(null);
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
   if (!closed) return <div className="ask ask-wait tx"><UiIcon name="chat" size={18} />Coe has a question…</div>;
   if (!qs) return null;
   const get = (q: Q): A => (q.id in ans ? ans[q.id] : q.type === 'slider' ? q.def : q.type === 'multi' ? [] : null);
   const set = (q: Q, v: A) => setAns((o) => ({ ...o, [q.id]: v }));
   const finish = (text: string) => { try { localStorage.setItem(keyOf(id), text); } catch { /* storage blocked */ } setDone(text); send?.(text); };
   const submit = () => {
-    const lines = qs.map((q) => { const t = said(q, get(q)); return t ? `- ${q.question} ${t}` : ''; }).filter(Boolean);
+    const lines = qs.map((q) => { const t = said(q, get(q)); return t && !(q.type === 'slider' && !(q.id in ans)) ? `- ${q.question} ${t}` : ''; }).filter(Boolean);
     finish(lines.length ? `My answers:\n${lines.join('\n')}` : 'Choose sensible answers yourself and carry on.');
   };
-  const any = qs.some((q) => said(q, get(q)) !== '' && !(q.type === 'slider' && !(q.id in ans)));
 
   if (done) return (
-    <div className="ask done" role="status"><div className="ask-h d"><UiIcon name="check" size={18} />Answered</div>
+    <div className="ask done" role="status"><span className="ask-dn d"><UiIcon name="check" size={16} />Answered</span>
       <p className="tx ask-sum">{done.startsWith('My answers:') ? done.replace('My answers:\n', '').split('\n').map((l) => l.replace(/^- /, '')).join(' · ') : 'Left it to Coe.'}</p></div>
   );
+
+  const q = qs[Math.min(at, qs.length - 1)], v = get(q), last = at >= qs.length - 1, many = qs.length > 1;
+  const next = () => { if (last) submit(); else setAt((n) => n + 1); };
+  const pickOne = (o: string, on: boolean) => {
+    set(q, on ? null : o);
+    if (!on && last && qs.length === 1 && send) { if (timer.current) window.clearTimeout(timer.current); timer.current = window.setTimeout(() => finish(`My answers:\n- ${q.question} ${o}`), 260); return; }
+    if (!on && !last) { if (timer.current) window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setAt((n) => Math.min(n + 1, qs.length - 1)), 220); }
+  };
+  const opts: string[] = q.type === 'yesno' ? ['Yes', 'No'] : q.options;
+  const isOn = (o: string) => (q.type === 'yesno' ? v === (o === 'Yes') : q.type === 'choice' ? v === o : Array.isArray(v) && v.includes(o));
+  const choose = (o: string) => {
+    const on = isOn(o);
+    if (q.type === 'yesno') { set(q, on ? null : o === 'Yes'); if (!on && last && qs.length === 1 && send) { if (timer.current) window.clearTimeout(timer.current); timer.current = window.setTimeout(() => finish(`My answers:\n- ${q.question} ${o}`), 260); return; } if (!on && !last) { if (timer.current) window.clearTimeout(timer.current); timer.current = window.setTimeout(() => setAt((n) => Math.min(n + 1, qs.length - 1)), 220); } }
+    else if (q.type === 'choice') pickOne(o, on);
+    else set(q, on ? (v as string[]).filter((x) => x !== o) : [...(Array.isArray(v) ? v : []), o]);
+  };
   return (
-    <form className="ask" aria-label="Coe has a question" onSubmit={(e) => { e.preventDefault(); submit(); }}>
-      <div className="ask-h d"><UiIcon name="chat" size={18} />Coe asks</div>
-      {qs.map((q) => {
-        const v = get(q);
-        return (
-          <fieldset key={q.id} className="ask-q">
-            <legend className="ask-l tx">{q.question}</legend>
-            {(q.type === 'choice' || q.type === 'multi') && (
-              <div className="ask-opts" role={q.type === 'choice' ? 'radiogroup' : 'group'}>
-                {q.options.map((o) => {
-                  const on = q.type === 'choice' ? v === o : Array.isArray(v) && v.includes(o);
-                  return <button key={o} type="button" role={q.type === 'choice' ? 'radio' : 'checkbox'} aria-checked={on} className={`ask-o${on ? ' on' : ''}`}
-                    onClick={() => set(q, q.type === 'choice' ? (on ? null : o) : on ? (v as string[]).filter((x) => x !== o) : [...(Array.isArray(v) ? v : []), o])}><span className={`ask-k${q.type === 'multi' ? ' sq' : ''}`} aria-hidden>{on && <UiIcon name="check" size={12} />}</span><span className="d">{o}</span></button>;
-                })}
-              </div>
-            )}
-            {q.type === 'yesno' && (
-              <div className="ask-opts yn" role="radiogroup">{[true, false].map((b) => <button key={String(b)} type="button" role="radio" aria-checked={v === b} className={`ask-o${v === b ? ' on' : ''}`} onClick={() => set(q, v === b ? null : b)}><span className="ask-k" aria-hidden>{v === b && <UiIcon name="check" size={12} />}</span><span className="d">{b ? 'Yes' : 'No'}</span></button>)}</div>
-            )}
-            {q.type === 'slider' && <Slider hideLabel label={q.question} value={Number(v)} min={q.min} max={q.max} step={q.step} onChange={(n) => set(q, n)} format={(n) => `${n}${q.unit ? ' ' + q.unit : ''}`} marks={q.labels?.length ? q.labels.map((l, i, a) => ({ value: q.min + ((q.max - q.min) * i) / Math.max(1, a.length - 1), label: l })) : undefined} />}
-            {q.type === 'text' && <input type="text" className="cx-in ask-t" value={typeof v === 'string' ? v : ''} maxLength={300} placeholder={q.placeholder || 'Type here'} aria-label={q.question} onChange={(e) => set(q, e.target.value)} />}
-          </fieldset>
-        );
-      })}
+    <form className="ask" aria-label="Coe has a question" onSubmit={(e) => { e.preventDefault(); next(); }}
+      onKeyDown={(e) => { if ((e.target as HTMLElement).tagName === 'INPUT') return; const n = Number(e.key); if (n >= 1 && n <= opts.length) { e.preventDefault(); choose(opts[n - 1]); } }}>
+      {many && <div className="ask-prog" role="progressbar" aria-valuemin={1} aria-valuemax={qs.length} aria-valuenow={at + 1} aria-label={`Question ${at + 1} of ${qs.length}`}>{qs.map((x, k) => <i key={x.id} className={k < at ? 'done' : k === at ? 'now' : ''} />)}</div>}
+      <div className="ask-top d"><span>Coe asks</span>{many && <span className="ask-of">{at + 1} / {qs.length}</span>}</div>
+      <fieldset className="ask-q" key={q.id}>
+        <legend className="ask-l d">{q.question}</legend>
+        {(q.type === 'choice' || q.type === 'multi' || q.type === 'yesno') && (
+          <div className="ask-opts" role={q.type === 'multi' ? 'group' : 'radiogroup'} aria-label={q.question}>
+            {opts.map((o, k) => {
+              const on = isOn(o);
+              return <button key={o} type="button" role={q.type === 'multi' ? 'checkbox' : 'radio'} aria-checked={on} className={`ask-o${on ? ' on' : ''}`} onClick={() => choose(o)}>
+                <kbd className="ask-n d" aria-hidden>{k + 1}</kbd><span className="ask-t tx">{o}</span><span className={`ask-k${q.type === 'multi' ? ' sq' : ''}`} aria-hidden>{on && <UiIcon name="check" size={13} />}</span></button>;
+            })}
+          </div>
+        )}
+        {q.type === 'slider' && <Slider hideLabel label={q.question} value={Number(v)} min={q.min} max={q.max} step={q.step} onChange={(n) => set(q, n)} format={(n) => `${n}${q.unit ? ' ' + q.unit : ''}`} marks={q.labels?.length ? q.labels.map((l, i, a) => ({ value: q.min + ((q.max - q.min) * i) / Math.max(1, a.length - 1), label: l })) : undefined} />}
+        {q.type === 'text' && <input type="text" autoFocus className="cx-in ask-ti" value={typeof v === 'string' ? v : ''} maxLength={300} placeholder={q.placeholder || 'Type here'} aria-label={q.question} onChange={(e) => set(q, e.target.value)} />}
+      </fieldset>
       <div className="ask-acts">
-        <button type="submit" className="btn gold" disabled={!send}><UiIcon name="send" size={15} />Send answers</button>
-        <button type="button" className="btn small" disabled={!send} onClick={() => finish('Choose sensible answers yourself and carry on.')}>You choose</button>
+        {at > 0 && <button type="button" className="ask-b" aria-label="Back" title="Back" onClick={() => setAt((n) => Math.max(0, n - 1))}><UiIcon name="left" size={18} /></button>}
+        <button type="button" className="ask-skip tx" disabled={!send} onClick={() => finish('Choose sensible answers yourself and carry on.')}>Let Coe decide</button>
+        <span className="cx-grow" />
+        <button type="submit" className="btn gold ask-go" disabled={!send}>{last ? 'Send' : 'Next'}<UiIcon name={last ? 'send' : 'right'} size={16} /></button>
       </div>
     </form>
   );

@@ -1,7 +1,6 @@
 'use client';
 import { Halftone } from '@/ui/Halftone';
 import { useEffect, useRef, useState } from 'react';
-import { CopyButton, downloadText } from '@/ui/copy';
 import { Seg } from '@/ui/Seg';
 import { useBackClose } from './back';
 import { UiIcon } from '@/ui/icons';
@@ -10,14 +9,15 @@ import { COE_MODELS } from '@/lib/coe/models';
 import { PROVIDERS, providerById } from '@/lib/coe/providers';
 import { canOwnKey, onStatus, status } from '@/lib/coe/account';
 import { connection, modeOf, own, type CoeSettings } from '@/lib/coe/settings';
-import { WORKER_CODE } from '@/lib/coe/worker';
 import { You } from './You';
 import { Select } from '@/ui/Controls';
 import { AboutTab, ChatTab, ChromeTab, LearnTab, LookTab } from './SettingsTabs';
 import { VoiceFields } from './VoiceFields';
+import { AccountTab } from './Account';
+import { UsageTab } from './UsageTab';
 
 /** A window over the chat: a dark veil, a boxed card, Escape to close. */
-export function Modal({ title, onClose, children, wide }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, wide, flush }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; flush?: boolean }) {
   const card = useRef<HTMLDivElement>(null), close = useRef(onClose);
   close.current = onClose;
   useBackClose(onClose);
@@ -29,7 +29,7 @@ export function Modal({ title, onClose, children, wide }: { title: string; onClo
   }, []);
   return (
     <div className="cx-veil" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div ref={card} className={`cx-modal${wide ? ' wide' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
+      <div ref={card} className={`cx-modal${wide ? ' wide' : ''}${flush ? ' flush' : ''}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
         <div className="cx-modal-top"><Halftone className="ht-bar" /><h2 className="d">{title}</h2><button type="button" className="cx-ib cx-closeb" aria-label="Close" onClick={onClose}><UiIcon name="close" size={20} /><span>Close</span></button></div>
         <div className="cx-modal-body">{children}</div>
       </div>
@@ -48,13 +48,16 @@ export function Upgrade({ note, onClose }: { note: string; onClose: () => void }
 }
 
 // ---------------------------------------------------------------- settings
-export type Tab = 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'ext' | 'about';
-const TABS: { id: Tab; name: string; icon: Parameters<typeof UiIcon>[0]['name'] }[] = [
-  { id: 'look', name: 'Look', icon: 'theme' }, { id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice', icon: 'wave' },
-  { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'you', name: 'You', icon: 'user' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'ext', name: 'Chrome', icon: 'globe' }, { id: 'about', name: 'About', icon: 'info' },
+export type Tab = 'account' | 'usage' | 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'ext' | 'about';
+type TabDef = { id: Tab; name: string; icon: Parameters<typeof UiIcon>[0]['name'] };
+const GROUPS: { name: string; tabs: TabDef[] }[] = [
+  { name: 'You', tabs: [{ id: 'account', name: 'Account', icon: 'user' }, { id: 'usage', name: 'Usage', icon: 'chart' }, { id: 'you', name: 'Memory', icon: 'sparkle' }] },
+  { name: 'Coe', tabs: [{ id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice', icon: 'wave' }, { id: 'look', name: 'Look', icon: 'theme' }] },
+  { name: 'More', tabs: [{ id: 'ext', name: 'Coe Mini', icon: 'globe' }, { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'about', name: 'About', icon: 'info' }] },
 ];
-export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCount, onExport, onImport, onDeleteAll, onClose }: {
+export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCount, used, limit, onSignIn, onAccountChange, onExport, onImport, onDeleteAll, onClose }: {
   owner: boolean; settings: CoeSettings; set: (s: CoeSettings) => void; tab: Tab; setTab: (t: Tab) => void; convCount: number;
+  used: number; limit: number; onSignIn: () => void; onAccountChange: (signedIn: boolean) => void;
   onExport: () => void; onImport: (f: File) => void; onDeleteAll: () => void; onClose: () => void;
 }) {
   const tab: Tab = owner || tabIn !== 'connect' ? tabIn : 'ai';
@@ -82,13 +85,21 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
   };
 
   return (
-    <Modal title="Settings" onClose={onClose} wide>
-      <nav className="set-tabs" role="tablist" aria-label="Settings">
-        {[...TABS, ...(owner ? [{ id: 'connect' as Tab, name: 'Server', icon: 'cloud' as const }] : [])].map((t) => (
-          <button key={t.id} type="button" role="tab" id={`set-t-${t.id}`} aria-selected={tab === t.id} aria-controls="set-panel" className="set-tab" onClick={() => setTab(t.id)}><UiIcon name={t.icon} size={18} /><span>{t.name}</span></button>
+    <Modal title="Settings" onClose={onClose} wide flush>
+      <div className="set-wrap">
+      <nav className="set-nav" role="tablist" aria-label="Settings" aria-orientation="vertical">
+        {[...GROUPS, ...(owner ? [{ name: 'Owner', tabs: [{ id: 'connect' as Tab, name: 'Server', icon: 'cloud' as const }] }] : [])].map((g) => (
+          <div key={g.name} className="set-grp" role="presentation"><span className="set-gn d" aria-hidden>{g.name}</span>
+            {g.tabs.map((t) => (
+              <button key={t.id} type="button" role="tab" id={`set-t-${t.id}`} aria-selected={tab === t.id} aria-controls="set-panel" title={t.name} className="set-tab" onClick={() => setTab(t.id)}><UiIcon name={t.icon} size={18} /><span>{t.name}</span></button>
+            ))}
+          </div>
         ))}
       </nav>
       <div id="set-panel" role="tabpanel" aria-labelledby={`set-t-${tab}`} className="set-body">
+      <h3 className="set-h d">{[...GROUPS.flatMap((g) => g.tabs), { id: 'connect', name: 'Server' }].find((t) => t.id === tab)?.name}</h3>
+      {tab === 'account' && <AccountTab onSignIn={onSignIn} onChange={onAccountChange} />}
+      {tab === 'usage' && <UsageTab usedLocal={used} limitLocal={limit} />}
 
       {tab === 'connect' && (
         <div className="cx-form">
@@ -97,16 +108,6 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
             <input id="cx-url" className="cx-in" value={settings.serverUrl} placeholder="https://coe-ai.your-name.workers.dev" spellCheck={false} autoComplete="off" onChange={(e) => up({ serverUrl: e.target.value })} /></div>
           <div className="cx-fr"><label className="label" htmlFor="cx-code">Access code (if you set one)</label>
             <input id="cx-code" className="cx-in" type="password" value={settings.code} autoComplete="off" onChange={(e) => up({ code: e.target.value })} /></div>
-          <details className="cx-how">
-            <summary>Set up the server (3 steps)</summary>
-            <ol className="tx">
-              <li>In Cloudflare, make a Worker and paste in the server code.</li>
-              <li>Add your key to it as a secret called <code>API_KEY</code>, and your site address as <code>ALLOWED_ORIGINS</code>.</li>
-              <li>Deploy it and paste its address above.</li>
-            </ol>
-            <div className="cx-actions"><CopyButton text={WORKER_CODE} label="Copy server code" /><button type="button" className="btn small" onClick={() => downloadText('coe-ai-worker.js', WORKER_CODE, 'text/javascript')}>Save as file</button></div>
-            <p className="tx cx-small">The key stays in Cloudflare. This site never sees it, and it is never in this site&apos;s code.</p>
-          </details>
           <div className="cx-actions">
             <button type="button" className="btn gold" disabled={!c.ok || test.state === 'busy'} onClick={() => run('server')}>{test.state === 'busy' ? 'Testing' : 'Test the server'}</button>
             <span className={`cx-test ${test.state}`} role="status">{c.ok ? test.text : c.why.replace(/ in Settings\.?$/, '.')}</span>
@@ -184,6 +185,7 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
           </div>
         </div>
       )}
+      </div>
       </div>
     </Modal>
   );

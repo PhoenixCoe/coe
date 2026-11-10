@@ -93,25 +93,27 @@ export function Workspace({ files, convTitle, messages, tab: tabIn, onChange, on
   );
 
   const list = (items: Item[], empty: string) => items.length ? (
-    <ul className="fl-list">{items.map((it) => (
+    <ul className="fl-grid">{items.map((it) => (
       <li key={it.key}>
-        {it.src ? <img src={it.src} alt="" /> : <span className="fl-ic" aria-hidden><UiIcon name="file" size={18} /></span>}
-        <span className="fl-t"><b className="tx">{it.name}</b><i className="tx">{it.note}</i></span>
-        <button type="button" className="cx-act" aria-label={`Save ${it.name}`} onClick={() => save(it)}><UiIcon name="download" size={14} />Save</button>
+        <button type="button" className={`fl-card${it.src ? ' pic' : ''}`} title={`Save ${it.name}`} aria-label={`Save ${it.name}`} onClick={() => save(it)}>
+          {it.src ? /* eslint-disable-next-line @next/next/no-img-element */ <img src={it.src} alt="" /> : <span className="fl-ic" aria-hidden><UiIcon name="file" size={26} /></span>}
+          <span className="fl-t"><b className="tx">{it.name}</b><i className="tx">{it.note}</i></span>
+          <span className="fl-dl" aria-hidden><UiIcon name="download" size={15} /></span>
+        </button>
       </li>
     ))}</ul>
-  ) : <p className="tx cx-small fl-empty">{empty}</p>;
+  ) : <div className="fl-empty"><span className="fl-dots" aria-hidden /><p className="tx">{empty}</p></div>;
 
   return (
     <aside className="cx-ws" aria-label="Files">
       <header className="cx-ws-h">
         <b className="d"><UiIcon name="folder" size={16} />Files</b><span className="cx-grow" />
-        <button type="button" className="cx-ib cx-closeb" aria-label="Close the files window" onClick={onClose}><UiIcon name="close" size={18} /><span>Close</span></button>
+        <button type="button" className="cx-ib cx-closeb" aria-label="Hide files" title="Hide files" onClick={onClose}><UiIcon name="close" size={18} /></button>
       </header>
       <div className="fl-tabs seg" role="tablist" aria-label="Files">
-        <button type="button" role="tab" aria-selected={tab === 'sent'} aria-pressed={tab === 'sent'} onClick={() => setTab('sent')}>You sent{sent.length ? ` ${sent.length}` : ''}</button>
-        <button type="button" role="tab" aria-selected={tab === 'made'} aria-pressed={tab === 'made'} onClick={() => setTab('made')}>Coe sent{made.length ? ` ${made.length}` : ''}</button>
-        <button type="button" role="tab" aria-selected={tab === 'project'} aria-pressed={tab === 'project'} onClick={() => setTab('project')}>Project{real.length ? ` ${real.length}` : ''}</button>
+        <button type="button" role="tab" aria-selected={tab === 'sent'} aria-pressed={tab === 'sent'} onClick={() => setTab('sent')}>You sent{sent.length ? <em>{sent.length}</em> : null}</button>
+        <button type="button" role="tab" aria-selected={tab === 'made'} aria-pressed={tab === 'made'} onClick={() => setTab('made')}>Coe sent{made.length ? <em>{made.length}</em> : null}</button>
+        <button type="button" role="tab" aria-selected={tab === 'project'} aria-pressed={tab === 'project'} onClick={() => setTab('project')}>Project{real.length ? <em>{real.length}</em> : null}</button>
       </div>
       {tab === 'sent' && <div className="fl-body">{list(sent, 'Nothing sent yet. Pictures and files you add to a message show up here.')}</div>}
       {tab === 'made' && <div className="fl-body">{list(made, 'Nothing yet. Pictures and files Coe makes show up here.')}</div>}

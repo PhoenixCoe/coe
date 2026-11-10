@@ -14,6 +14,59 @@ export function setLead(l: Lead) {
   try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ }
 }
 
+// ---------------------------------------------------------------- the accent colour: replaces the green everywhere
+export interface Accent { id: string; name: string; hex: string }
+export const ACCENTS: Accent[] = [
+  { id: 'green', name: 'Green', hex: '#337957' }, { id: 'teal', name: 'Teal', hex: '#1F7A7A' }, { id: 'blue', name: 'Blue', hex: '#2B6CB0' },
+  { id: 'indigo', name: 'Indigo', hex: '#4C51BF' }, { id: 'purple', name: 'Purple', hex: '#7B4FA3' }, { id: 'rose', name: 'Rose', hex: '#B83B6E' },
+  { id: 'red', name: 'Red', hex: '#B03A2E' }, { id: 'orange', name: 'Orange', hex: '#B85C1E' }, { id: 'brown', name: 'Brown', hex: '#7A5A2E' }, { id: 'graphite', name: 'Graphite', hex: '#3F4750' },
+];
+export const DEFAULT_ACCENT = '#337957';
+/** Ready-made looks: a page colour and an accent together. */
+export const THEMES: { id: string; name: string; lead: Lead; accent: string }[] = [
+  { id: 'pmc', name: 'PMC', lead: 'cream', accent: '#337957' },
+  { id: 'ocean', name: 'Ocean', lead: 'cream', accent: '#2B6CB0' },
+  { id: 'berry', name: 'Berry', lead: 'cream', accent: '#B83B6E' },
+  { id: 'sunset', name: 'Sunset', lead: 'cream', accent: '#B85C1E' },
+  { id: 'night', name: 'Night', lead: 'ink', accent: '#4C51BF' },
+  { id: 'forest', name: 'Forest', lead: 'green', accent: '#337957' },
+  { id: 'lilac', name: 'Lilac', lead: 'cream', accent: '#7B4FA3' },
+  { id: 'mono', name: 'Mono', lead: 'cream', accent: '#3F4750' },
+];
+const ACC = 'pmc:coe:accent';
+const rgb = (h: string): [number, number, number] => { const m = /^#?([0-9a-f]{6})$/i.exec(h.trim()); const n = parseInt(m ? m[1] : '337957', 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+const hex = (c: number[]) => '#' + c.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('');
+const mix = (a: string, b: string, t: number) => { const x = rgb(a), y = rgb(b); return hex(x.map((v, i) => v + (y[i] - v) * t)); };
+const lum = (h: string) => { const [r, g, b] = rgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+/** White text must stay readable on the accent, so a colour that is too light is darkened until it is. */
+export function fitAccent(h: string): string { let c = /^#?[0-9a-f]{6}$/i.test(h.trim()) ? '#' + h.trim().replace('#', '').toLowerCase() : DEFAULT_ACCENT; for (let i = 0; i < 12 && 1.05 / (lum(c) + 0.05) < 4.5; i++) c = mix(c, '#000000', 0.1); return c; }
+export function loadAccent(): string { try { const v = localStorage.getItem(ACC); return v ? fitAccent(v) : DEFAULT_ACCENT; } catch { return DEFAULT_ACCENT; } }
+/** The colours made from one accent, for light pages and for dark ones. */
+export function accentCss(h: string): string {
+  const a = fitAccent(h), dk = mix(a, '#000000', 0.42), lt = mix(a, '#ffffff', 0.42), tint = mix(a, '#ffffff', 0.84), up = mix(a, '#ffffff', 0.3);
+  const night = mix(a, '#000000', 0.62), nightTint = mix(a, '#141414', 0.7);
+  return `html:root{--g1:${a};--g2:${dk};--g3:${lt};--tint:${tint};--acc:${a};--acc-d:${dk}}`
+    + `html[data-lead='ink'] :is(.cx-scroll,.cx-compose){--g1:${up};--g2:${a};--g3:${mix(a, '#ffffff', 0.55)};--tint:${nightTint}}`
+    + `html[data-lead='gold'] :is(.cx-scroll,.cx-compose){--g1:${dk};--g3:${mix(dk, '#000000', 0.4)}}`
+    + `html[data-lead='green']{--lead-paper:${dk}}`
+    + `html[data-lead='green'] :is(.cx-scroll,.cx-compose){--paper:${dk};--cream:${night};--tint:${mix(dk, '#ffffff', 0.12)};--g1:${mix(a, '#ffffff', 0.5)};--g2:${mix(a, '#000000', 0.78)};--g3:${mix(a, '#ffffff', 0.62)}}`;
+}
+export function applyAccent(h: string) {
+  try {
+    let el = document.getElementById('coe-accent') as HTMLStyleElement | null;
+    if (!h || fitAccent(h) === DEFAULT_ACCENT) { el?.remove(); document.documentElement.removeAttribute('data-accent'); }
+    else { if (!el) { el = document.createElement('style'); el.id = 'coe-accent'; document.head.appendChild(el); } el.textContent = accentCss(h); document.documentElement.dataset.accent = fitAccent(h); }
+    const m = document.querySelector('meta[name="theme-color"]'); if (m && !m.getAttribute('data-keep')) m.setAttribute('content', fitAccent(h));
+  } catch { /* no document */ }
+}
+export function setAccent(h: string) {
+  const c = fitAccent(h);
+  try { if (c === DEFAULT_ACCENT) localStorage.removeItem(ACC); else localStorage.setItem(ACC, c); } catch { /* storage blocked */ }
+  applyAccent(c);
+  try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ }
+}
+export function setTheme(t: (typeof THEMES)[number]) { setLead(t.lead); setAccent(t.accent); }
+
 // ---------------------------------------------------------------- sound: short, hard, machine-like. Off until the person turns it on.
 export const sfxOn = () => { try { return localStorage.getItem(SFX) === '1'; } catch { return false; } };
 export function setSfx(v: boolean) { try { localStorage.setItem(SFX, v ? '1' : '0'); } catch { /* storage blocked */ } try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ } if (v) sfx.on(); }
@@ -52,7 +105,7 @@ export const sfx = {
 /** Puts the display settings on the page. Called whenever they change. */
 export function applyDisplay(d: { scale: number; motion: 'full' | 'calm' | 'off'; compact: boolean; easy: boolean; contrast?: boolean }) {
   const h = document.documentElement;
-  h.style.fontSize = `${Math.round(15 * Math.min(150, Math.max(80, d.scale || 100))) / 100}px`;
+  h.style.fontSize = `${Math.round(13.5 * Math.min(150, Math.max(80, d.scale || 100))) / 100}px`;
   if (d.motion === 'full') delete h.dataset.motion; else h.dataset.motion = d.motion;
   if (d.compact && !d.easy) h.dataset.density = 'compact'; else if (d.easy) h.dataset.density = 'easy'; else delete h.dataset.density;
   if (d.contrast) h.dataset.contrast = 'high'; else delete h.dataset.contrast;

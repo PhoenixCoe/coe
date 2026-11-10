@@ -268,7 +268,7 @@ const CardsBlock = memo(function CardsBlock({ code, closed }: { code: string; cl
       ) : (
         <div className="cx-fc" ref={rootRef as unknown as React.RefObject<HTMLDivElement>}>
           <div className="cx-q-bar"><i style={{ width: `${(i / ids.length) * 100}%` }} /></div>
-          <button type="button" className={`cx-fc-card${flip ? ' flip' : ''}`} onClick={() => setFlip((f) => !f)} aria-label={flip ? 'Showing the answer. Tap to see the question.' : 'Showing the question. Tap to see the answer.'}>
+          <button type="button" className={`cx-fc-card${flip ? ' is-flipped' : ''}`} onClick={() => setFlip((f) => !f)} aria-label={flip ? 'Showing the answer. Tap to see the question.' : 'Showing the question. Tap to see the answer.'}>
             <span className="cx-fc-side d">{flip ? 'Answer' : 'Question'}</span>
             <span className="cx-fc-text"><Inline text={flip ? c.back : c.front} block /></span>
             <span className="cx-fc-hint tx">{flip ? 'Tap to flip back' : 'Tap to flip'}</span>

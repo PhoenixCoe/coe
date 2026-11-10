@@ -110,8 +110,8 @@ Supabase > SQL Editor > paste all of `supabase/setup.sql` again and run. It only
 
 ## Handy switches (Worker variables, all optional)
 - `PRO_EMAILS`: emails that get Pro without paying, comma separated. For you and testers. Put your own email here: Pro is what unlocks "My own key" in Settings > Your AI.
-- `FREE_DAILY_TOKENS` (300000), `PRO_DAILY_TOKENS` (6000000): tokens a day for a signed-in person. A short chat answer is about 1,000 to 6,000 tokens, so Free is roughly 50 chats and Pro 1,000 or more. Change them whenever you like.
-- `ANON_DAILY_TOKENS` (150000): tokens a day for someone who is not signed in, per network. (`ANON_IP_DAILY` from older zips is no longer used. You can delete it.)
+- `FREE_DAILY_TOKENS` (120000), `PRO_DAILY_TOKENS` (2000000): tokens a day for a signed-in person. A short chat answer is about 1,000 to 6,000 tokens, so Free is roughly 20 chats and Pro 1,000 or more. Change them whenever you like.
+- `ANON_DAILY_TOKENS` (50000): tokens a day for someone who is not signed in, per network. (`ANON_IP_DAILY` from older zips is no longer used. You can delete it.)
 - `REDO_FREE` (3), `REDO_PRO` (10): "Wrong? Redo" presses a day that cost no tokens. After that a redo counts like any message.
 - `CHECK_FREE` (10), `CHECK_PRO` (60): free "double-check my answer" passes a day.
 - `APPS_FREE` (5): PMC App runs a day on Free.
@@ -119,7 +119,7 @@ Supabase > SQL Editor > paste all of `supabase/setup.sql` again and run. It only
 - `ACCESS_CODE` (Secret): people need this word to use the server.
 
 ## How it works
-- Everything is counted in **tokens** (the pieces of words the AI reads and writes), so the number you see is what was used. Free signed-in: 300,000 a day. Pro: 6,000,000 a day. Not signed in: 150,000 a day per network. They reset at midnight UTC. A bar in the sidebar shows what is left, and a banner appears at the top of the chat when more than 90% is used.
+- Everything is counted in **tokens** (the pieces of words the AI reads and writes), so the number you see is what was used. Free signed-in: 120,000 a day. Pro: 2,000,000 a day. Not signed in: 50,000 a day per network. They reset at midnight UTC. A bar in the sidebar shows what is left, and a banner appears at the top of the chat when more than 90% is used.
 - Coe Swift and Core count normally. Coe Deep counts double. A web search costs about 18,000 tokens and a picture about 30,000.
 - Giving feedback ("How am I doing?") quietly adds 20,000 tokens for that day. Nothing in the app says so.
 - Small daily allowances, counted apart from tokens: Free gets 1 Deep Work run, 3 web searches, 2 pictures, 12 business look-ups, 3 Sound lab listens and 5 PMC App runs. Pro gets 200, 100, 40, 400, 60 and no limit.

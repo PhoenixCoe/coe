@@ -46,8 +46,8 @@ export function Generating({ phase, label, detail, empty, since }: { phase: Phas
   const p = PHASES[phase === 'rest' ? 'idle' : phase];
   return (
     <div className={`gen${empty ? ' empty' : ''}`} role="status" aria-live="polite">
-      {empty && <div className="gen-lines" aria-hidden><i /><i /><i /></div>}
-      <div className="gen-row"><span className="gen-star" aria-hidden><CoeWork phase={phase} size={26} /></span><span className={`gen-ic ph-${phase}`} aria-hidden><UiIcon name={p.icon} size={16} /></span><span className="gen-t d">{label ?? p.label}</span>{detail && <span className="gen-d tx">{detail}</span>}{since ? <Timer since={since} /> : null}</div>
+      {empty && <div className="gen-bub" aria-hidden><i /><i /><i /></div>}
+      <div className="gen-row"><span className="gen-star" aria-hidden><CoeWork phase={phase} size={20} /></span><span className="gen-t tx">{label ?? p.label}</span>{detail && <span className="gen-d tx">{detail}</span>}{since ? <Timer since={since} /> : null}</div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { ModelKey } from '@/lib/coe/models';
+import type { EDoc, EKind } from '@/lib/coe/editors';
 
 /** A picture in a message: kept as base64 so a conversation can be saved, sent again and exported. */
 export interface Img { name: string; type: string; data: string }
@@ -11,7 +12,11 @@ export type ToolOut =
   | { kind: 'image'; img: Img }
   | { kind: 'maths'; text: string }
   | { kind: 'link'; url: string; label: string }
-  | { kind: 'files'; items: { name: string; type: string; size: number; data: string }[] };
+  | { kind: 'files'; items: { name: string; type: string; size: number; data: string }[] }
+  /** A document in the editor that Coe made or opened. */
+  | { kind: 'doc'; id: string; title: string; dk: EKind; act: string }
+  /** Coe wants to open something and the person has not said yes yet. */
+  | { kind: 'permit'; what: 'app'; slug: string; title: string };
 export interface ToolRun { id: string; tool: string; args: Record<string, unknown>; status: 'running' | 'pending' | 'ok' | 'error'; note?: string; out?: ToolOut; result?: string; shown?: string; /** When it started and finished (milliseconds). */ t0?: number; t1?: number }
 export interface Msg {
   id: string; role: 'user' | 'assistant'; text: string; images?: Img[]; model?: ModelKey; ts: number;
@@ -33,8 +38,12 @@ export interface Msg {
   compact?: boolean;
   /** The person bookmarked this answer. */
   marked?: boolean;
+  /** This reply went wrong, so these tokens were given back. */
+  refund?: number;
 }
-export interface Conv { id: string; title: string; created: number; updated: number; model: ModelKey; space?: 'chat' | 'aced'; pinned?: boolean; /** Coe or the person has chosen the name, so it is not changed again. */ named?: boolean; /** Set while a reply is being written, so another device can follow it live. */ live?: number; messages: Msg[]; /** The project folder: file name to text. */ files?: Record<string, string> }
+export interface Conv { id: string; title: string; created: number; updated: number; model: ModelKey; space?: 'chat' | 'aced'; pinned?: boolean; /** Coe or the person has chosen the name, so it is not changed again. */ named?: boolean; /** Set while a reply is being written, so another device can follow it live. */ live?: number; messages: Msg[]; /** The project folder: file name to text. */ files?: Record<string, string>; /** Documents open in the editor panel: essays, code, web pages, tables. */ docs?: EDoc[]; /** What the person allowed Coe to open in this chat. */ perm?: Perm }
+/** Per chat: may Coe open the editor and apps without asking each time? `ok` lists apps the person said yes to once. */
+export interface Perm { editor?: 'always' | 'never'; app?: 'always' | 'never'; ok?: string[] }
 export interface ConvMeta { id: string; title: string; updated: number; space?: 'chat' | 'aced'; pinned?: boolean; count: number }
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);
@@ -99,6 +108,8 @@ export function usage(): Use {
 }
 /** Adds the tokens a reply really used (words in plus words out). */
 export function countMessage(tokens = 0): Use { const u = usage(); const n = Math.max(1, Math.round(tokens) || 1); u.today += n; u.thisMonth += n; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }
+/** A reply went wrong and its tokens were given back, so this device's count goes down by the same. */
+export function uncountMessage(tokens = 0): Use { const u = usage(); const n = Math.max(0, Math.round(tokens) || 0); u.today = Math.max(0, u.today - n); u.thisMonth = Math.max(0, u.thisMonth - n); try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }
 /** The server turned a message away because the day's tokens are gone (for example on a shared network), so this device's count says so too. */
 export function fillToday(limit: number) { const u = usage(); if (u.today < limit) { u.today = limit; u.thisMonth += 0; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } } return u; }
 export function resetToday() { const u = usage(); u.today = 0; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }

@@ -88,6 +88,7 @@ export const SLASH: Slash[] = [
   { cmd: 'translate', title: 'Translate', text: 'Translate this, and tell me anything that does not translate cleanly:\n\n' },
   { cmd: 'essay', title: 'Essay feedback', text: 'Give me honest feedback on this essay: strengths, weaknesses, and three specific fixes.\n\n' },
   { cmd: 'debug', title: 'Debug my code', text: 'Find the bug in this code, explain it, and show the fix:\n\n' },
+  { cmd: 'write', title: 'Write in the editor', text: 'Write this in the editor as a document I can change: ' },
   { cmd: 'maths', title: 'Maths keyboard', text: '', go: 'maths' },
   { cmd: 'voice', title: 'Voice mode', text: '', go: 'voice' },
   { cmd: 'code', title: 'Code check', text: '', go: 'code' },
