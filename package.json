@@ -5,7 +5,7 @@
   "scripts": {
     "predev": "node scripts/fonts.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/fonts.mjs",
+    "prebuild": "node scripts/fonts.mjs && node scripts/config.mjs",
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "build:static": "node scripts/build-static.mjs",

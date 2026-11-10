@@ -9,7 +9,7 @@ import { dataUrl, type Conv } from './store';
 export interface Piece { key: string; msg: string; kind: string; title: string; icon: Parameters<typeof UiIcon>[0]['name']; img?: string }
 const KIND: Record<string, { name: string; icon: Piece['icon'] }> = {
   html: { name: 'Page', icon: 'globe' }, svg: { name: 'Picture', icon: 'image' }, mermaid: { name: 'Diagram', icon: 'branch' }, graph: { name: 'Graph', icon: 'chart' }, plot: { name: 'Graph', icon: 'chart' },
-  chart: { name: 'Chart', icon: 'chart' }, quiz: { name: 'Quiz', icon: 'cards' }, flashcards: { name: 'Flash cards', icon: 'cards' }, cards: { name: 'Flash cards', icon: 'cards' },
+  chart: { name: 'Chart', icon: 'chart' }, mindmap: { name: 'Mind map', icon: 'branch' }, quiz: { name: 'Quiz', icon: 'cards' }, flashcards: { name: 'Flash cards', icon: 'cards' }, cards: { name: 'Flash cards', icon: 'cards' },
   slides: { name: 'Slides', icon: 'deck' }, data: { name: 'Table', icon: 'table' },
 };
 const jsonTitle = (code: string) => { try { const j = JSON.parse(code); return typeof j?.title === 'string' ? j.title : ''; } catch { return ''; } };
@@ -17,6 +17,7 @@ const jsonTitle = (code: string) => { try { const j = JSON.parse(code); return t
 function titleOf(lang: string, code: string): string {
   if (lang === 'html') return /<title[^>]*>([^<]{1,60})/i.exec(code)?.[1]?.trim() || /<h1[^>]*>([^<]{1,60})/i.exec(code)?.[1]?.trim() || '';
   if (lang === 'svg') return /<title[^>]*>([^<]{1,60})/i.exec(code)?.[1]?.trim() || '';
+  if (lang === 'mindmap') return code.split('\n').find((l) => l.trim())?.trim().replace(/^([-*•+]|\d+[.)])\s+/, '').slice(0, 40) || '';
   if (lang === 'mermaid') return code.trim().split('\n')[0].replace(/\s+/g, ' ').slice(0, 40);
   if (lang === 'graph' || lang === 'plot') return /^title:\s*(.+)$/im.exec(code)?.[1]?.trim() || code.split('\n').find((l) => l.trim() && !/^\w+:/.test(l))?.trim().slice(0, 40) || '';
   return jsonTitle(code);

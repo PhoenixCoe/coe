@@ -39,7 +39,6 @@ Do parts 1 to 3 first. Already set up from an earlier zip? You only need to uplo
 | `MODEL_SEARCH` | Text | optional. The model that does web searches. Leave empty to use the Core model |
 | `MODEL_IMAGE` | Text | optional. Leave empty to use `gpt-image-2.5-flare` |
 | `MODEL_TRANSCRIBE` | Text | optional. Voice in (and audio or video files). Leave empty to use `gpt-transcribe` (it falls back to `gpt-4o-mini-transcribe`) |
-| `MODEL_SPEECH` | Text | optional. Voice out. Leave empty to use `gpt-4o-mini-tts` (see the note under How it works) |
 | `MODEL_AUDIO` | Text | optional. The model that listens in the Sound lab and names instruments and noises. Leave empty to use `gpt-audio-mini` |
 | `RESEND_API_KEY` | Secret | optional. Emails written feedback to contact@pmcstudios.uk. See part 5. |
 | `GOOGLE_PLACES_KEY` | Secret | optional. Adds photos, ratings, phone numbers and websites to the business cards on maps. See part 9. Without it, maps still work through OpenStreetMap |
@@ -91,11 +90,10 @@ Coe makes maps and business cards without this, using OpenStreetMap. This adds p
 5. Cloud Billing > **Budgets & alerts** > make a budget (for example £10 a month) so you get an email if it climbs. The Worker already limits look-ups: Free 12 a day, Pro 400.
 
 ## 12. Getting the audio parts working (a short checklist)
-**Audio (voice in, voice out, Sound lab).** They all run through your Worker and your OpenAI key, so there is nothing else to switch on.
+**Audio (voice typing, Sound lab).** They all run through your Worker and your OpenAI key, so there is nothing else to switch on.
 1. platform.openai.com > Billing: the account needs a payment method and some credit. (A key without credit gets errors on every audio call.)
-2. Cloudflare Worker > Settings > Variables and Secrets: `API_KEY` must be your OpenAI key (Secret). Leave `MODEL_TRANSCRIBE`, `MODEL_SPEECH` and `MODEL_AUDIO` empty unless you want to change a model.
-3. Try it: Voice (left side) and talk. Then Ctrl+K > Sound lab and drop in a song.
-4. OpenAI removes the speech model Coe uses (`gpt-4o-mini-tts`) on 6 January 2027. Its named replacement only works through the Realtime API, not the endpoint Coe uses. Before that date Coe's spoken replies need a change: tell me and I will move them.
+2. Cloudflare Worker > Settings > Variables and Secrets: `API_KEY` must be your OpenAI key (Secret). Leave `MODEL_TRANSCRIBE` and `MODEL_AUDIO` empty unless you want to change a model.
+3. Try it: press the microphone on the chat bar and talk. Then Ctrl+K > Sound lab and drop in a song.
 
 **Voice on a Mac.** Safari and Chrome on a Mac ask for the microphone once. If you pressed Block: click the lock in the address bar and allow the microphone. If it still does not work: Apple menu > System Settings > Privacy & Security > Microphone > tick your browser. Tap anywhere on the page once before Coe talks, because Safari only plays sound after a tap.
 
@@ -125,9 +123,8 @@ Supabase > SQL Editor > paste all of `supabase/setup.sql` again and run. It only
 - Small daily allowances, counted apart from tokens: Free gets 1 Deep Work run, 3 web searches, 2 pictures, 12 business look-ups, 3 Sound lab listens and 5 PMC App runs. Pro gets 200, 100, 40, 400, 60 and no limit.
 - Pro only: long replies, big files (up to 24 MB), zip/PowerPoint/Excel files in, the project folder, your own key.
 - Web search uses OpenAI's web search tool through the Worker. Pictures use `gpt-image-2.5-flare`. OpenAI may ask you to verify your organisation before image models work (platform.openai.com > Settings > Organization > General).
-- Voice: the mic button dictates, and Voice mode talks hands-free with 13 natural voices. It uses the Worker (speech to text, then text to speech) with your OpenAI key, so there is nothing to set up. Each thing you say counts as one voice turn, and so does each piece of a spoken reply (a reply is usually 1 to 3 pieces). Free gets 24 a day, Pro 3,000. The first time, the browser asks to use the microphone: press Allow. If the Worker voice cannot be reached or runs out, Coe switches to the browser's own free voice, which sounds more robotic.
+- Voice typing: the mic button on the chat bar types what you say. It uses the Worker (speech to text) with your OpenAI key, so there is nothing to set up. Coe does not talk back.
 - Sound and video files: attach an mp3, m4a, wav or webm and Coe types out what was said (with time stamps). Attach a video and Coe reads a few frames as pictures and types out the soundtrack. Free listens to about 6 minutes, Pro to 40. Each piece of about 3 minutes uses one voice turn.
-- **Dated heads-up:** OpenAI is retiring `gpt-4o-mini-tts` on 6 January 2027. Until then the voices work as they are. Before that date, ask me to move voice to OpenAI's replacement (or set `MODEL_SPEECH` to a newer speech model if OpenAI lists one for its Speech endpoint).
 - Maths: any equation, in LaTeX, is drawn properly, including chemistry (`\ce{H2O}`). Click an equation to copy its LaTeX. The maths keyboard (the Σ button) builds one with buttons and a live preview. Coe checks sums with a real maths engine instead of guessing.
 - Study: flash cards and quiz answers can be saved to Study (header button). Cards come back on a spaced schedule (again, hard, good, easy), with a streak, points and levels. Decks follow the account when signed in, and can be exported or imported as a file.
 - Slide decks: Coe can make a deck in the chat. Press Present for full screen (arrow keys, N for notes), or Save .pptx for PowerPoint. Tables of data can be sorted, totalled, charted and saved as CSV.

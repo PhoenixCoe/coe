@@ -48,7 +48,7 @@ export async function loadMarkdown() {
 
 // ---------------------------------------------------------------- maths: $x^2$ inline, $$ ... $$ on its own. Drawn by KaTeX, which loads only when a reply has some.
 let katex: typeof import('katex').default | null = null;
-export const hasMath = (t: string) => /\$[^\s$][^$\n]*[^\s$\\]\$|\$\$[\s\S]+?\$\$|\\\(|\\\[/.test(t);
+export const hasMath = (t: string) => /\$[^\s$](?:[^$\n]*[^\s$\\])?\$|\$\$[\s\S]+?\$\$|\\\(|\\\[|\\begin\{/.test(t);
 export async function loadMath() { if (katex) return; await import('katex/dist/katex.min.css'); katex = (await import('katex')).default; try { await import('katex/contrib/mhchem'); } catch { /* chemistry is an extra */ } }
 /** One equation drawn as HTML, for the maths keyboard. */
 export function texHtml(tex: string, display: boolean): string { if (!katex) return ''; try { return katex.renderToString(tex, { displayMode: display, throwOnError: false, output: 'html', trust: false, strict: 'ignore' }); } catch { return esc(tex); } }
@@ -62,7 +62,9 @@ function withMath(text: string): { text: string; put: (html: string) => string }
     .replace(/\$\$([\s\S]+?)\$\$/g, (_, t) => draw(t, true))
     .replace(/\\\[([\s\S]+?)\\\]/g, (_, t) => draw(t, true))
     .replace(/\\\(([\s\S]+?)\\\)/g, (_, t) => draw(t, false))
-    .replace(/(^|[^\\$\w])\$([^\s$](?:[^$\n]*?[^\s$\\])?)\$(?![\w$])/g, (_, pre, t) => (/^\d/.test(t) && !/[\\^_{}=+\-*/]/.test(t) ? _ : pre + draw(t, false))));
+    .replace(/(^|[^\\$\w])\$([^\s$](?:[^$\n]*?[^\s$\\])?)\$(?![\w$])/g, (_, pre, t) => (/^\d/.test(t) && !/[\\^_{}=+\-*/]/.test(t) ? _ : pre + draw(t, false)))
+    // a bare \begin{aligned} ... \end{aligned} (or matrix, cases, align) that the writer forgot to put in $$ is still maths
+    .replace(/\\begin\{(align\*?|aligned|gather\*?|gathered|equation\*?|[pbBvV]?matrix|smallmatrix|cases|array)\}[\s\S]*?\\end\{\1\}/g, (all) => draw(all, true)));
   return { text: out.join(''), put: (h) => h.replace(/@@M(\d+)@@/g, (_, n) => bits[+n] ?? '') };
 }
 

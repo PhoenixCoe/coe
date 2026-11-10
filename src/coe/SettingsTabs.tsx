@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { Row, Select, Slider, Switch } from '@/ui/Controls';
 import { UiIcon } from '@/ui/icons';
-import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, setLead, setSfx, setTheme, sfxOn, type Lead } from '@/lib/coe/look';
+import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, setLead, setSfx, setTheme, sfxOn, pingOn, setPing, type Lead } from '@/lib/coe/look';
 import { DEFAULTS, type CoeSettings } from '@/lib/coe/settings';
 import { FEATURES, FEATURE_GROUPS, type FeaturePlan } from '@/lib/coe/features';
 import { loadSettings } from '@/lib/coe/settings';
-import { EXT_FILE, EXT_FILE_FIREFOX, useExtension } from '@/lib/coe/extension';
+import { EXT_FILE, EXT_FILE_FIREFOX, connectMini, disconnectMini, onExtConnected, useExtension } from '@/lib/coe/extension';
+import { session } from '@/lib/coe/cloud';
 import { AGE_OPTIONS, ROLE_OPTIONS, levelWords } from '@/lib/coe/profile';
 import { mailtoFeedback, sendFeedback, type FeedbackKind } from '@/lib/coe/feedback';
 
@@ -15,8 +16,8 @@ type Up = (patch: Partial<CoeSettings>) => void;
 type Icon = Parameters<typeof UiIcon>[0]['name'];
 
 export function LookTab({ s, up }: { s: CoeSettings; up: Up }) {
-  const [lead, setL] = useState<Lead>('cream'), [snd, setSnd] = useState(false), [acc, setAcc] = useState('#337957'), [hexIn, setHexIn] = useState('');
-  useEffect(() => { const f = () => { setL(loadLead()); setSnd(sfxOn()); setAcc(loadAccent()); }; f(); window.addEventListener('pmc:coe-look', f); return () => window.removeEventListener('pmc:coe-look', f); }, []);
+  const [lead, setL] = useState<Lead>('cream'), [snd, setSnd] = useState(false), [ping, setPingState] = useState(true), [acc, setAcc] = useState('#337957'), [hexIn, setHexIn] = useState('');
+  useEffect(() => { const f = () => { setL(loadLead()); setSnd(sfxOn()); setPingState(pingOn()); setAcc(loadAccent()); }; f(); window.addEventListener('pmc:coe-look', f); return () => window.removeEventListener('pmc:coe-look', f); }, []);
   return (
     <div className="set-list">
       <div className="cx-fr"><span className="label">Themes</span>
@@ -53,6 +54,7 @@ export function LookTab({ s, up }: { s: CoeSettings; up: Up }) {
       </Row>
       <Switch icon="access" label="High contrast" hint="Stronger text and borders." on={s.contrast} onChange={(contrast) => up({ contrast })} />
       <Switch icon="volume" label="Click sounds" hint="Soft sounds when you send and when Coe finishes." on={snd} onChange={(v) => setSfx(v)} />
+      <Switch icon="volume" label="Tell me when a reply is ready" hint="A soft chime and a dot in the tab title when Coe finishes while you are on another tab." on={ping} onChange={(v) => setPing(v)} />
       <Row label="Enter key" icon="keyboard" hint="What pressing Enter does in the message box.">
         <Select label="Enter key" value={s.enter} onChange={(enter) => up({ enter })} options={[{ value: 'send', label: 'Sends the message', hint: 'Shift+Enter adds a line' }, { value: 'newline', label: 'Adds a line', hint: 'Ctrl+Enter sends' }]} />
       </Row>
@@ -181,7 +183,10 @@ export function AboutTab() {
 
 /** Coe Mini: get it (Chrome, Edge, Brave, Opera, Vivaldi or Firefox), and set it up from here. The extension answers through the page, so the two stay in step. */
 export function ChromeTab() {
-  const { state, version, browser, prefs, change } = useExtension(true);
+  const { state, version, browser, prefs, change, linked } = useExtension(true);
+  const [pairIn, setPairIn] = useState(''), [pairMsg, setPairMsg] = useState(''), [pairBusy, setPairBusy] = useState(false);
+  const me = session()?.email ?? '';
+  useEffect(() => { if (!pairBusy) return; const off = onExtConnected((yes, why) => { setPairBusy(false); setPairMsg(yes ? '' : why === 'account' ? 'Coe Mini is signed in as someone else. Sign in to both with the same account.' : why === 'signin' ? 'Sign in to Coe Mini first.' : 'That code is not the one Coe Mini is showing.'); if (yes) setPairIn(''); }); const t = window.setTimeout(() => { setPairBusy(false); setPairMsg('Coe Mini did not answer. Open it, press Connect with Coe in its Settings, and try again.'); }, 9000); return () => { off(); window.clearTimeout(t); }; }, [pairBusy]);
   const [which, setWhich] = useState<'chrome' | 'firefox'>(() => (typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent) ? 'firefox' : 'chrome'));
   const [copied, setCopied] = useState(false);
   const on = state === 'on';
@@ -192,7 +197,7 @@ export function ChromeTab() {
       <div className={`ex-top${on ? ' on' : ''}`}>
         <span className="ex-dot" aria-hidden />
         <div><b className="d">{on ? 'Coe Mini is on' : state === 'checking' ? 'Looking for Coe Mini' : 'Coe Mini'}</b>
-          <p className="tx">{on ? `Version ${version}${browser === 'firefox' ? ' in Firefox' : ''}. Your sign-in, About you and these settings are shared with it, and its chats show up in your chat list.` : 'Coe in a side panel next to any page. It finds the questions on a page and helps with each one, explains, checks your work, looks at your screen and can search for you.'}</p></div>
+          <p className="tx">{on ? `Version ${version}${browser === 'firefox' ? ' in Firefox' : ''}. ${linked ? 'Connected: About you, these settings and its chats are shared with Coe.' : 'Not connected: Coe and Coe Mini stay separate. They still use the same account when you sign in to both.'}` : 'Coe in a side panel next to any page. It finds the questions on a page and helps with each one, explains, checks your work, looks at your screen and can search for you.'}</p></div>
       </div>
       {!on && (
         <>
@@ -208,20 +213,32 @@ export function ChromeTab() {
               <li><span className="d">3</span><p className="tx">Turn on <b>Developer mode</b>.</p></li>
               <li><span className="d">4</span><p className="tx">Click <b>Load unpacked</b> and choose the <b>coe-mini</b> folder.</p></li>
               <li><span className="d">5</span><p className="tx">Click the puzzle piece and <b>pin</b> Coe Mini. One click opens the side panel. If your browser has no side panel, it opens as a small window on the right.</p></li>
-              <li><span className="d">6</span><p className="tx">Come back to this page. It spots Coe Mini by itself and the settings show up here.</p></li>
+              <li><span className="d">6</span><p className="tx">Open Coe Mini and press <b>Sign in or sign up</b>. Use the same account as on this page. Coe Mini already knows you, so there is nothing else to set up.</p></li>
             </ol>
           ) : (
             <ol className="ex-steps">
               <li><span className="d">1</span><p className="tx">Open the file you got and extract it (Windows: <b>Extract all</b>. Mac: double-click). You get a folder called <b>coe-extension-firefox</b>.</p></li>
               <li><span className="d">2</span><p className="tx">In Firefox, go to <b>about:debugging#/runtime/this-firefox</b>. <button type="button" className="ex-copy" onClick={copy}>{copied ? 'Copied' : 'Copy this address'}</button></p></li>
               <li><span className="d">3</span><p className="tx">Click <b>Load Temporary Add-on</b> and choose the file <b>manifest.json</b> inside the folder.</p></li>
-              <li><span className="d">4</span><p className="tx">Click the Coe Mini button in the toolbar (or press <b>Alt+Shift+Y</b>). The sidebar opens. Press <b>Let Coe Mini see the Coe website</b> in step 1 and say yes.</p></li>
+              <li><span className="d">4</span><p className="tx">Click the Coe Mini button in the toolbar (or press <b>Alt+Shift+Y</b>). The sidebar opens. Press <b>Let Coe Mini see the Coe website</b> and say yes. Then press <b>Sign in or sign up</b>. Coe Mini already knows you, so there is nothing else to set up.</p></li>
               <li><span className="d">5</span><p className="tx">Firefox removes a temporary add-on when it closes. To keep it, sign it for free: go to <b>addons.mozilla.org/developers</b>, click <b>Submit a New Add-on</b>, choose <b>On your own</b> and upload the zip you got (do not unzip it). When it is signed, download the file it gives you. In Firefox open <b>Add-ons and themes</b>, click the cog, choose <b>Install Add-on From File</b> and pick that file.</p></li>
             </ol>
           )}
         </>
       )}
-      {on && prefs && (
+      {on && (
+        <div className="ex-link">
+          <Switch on={linked} onChange={(v) => { if (!v) disconnectMini(); }} label="Connect with Coe Mini" hint={linked ? 'On: About you, settings and Coe Mini chats are shared. Switch off to keep them separate.' : 'Off: kept separate. To connect, type the code Coe Mini shows. Find it in Coe Mini: Settings, Connect with Coe.'} icon="link" disabled={!linked} />
+          {!linked && (
+            <form className="ex-code" onSubmit={(e) => { e.preventDefault(); const c = pairIn.replace(/[^A-Za-z2-9]/g, '').toUpperCase(); if (c.length !== 6) { setPairMsg('The code has six letters and numbers.'); return; } if (!me) { setPairMsg('Sign in to Coe first. Use the same account as Coe Mini.'); return; } setPairMsg(''); setPairBusy(true); connectMini(c, me); }}>
+              <label className="d" htmlFor="ex-pair">Code from Coe Mini</label>
+              <div className="ex-code-row"><input id="ex-pair" className="cx-in ex-code-in" autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={7} placeholder="K7Q-M4P" value={pairIn} onChange={(e) => setPairIn(e.target.value.toUpperCase())} /><button type="submit" className="btn primary" disabled={pairBusy}>{pairBusy ? 'Connecting' : 'Connect'}</button></div>
+              {pairMsg && <p className="tx cx-small" role="alert">{pairMsg}</p>}
+            </form>
+          )}
+        </div>
+      )}
+      {on && linked && prefs && (
         <>
           <Row label="What it reads" icon="panel" hint="Only when you ask. The whole page, or just what is on screen.">
             <Select label="What it reads" value={prefs.scope} onChange={(scope) => change({ scope })} options={[{ value: 'page', label: 'The whole page', hint: 'Articles, notes, long pages' }, { value: 'screen', label: 'Only what is on screen', hint: 'One question at a time' }]} />

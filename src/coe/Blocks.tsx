@@ -163,6 +163,12 @@ function PlanCard({ code }: { code: string }) {
 
 // ---------------------------------------------------------------- previews: pages, pictures, diagrams
 type Kind = 'html' | 'svg' | 'mermaid';
+/** The title a picture or diagram gives itself: an svg's <title>, or a mermaid title line. */
+function pvTitle(kind: Kind, code: string): string {
+  if (kind === 'svg') return /<title[^>]*>([^<]{1,70})/i.exec(code)?.[1]?.trim() || '';
+  if (kind === 'mermaid') return /^\s*title:\s*["']?(.{1,70}?)["']?\s*$/im.exec(code)?.[1]?.trim() || /^\s*%%\s*title:\s*(.{1,70})$/im.exec(code)?.[1]?.trim() || '';
+  return '';
+}
 const SIZES = [{ k: 'phone', n: 'Phone', w: 390 }, { k: 'tablet', n: 'Tablet', w: 768 }, { k: 'full', n: 'Full', w: 0 }] as const;
 
 let mermaidQ: Promise<unknown> = Promise.resolve();
@@ -231,6 +237,7 @@ export function Preview({ kind, code, closed, title }: { kind: Kind; code: strin
     return () => { live = false; };
   }, [kind, code, closed]);
 
+  const label = kind === 'html' ? 'Page' : pvTitle(kind, code) || (kind === 'svg' ? 'Picture' : 'Diagram');
   const name = kind === 'html' ? 'page.html' : kind === 'svg' ? 'picture.svg' : 'diagram.svg';
   const save = () => (kind === 'html' ? downloadText(name, code, 'text/html') : svg ? downloadText(name, svg, 'image/svg+xml') : undefined);
   const png = () => { if (svg) svgToPng(svg).then((b) => downloadBlob(name.replace('.svg', '.png'), b), () => {}); };
@@ -250,7 +257,7 @@ export function Preview({ kind, code, closed, title }: { kind: Kind; code: strin
 
   const head = (
     <div className="cx-pv-top">
-      <span className="d cx-pv-name"><UiIcon name={kind === 'html' ? 'globe' : 'image'} size={15} />{kind === 'html' ? 'Page' : kind === 'svg' ? 'Picture' : 'Diagram'}{!closed && <i>writing…</i>}</span>
+      <span className="d cx-pv-name"><UiIcon name={kind === 'html' ? 'globe' : 'image'} size={15} />{label}{!closed && <i>writing…</i>}</span>
       <span className="cx-grow" />
       {closed && (
         <div className="seg cx-pv-seg" role="group" aria-label="View">
@@ -275,13 +282,13 @@ export function Preview({ kind, code, closed, title }: { kind: Kind; code: strin
   );
 
   return (
-    <figure className={`cx-pv ${kind}`}>
+    <figure className={`cx-pv ${kind}${kind !== 'html' ? ' flat' : ''}`}>
       {head}
       {body}
       {foot}
       {big && (
         <div className="cx-pv-big" role="dialog" aria-label="Preview">
-          <div className="cx-pv-big-top"><b className="d">{kind === 'html' ? 'Page' : kind === 'svg' ? 'Picture' : 'Diagram'}</b><span className="cx-grow" />
+          <div className="cx-pv-big-top"><b className="d">{label}</b><span className="cx-grow" />
             {kind === 'html' && <div className="seg cx-pv-seg" role="group" aria-label="Screen size">{SIZES.map((s) => <button key={s.k} type="button" aria-pressed={size === s.k} onClick={() => setSize(s.k)}>{s.n}</button>)}</div>}
             {kind === 'html' && <div className="seg cx-pv-seg" role="group" aria-label="Zoom">{ZOOMS.map((z) => <button key={z.k} type="button" aria-pressed={zoom === z.k} onClick={() => setZoom(z.k)}>{z.n}</button>)}</div>}<button type="button" className="btn small" onClick={() => setBig(false)}><UiIcon name="close" size={15} />Close</button></div>
           <div className="cx-pv-big-body">

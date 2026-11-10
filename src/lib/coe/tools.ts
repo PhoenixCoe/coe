@@ -63,6 +63,8 @@ export interface Ctx {
   patch: (p: Partial<ToolRun>) => void;
   say: (t: string) => void;
   chats?: ChatOps;
+  /** A temporary chat: nothing is added to the person's notes. */
+  temp?: boolean;
 }
 /** What Coe may do to the chats in the side list, but only when the person asks. */
 export interface ChatOps {
@@ -101,7 +103,7 @@ async function go(c: Call, x: Ctx): Promise<Done> {
     switch (c.tool) {
       case 'js': return await toolJs(c, x);
       case 'maths': return await toolMaths(c);
-      case 'remember': { const f = str(c.fact, 240).trim(); if (!f) return fail('Say what to remember.'); remember(f); return { status: 'ok', result: 'Saved. You will see it in your notes next time.', out: { kind: 'text', text: f } }; }
+      case 'remember': { const f = str(c.fact, 240).trim(); if (!f) return fail('Say what to remember.'); if (x.temp) return fail('This is a temporary chat, so nothing is kept in your notes.'); remember(f); return { status: 'ok', result: 'Saved. You will see it in your notes next time.', out: { kind: 'text', text: f } }; }
       case 'search': return await toolSearch(c, x);
       case 'image': return await toolImage(c, x);
       case 'place': return await toolPlace(c, x);
@@ -433,8 +435,9 @@ export const SHOW_PROMPT = [
   '- Charts: a ```chart block holds JSON: {"type":"bar|line|area|pie|donut|scatter","title":"...","labels":["A","B"],"series":[{"name":"...","data":[1,2]}],"xLabel":"...","yLabel":"..."}. Scatter data is [[x,y],...]. Optional "colors":["#2F5D8A",...] sets the series colours (any hex colours that suit the subject). Use it for numbers the person gave you or you looked up, never invented ones.',
   '- Slides: a ```slides block holds JSON: {"title":"...","slides":[{"layout":"title","title":"...","subtitle":"..."},{"layout":"bullets","title":"...","bullets":["...","..."],"notes":"what to say"},{"layout":"two","title":"...","left":{"heading":"...","bullets":["..."]},"right":{"heading":"...","bullets":["..."]}},{"layout":"big","title":"72%","subtitle":"what the number means"},{"layout":"quote","text":"...","by":"..."}]}. Layouts: title, bullets, two, big, quote. 5 to 12 slides, 3 to 5 short bullets each (LaTeX allowed). It becomes a deck the person can present full screen and save as PowerPoint. Use it for any presentation or slide request.',
   '- Data tables: a ```data block holds JSON {"title":"...","columns":["A","B"],"rows":[["x",1],["y",2]]} (or CSV). The person can sort, filter, total and save it as CSV. Use it for lists of records and results with more than a handful of rows; use a Markdown table for small ones.',
-  '- Diagrams: a ```mermaid block (flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, mindmap, pie, timeline...) is drawn as a picture. Style it however suits the subject (classDef, style lines, themes); it does not need to look like Coe.',
-  '- Pictures you draw: a complete <svg> in a ```svg block is shown as a picture the person can save.',
+  '- Mind maps: a ```mindmap block is an indented outline. The first line is the middle of the map, each line under it is a branch, and a deeper indent is a smaller branch. Keep every label to 1 to 5 words, 4 to 8 main branches, 3 levels at most. For any request for a mind map use this block, not mermaid.',
+  '- Diagrams: a ```mermaid block (flowchart, sequenceDiagram, classDiagram, stateDiagram-v2, erDiagram, gantt, pie, timeline...) is drawn as a picture. Style it however suits the subject (classDef, style lines, themes); it does not need to look like Coe. Start it with a title (--- then title: Short title then --- as the first lines).',
+  '- Pictures you draw: a complete <svg> in a ```svg block is shown as a picture the person can save. Put <title>Short title</title> inside it, because that becomes the title shown above it. Leave out any frame or border around the picture: it sits straight on the page.',
   '- Pages, games and small apps: a complete, single-file page in a ```html block runs live in a preview next to the chat. Make it polished, in whatever look fits what was asked (it does not need to match Coe): responsive, good type, real colours, working interactions, canvas or CSS animation where it helps. It may load libraries from cdnjs.cloudflare.com or cdn.jsdelivr.net (for example three.js, d3, chart.js, tone.js). It has no access to the person\'s data.',
   '- Sound and music: build it as a page in a ```html block with the Web Audio API (oscillators, noise, samples, sequencers, synths, effects) and a clear Play button, because browsers only start sound after a click. Add a Record or Save button (MediaRecorder on an AudioContext destination) so they can keep a .webm or .wav.',
   '- Video and animation: build a canvas, CSS, SVG or WebGL page in a ```html block, with a Record button (MediaRecorder on canvas.captureStream()) so the person can save a .webm. You cannot generate AI video or AI music files: if asked, say so in one sentence and offer a page that makes it instead.',

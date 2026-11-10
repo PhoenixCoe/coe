@@ -9,6 +9,7 @@ import { CopyButton, downloadBlob, downloadText } from '@/ui/copy';
 import { hasMath, loadMath, renderMarkdown } from './markdown';
 import { addCards } from '@/lib/coe/study';
 import { sfx } from '@/lib/coe/look';
+import { mindmap } from './mindmap';
 
 // ---------------------------------------------------------------- small helpers
 export function Inline({ text, block }: { text: string; block?: boolean }) {
@@ -31,7 +32,7 @@ const pickColors = (c?: unknown): string[] => { const ok = Array.isArray(c) ? c.
 export function json<T>(code: string): T | null { try { return JSON.parse(code.trim()) as T; } catch { return null; } }
 export function Shell({ icon, name, closed, children, foot, cls }: { icon: Parameters<typeof UiIcon>[0]['name']; name: string; closed: boolean; children: React.ReactNode; foot?: React.ReactNode; cls?: string }) {
   return (
-    <figure className={`cx-pv cx-st ${cls ?? ''}`}>
+    <figure className={`cx-pv cx-st ${cls ?? ''}${cls && /\b(graph|chart|mindmap)\b/.test(cls) ? ' flat' : ''}`}>
       <div className="cx-pv-top"><span className="d cx-pv-name"><UiIcon name={icon} size={15} />{name}{!closed && <i>writing…</i>}</span></div>
       {children}
       {foot && <div className="cx-pv-bar">{foot}</div>}
@@ -40,7 +41,7 @@ export function Shell({ icon, name, closed, children, foot, cls }: { icon: Param
 }
 async function svgPng(svg: SVGSVGElement, name: string) {
   const r = svg.getBoundingClientRect(), w = Math.max(2, Math.round(r.width)), h = Math.max(2, Math.round(r.height)), k = 2;
-  const copy = svg.cloneNode(true) as SVGSVGElement; copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg'); copy.setAttribute('width', String(w)); copy.setAttribute('height', String(h));
+  const copy = svg.cloneNode(true) as SVGSVGElement; copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg'); copy.setAttribute('style', (copy.getAttribute('style') || '').replace('var(--t)', '"Courier New", monospace')); copy.setAttribute('width', String(w)); copy.setAttribute('height', String(h));
   const img = new Image(); await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error('png')); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(new XMLSerializer().serializeToString(copy)); });
   const c = document.createElement('canvas'); c.width = w * k; c.height = h * k; const x = c.getContext('2d')!; x.fillStyle = '#FBF6EC'; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
   c.toBlob((b) => b && downloadBlob(name, b), 'image/png');
@@ -336,11 +337,33 @@ const ChartBlock = memo(function ChartBlock({ code, closed }: { code: string; cl
   );
 });
 
+// ================================================================ mind map
+const MindmapBlock = memo(function MindmapBlock({ code, closed }: { code: string; closed: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(700);
+  useEffect(() => {
+    const el = box.current; if (!el) return;
+    const read = () => setW(Math.round(el.clientWidth) || 700); read();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(read); ro.observe(el); return () => ro.disconnect();
+  }, [closed]);
+  const res = useMemo(() => (closed ? mindmap(code, { width: w }) : null), [code, closed, w]);
+  if (!closed) return <Shell icon="branch" name="Mind map" closed={false} cls="mindmap"><p className="tx cx-pv-wait">Drawing the mind map…</p></Shell>;
+  if (!res) return <Shell icon="branch" name="Mind map" closed cls="mindmap"><p className="cx-pv-err tx">That mind map could not be read. Each line is a branch, and a deeper indent makes a smaller branch.</p><pre className="cx-pv-code"><code>{code}</code></pre></Shell>;
+  return (
+    <Shell icon="branch" name={`Mind map: ${res.title}`} closed cls="mindmap"
+      foot={<><button type="button" className="cx-act" onClick={() => { const el = box.current?.querySelector('svg'); if (el) void svgPng(el as SVGSVGElement, 'mind-map.png'); }}><UiIcon name="image" size={14} />Save .png</button><CopyButton text={code} label="Copy outline" small /></>}>
+      <div ref={box} className="cx-mm" dangerouslySetInnerHTML={{ __html: res.svg }} />
+    </Shell>
+  );
+});
+
 export function StudyBlock({ lang, code, closed }: { lang: string; code: string; closed: boolean }) {
   if (lang === 'graph' || lang === 'plot') return <GraphBlock code={code} closed={closed} />;
   if (lang === 'quiz') return <QuizBlock code={code} closed={closed} />;
   if (lang === 'flashcards' || lang === 'cards') return <CardsBlock code={code} closed={closed} />;
   if (lang === 'chart') return <ChartBlock code={code} closed={closed} />;
+  if (lang === 'mindmap') return <MindmapBlock code={code} closed={closed} />;
   return null;
 }
-export const STUDY_LANGS = ['graph', 'plot', 'quiz', 'flashcards', 'cards', 'chart'];
+export const STUDY_LANGS = ['graph', 'plot', 'quiz', 'flashcards', 'cards', 'chart', 'mindmap'];

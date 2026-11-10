@@ -139,6 +139,15 @@ export function greeting(name: string, hour: number, pick = Math.random()): stri
 }
 
 export interface Starter { title: string; hint: string; icon: string; text?: string; pic?: boolean; tool?: 'code' }
+/** The page buttons of Coe Mini. Coe cannot read an open tab, so here they take the page's words (pasted, or a file): the same names, order and icons. */
+export const PAGE_STARTS: { title: string; hint: string; icon: Starter['icon']; prompt: string; screen?: boolean }[] = [
+  { title: 'Find the questions', hint: 'Paste a page and help with each one', icon: 'search', prompt: 'Find every question in the text below. List them, numbered, with the marks if they are shown. Then ask me which one I want to start on.' },
+  { title: 'Explain this page', hint: 'In simple words', icon: 'graduate', prompt: 'Explain this page in simple words.' },
+  { title: 'Summarise', hint: 'Five short points', icon: 'list', prompt: 'Summarise this page in five short points.' },
+  { title: 'Practice questions', hint: 'Test yourself', icon: 'cards', prompt: 'Make five practice questions from this page. Put the answers at the end under a heading called Answers.' },
+  { title: 'Look at the screen', hint: 'Say what is in the picture', icon: 'camera', prompt: 'Look at the screen. Say what you see in one or two lines, then what to do next.', screen: true },
+];
+
 export const STARTERS: Starter[] = [
   { title: 'A maths question', hint: 'Exact working, step by step', icon: 'sigma', text: 'Solve this exactly and show the working:\n\n' },
   { title: 'Graph it', hint: 'Drag it, zoom it', icon: 'chart', text: 'Draw a graph of ' },
@@ -148,6 +157,7 @@ export const STARTERS: Starter[] = [
   { title: 'Make music', hint: 'A synth you can play', icon: 'volume', text: 'Build a page that makes music with the Web Audio API: ' },
   { title: 'Explain a topic', hint: 'Then test yourself', icon: 'graduate', text: 'Explain this topic simply, then give me one question to test myself:\n\n' },
   { title: 'Build me a page', hint: 'Live preview', icon: 'globe', text: 'Build a small web page that ' },
+  { title: 'Mind map', hint: 'Branches you can save', icon: 'branch', text: 'Make a mind map (a mindmap block) of: ' },
   { title: 'Draw a diagram', hint: 'Flows, maps, timelines', icon: 'branch', text: 'Make a diagram that shows ' },
   { title: 'Slides', hint: 'Present it, save as PowerPoint', icon: 'deck', text: 'Make a slide deck (a slides block) about ' },
   { title: 'Pixel art', hint: 'Uses PMC Apps', icon: 'image', text: 'Use the Pixel Art Maker to draw a small pixel-art picture of ' },

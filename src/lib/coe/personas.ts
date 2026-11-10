@@ -74,6 +74,10 @@ export const SLASH: Slash[] = [
   { cmd: 'quiz', title: 'Quiz me', text: 'Make me a quiz on this (a quiz block, 6 questions, with the reason for each answer): ' },
   { cmd: 'flashcards', title: 'Make flash cards', text: 'Make flash cards (a flashcards block, about 12 cards) on: ' },
   { cmd: 'graph', title: 'Draw a graph', text: 'Draw a graph of ' },
+  { cmd: 'questions', title: 'Find the questions in what I paste', text: 'List every question in the text below, in order and numbered. Do not answer them yet:\n\n' },
+  { cmd: 'hint', title: 'Give me a hint, not the answer', text: 'Give me a hint for this question, but not the answer:\n\n' },
+  { cmd: 'check', title: 'Check my answer', text: 'Check my answer. Say what is right and what to fix, without just giving me the full solution.\n\nQuestion:\n\nMy answer:\n' },
+  { cmd: 'mindmap', title: 'Make a mind map', text: 'Make a mind map (a mindmap block) of: ' },
   { cmd: 'solve', title: 'Solve with working', text: 'Solve this exactly using the maths tool and show the working:\n\n' },
   { cmd: 'explain', title: 'Explain it simply', text: 'Explain this simply, with one example and one question to test me: ' },
   { cmd: 'summarise', title: 'Summarise', text: 'Summarise this in 5 short bullet points, then give the one thing to remember:\n\n' },
@@ -90,6 +94,5 @@ export const SLASH: Slash[] = [
   { cmd: 'debug', title: 'Debug my code', text: 'Find the bug in this code, explain it, and show the fix:\n\n' },
   { cmd: 'write', title: 'Write in the editor', text: 'Write this in the editor as a document I can change: ' },
   { cmd: 'maths', title: 'Maths keyboard', text: '', go: 'maths' },
-  { cmd: 'voice', title: 'Voice mode', text: '', go: 'voice' },
   { cmd: 'code', title: 'Code check', text: '', go: 'code' },
 ];

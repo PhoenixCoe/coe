@@ -6,7 +6,7 @@ export const LEADS: { id: Lead; name: string; blurb: string; page: string; edge:
   { id: 'gold', name: 'Gold', blurb: 'Warm', page: '#B49A57', edge: '#171717' },
   { id: 'green', name: 'Green', blurb: 'PMC green', page: '#1A4934', edge: '#F2E4CE' },
 ];
-const LEAD = 'pmc:coe:lead', SFX = 'pmc:coe:sfx';
+const LEAD = 'pmc:coe:lead', SFX = 'pmc:coe:sfx', PING = 'pmc:coe:ping';
 export function loadLead(): Lead { try { const v = localStorage.getItem(LEAD); return LEADS.some((l) => l.id === v) ? (v as Lead) : 'cream'; } catch { return 'cream'; } }
 export function setLead(l: Lead) {
   try { localStorage.setItem(LEAD, l); } catch { /* storage blocked */ }
@@ -69,6 +69,19 @@ export function setTheme(t: (typeof THEMES)[number]) { setLead(t.lead); setAccen
 
 // ---------------------------------------------------------------- sound: short, hard, machine-like. Off until the person turns it on.
 export const sfxOn = () => { try { return localStorage.getItem(SFX) === '1'; } catch { return false; } };
+/** Tell me when a reply is ready (a soft chime and a mark in the tab title, only while this tab is not on screen). On unless switched off. */
+export const pingOn = () => { try { return localStorage.getItem(PING) !== '0'; } catch { return true; } };
+export function setPing(v: boolean) { try { localStorage.setItem(PING, v ? '1' : '0'); } catch { /* storage blocked */ } try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ } }
+let baseTitle = '';
+/** A reply finished while the person was on another tab: chime, and put a dot in the tab title until they come back. */
+export function replyReady() {
+  if (typeof document === 'undefined' || !document.hidden || !pingOn()) return;
+  try { tone(660, 150, { vol: 0.05 }); tone(880, 260, { at: 0.13, vol: 0.045 }); } catch { /* no sound */ }
+  if (baseTitle) return;
+  baseTitle = document.title; document.title = '\u25CF Reply ready \u00B7 ' + baseTitle;
+  const back = () => { if (document.hidden) return; document.title = baseTitle; baseTitle = ''; document.removeEventListener('visibilitychange', back); window.removeEventListener('focus', back); };
+  document.addEventListener('visibilitychange', back); window.addEventListener('focus', back);
+}
 export function setSfx(v: boolean) { try { localStorage.setItem(SFX, v ? '1' : '0'); } catch { /* storage blocked */ } try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ } if (v) sfx.on(); }
 let ac: AudioContext | null = null;
 function ctx(): AudioContext | null {

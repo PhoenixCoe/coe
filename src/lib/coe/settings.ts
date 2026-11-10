@@ -97,7 +97,23 @@ export function loadSettings(): CoeSettings {
   } catch { /* storage blocked or damaged */ }
   return { ...DEFAULTS, keys: {}, bases: {}, models: {} };
 }
-export const PROFILE_KEYS = ['name', 'ageBand', 'role', 'yearOrJob', 'subjects', 'length', 'easy'] as const;
+export const PROFILE_KEYS = ['name', 'ageBand', 'role', 'yearOrJob', 'subjects', 'length', 'easy', 'about', 'system', 'tone', 'level', 'replyLang', 'maxWords', 'goal'] as const;
+/** The About you record that travels with the account and to the Coe Mini sidebar. The same fields, with the same meaning, in both. */
+export type AboutRecord = { name?: string; ageBand?: string; role?: string; yearOrJob?: string; subjects?: string; length?: string; easy?: boolean; aboutText?: string; system?: string; tone?: string; level?: string; replyLang?: string; maxWords?: number; goal?: number; at?: number };
+export const aboutRecord = (s: CoeSettings): AboutRecord => ({ name: s.name, ageBand: s.ageBand, role: s.role, yearOrJob: s.yearOrJob, subjects: s.subjects, length: s.length, easy: s.easy, aboutText: s.about, system: s.system, tone: s.tone, level: s.level, replyLang: s.replyLang, maxWords: s.maxWords, goal: s.goal, at: s.profileAt });
+/** Reads an About you record (from the account or the sidebar) into settings, checking every value. */
+export function withAbout(cur: CoeSettings, a: Record<string, unknown>, at: number): CoeSettings {
+  const one = <T extends string>(v: unknown, ok: readonly T[], fall: T): T => (ok.includes(String(v) as T) ? (String(v) as T) : fall);
+  const str = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n);
+  const num = (v: unknown, ok: number[], fall: number) => (ok.includes(Number(v)) ? Number(v) : fall);
+  return {
+    ...cur, name: str(a.name, 30), ageBand: one(a.ageBand, ['', 'under11', '11-13', '14-16', '17-18', '19-24', '25+'] as const, ''), role: one(a.role, ['', 'student', 'teacher', 'parent', 'working', 'other'] as const, ''),
+    yearOrJob: str(a.yearOrJob, 60), subjects: str(a.subjects, 100), length: one(a.length, ['short', 'balanced', 'detailed'] as const, cur.length), easy: !!a.easy,
+    about: a.aboutText === undefined ? cur.about : str(a.aboutText, 700), system: a.system === undefined ? cur.system : str(a.system, 1500),
+    tone: one(a.tone, ['friendly', 'neutral', 'formal', 'playful'] as const, cur.tone), level: one(a.level, ['auto', 'simple', 'standard', 'expert'] as const, cur.level), replyLang: a.replyLang === undefined ? cur.replyLang : str(a.replyLang, 30),
+    maxWords: num(a.maxWords, [0, 100, 250, 500], cur.maxWords), goal: a.goal === undefined ? cur.goal : Math.max(5, Math.min(60, Math.round(Number(a.goal) / 5) * 5 || cur.goal)), profileAt: at,
+  };
+}
 export function saveSettings(s: CoeSettings) {
   // When About you changes, remember when, so this site and the Coe Mini sidebar can tell which copy is newer.
   try { const prev = JSON.parse(localStorage.getItem(KEY) || 'null') as Partial<CoeSettings> | null; if (prev && s.profileAt === (prev.profileAt ?? 0) && PROFILE_KEYS.some((k) => (prev[k] ?? DEFAULTS[k]) !== s[k])) s = { ...s, profileAt: Date.now() }; } catch { /* nothing before */ }

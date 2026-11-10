@@ -52,7 +52,7 @@ export type Tab = 'account' | 'usage' | 'connect' | 'ai' | 'chat' | 'look' | 'le
 type TabDef = { id: Tab; name: string; icon: Parameters<typeof UiIcon>[0]['name'] };
 const GROUPS: { name: string; tabs: TabDef[] }[] = [
   { name: 'You', tabs: [{ id: 'account', name: 'Account', icon: 'user' }, { id: 'usage', name: 'Usage', icon: 'chart' }, { id: 'you', name: 'Memory', icon: 'sparkle' }] },
-  { name: 'Coe', tabs: [{ id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice', icon: 'wave' }, { id: 'look', name: 'Look', icon: 'theme' }] },
+  { name: 'Coe', tabs: [{ id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice typing', icon: 'mic' }, { id: 'look', name: 'Look', icon: 'theme' }] },
   { name: 'More', tabs: [{ id: 'ext', name: 'Coe Mini', icon: 'globe' }, { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'about', name: 'About', icon: 'info' }] },
 ];
 export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCount, used, limit, onSignIn, onAccountChange, onExport, onImport, onDeleteAll, onClose }: {
@@ -163,7 +163,7 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
       {tab === 'look' && <LookTab s={settings} up={up} />}
       {tab === 'chat' && <ChatTab s={settings} up={up} />}
       {tab === 'learn' && <LearnTab s={settings} up={up} />}
-      {tab === 'voice' && <VoiceFields settings={settings} />}
+      {tab === 'voice' && <VoiceFields />}
       {tab === 'ext' && <ChromeTab />}
       {tab === 'about' && <AboutTab />}
 

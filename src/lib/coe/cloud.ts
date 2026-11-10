@@ -8,6 +8,7 @@ import { deleteConv, loadConv, loadIndex, saveConv } from '@/coe/store';
 import { memory, setMemory } from './links';
 import { mergeStudy, snapshotStudy, type StudyData } from './study';
 import { mergeStyles, stylesOut } from './personas';
+import { aboutRecord, loadSettings, saveSettings, withAbout, type AboutRecord } from './settings';
 
 const URL_ = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -97,7 +98,7 @@ const textOnly = (c: Conv): Conv => ({
 });
 
 export async function put(c: Conv) {
-  const s = session(); if (!s) return;
+  const s = session(); if (!s || c.temp) return;
   await rest('chats?on_conflict=user_id,id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, id: c.id, title: c.title, updated: c.updated, pinned: !!c.pinned, data: textOnly(c) }) });
   const k = ids(); k.add(c.id); setIds(k);
 }
@@ -122,12 +123,16 @@ export async function removeAll() {
 // ---------------------------------------------------------------- the person's own notes follow the account
 /** The study decks go with the account too, but only once there is something in them. */
 const studyOut = (): StudyData | undefined => { const d = snapshotStudy(); return d.cards.length || d.xp ? d : undefined; };
+/** The About you answers, with the time they were last changed, so every device ends up with the newest. */
+/** The About you answers, with the time they were last changed, so every device ends up with the newest. */
+type About = AboutRecord;
+const aboutOut = (): About | undefined => { const s = loadSettings(); return s.profileAt ? aboutRecord(s) : undefined; };
 export async function pushProfile() {
   const s = session(); if (!s) return;
-  await rest('profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, data: { memory: memory(), study: studyOut(), styles: stylesOut() }, updated: new Date().toISOString() }) });
+  await rest('profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, data: { memory: memory(), study: studyOut(), styles: stylesOut(), about: aboutOut() }, updated: new Date().toISOString() }) });
 }
 async function syncProfile() {
-  const rows: { data?: { memory?: unknown; study?: StudyData; styles?: unknown } }[] = await (await rest('profiles?select=data')).json();
+  const rows: { data?: { memory?: unknown; study?: StudyData; styles?: unknown; about?: About } }[] = await (await rest('profiles?select=data')).json();
   const theirs = Array.isArray(rows[0]?.data?.memory) ? (rows[0].data!.memory as unknown[]).filter((x): x is string => typeof x === 'string') : [];
   const mine = memory(), merged = setMemory([...theirs, ...mine]);
   const theirStudy = rows[0]?.data?.study;
@@ -137,7 +142,14 @@ async function syncProfile() {
   mergeStyles(rows[0]?.data?.styles);
   const styNow = stylesOut();
   const stylesChanged = !!styNow && JSON.stringify(styNow) !== JSON.stringify(rows[0]?.data?.styles ?? null);
-  if (merged.length !== theirs.length || merged.some((m, i) => m !== theirs[i]) || studyChanged || stylesChanged) await pushProfile();
+  // About you follows the account: a new device, or the Coe Mini add-on, starts already knowing you. The newer copy wins.
+  const ab = rows[0]?.data?.about, cur = loadSettings();
+  let aboutChanged = false;
+  if (ab && Number(ab.at) > (cur.profileAt || 0)) {
+    saveSettings(withAbout(cur, ab as Record<string, unknown>, Number(ab.at)));
+    aboutChanged = false;
+  } else { const mine = aboutOut(); aboutChanged = !!mine && JSON.stringify(mine) !== JSON.stringify(ab ?? null); }
+  if (merged.length !== theirs.length || merged.some((m, i) => m !== theirs[i]) || studyChanged || stylesChanged || aboutChanged) await pushProfile();
 }
 
 /** Brings this device and the account to the same list. Returns how many chats changed on this device. */

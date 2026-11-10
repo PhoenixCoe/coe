@@ -152,7 +152,7 @@ export function MapBlock({ code, closed }: { code: string; closed: boolean }) {
   const shown: Shown[] = spec.places.map((p) => ({ ...p, info: recall(p.name, p.lat, p.lng) }));
 
   return (
-    <figure className="map" aria-label={spec.title || 'Map'}>
+    <figure className="map flat" aria-label={spec.title || 'Map'}>
       {spec.title && <figcaption className="map-h d"><UiIcon name="globe" size={18} />{spec.title}</figcaption>}
       <div ref={frame} className="map-frame" role="application" aria-label="Map. Drag to move. Use the plus and minus buttons to zoom."
         onPointerDown={(e) => { if ((e.target as Element).closest('.map-pin, .map-ctl')) return; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); drag.current = { x: e.clientX, y: e.clientY, cx: x0 + size.w / 2, cy: y0 + size.h / 2 }; }}

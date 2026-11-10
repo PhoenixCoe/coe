@@ -13,7 +13,7 @@ import { applyCredits, bumpQuota, countReply, counted, creditsNow, limitNow, onS
 import { explain as describeErr, type ErrAct } from '@/lib/coe/errors';
 import { ErrorBox } from './ErrorBox';
 import { isOwner } from '@/lib/coe/owner';
-import { modeOf, connection, loadSettings, saveSettings, type CoeSettings } from '@/lib/coe/settings';
+import { modeOf, connection, loadSettings, saveSettings, withAbout, type CoeSettings } from '@/lib/coe/settings';
 import { toImg } from './images';
 import { Dock, Rich, RichContext, dockTarget, followupsOf, wordsOf, type RichCtx } from './Blocks';
 import { KINDS, isReadable, readAny } from './readers';
@@ -27,8 +27,8 @@ import { Workspace } from './Workspace';
 import { hasFiles, type Files } from '@/lib/coe/workspace';
 const Check = lazy(() => import('./Check').then((m) => ({ default: m.Check })));   // the code checker is big, so it is fetched only when opened
 import { SignIn as Account } from './SignIn';
+import { ConnectMini } from './ConnectMini';
 import { toneOf } from './Usage';
-import { VoiceMode } from './VoiceMode';
 import { SelectBar } from './SelectBar';
 import { MathPad } from './MathPad';
 import { Palette, type Cmd } from './Palette';
@@ -39,17 +39,17 @@ import { SoundLab } from './SoundLab';
 import { runBlock } from './run';
 import { Gallery, piecesOf } from './Gallery';
 import { StudyHub } from './StudyHub';
-import { LEADS, applyAccent, applyDisplay, loadAccent, loadLead, setLead, setSfx, sfx, sfxOn, type Lead } from '@/lib/coe/look';
+import { LEADS, applyAccent, applyDisplay, loadAccent, loadLead, setLead, setSfx, sfx, sfxOn, replyReady, type Lead } from '@/lib/coe/look';
 import { dueCount, streak, subscribeStudy } from '@/lib/coe/study';
 import { printChat, chatPage } from './export';
 import { PERSONAS, SLASH, loadPersona, loadStyles, personaOf, savePersona, type Persona } from '@/lib/coe/personas';
 import { StyleEditor } from './Styles';
 import { ShareDialog } from './Share';
 import { installCoe, isInstalled } from '@/lib/coe/pwa';
-import { VOICE_PROMPT, browserListen, browserListens, canListen, listening, loadPrefs, serverVoice, speak, transcribe, unlockAudio, voiceActive, type Speaking } from '@/lib/coe/voice';
+import { browserListen, browserListens, canListen, listening, loadPrefs, serverVoice, transcribe } from '@/lib/coe/voice';
 import { pushProfile, cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
 import { knowledgeFor } from './knowledge';
-import { BASE_COE, CHECK_SYSTEM, REDO_NOTE, STARTERS, greeting, picsNote, preferencesPrompt, worthChecking } from './prompts';
+import { BASE_COE, CHECK_SYSTEM, PAGE_STARTS, REDO_NOTE, STARTERS, greeting, picsNote, preferencesPrompt, worthChecking } from './prompts';
 import { Halftone } from '@/ui/Halftone';
 import { Modal, SettingsPanel, Upgrade, type Tab } from './Panels';
 import { Select } from '@/ui/Controls';
@@ -68,7 +68,7 @@ import { madePictures, stepInfo } from '@/lib/coe/progress';   // the editor is 
 import { LANG_NAME, codeIn, codeItems, extractCode } from '@/lib/coe/codesplit';
 import { AnswerInfo } from './AnswerInfo';
 import { feedbackDue, feedbackLater, feedbackShown, noteReply, sendFeedback } from '@/lib/coe/feedback';
-import { bucket, dataUrl, deleteAll, fillToday, deleteConv, exportAll, importAll, loadConv, loadIndex, saveConv, titleFrom, toMarkdown, uid, usage, type Attach, type Conv, type ConvMeta, type Img, type Msg, type Perm, type ToolRun } from './store';
+import { bucket, whenOf, dataUrl, deleteAll, fillToday, deleteConv, exportAll, importAll, loadConv, loadIndex, saveConv, titleFrom, toMarkdown, uid, usage, type Attach, type Conv, type ConvMeta, type Img, type Msg, type Perm, type ToolRun } from './store';
 
 const PICTURE_COST = 1600;             // a picture counts as this many characters when trimming
 const CONTEXT = { free: 80000, pro: 600000 };   // characters sent with each message; older ones are left out
@@ -188,6 +188,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [q, setQ] = useState('');
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; sure?: boolean } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);   // a row in the list
+  const [showArch, setShowArch] = useState(false);                  // the list shows the Archive instead of the chats
+  const [sel, setSel] = useState<Set<string> | null>(null);         // picking several chats at once
+  const [bulkAsk, setBulkAsk] = useState(false);                    // "delete these?" waits for a yes
   const [titling, setTitling] = useState(false);                     // the name in the header
   const [picker, setPicker] = useState(false);
   const [panel, setPanel] = useState<null | 'settings'>(() => { try { return new URLSearchParams(location.search).get('settings') !== null ? 'settings' : null; } catch { return null; } });   // ?settings opens Settings, so other tools can point here
@@ -222,6 +225,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [toolSeen, setToolSeen] = useState(tool);   // once opened, Code check stays in place (hidden), so closing it does not lose the results
   useEffect(() => { if (tool) setToolSeen(true); }, [tool]);
   const [acct, setAcct] = useState(false);
+  const fromMini = useRef(false);
+  const [pairCode, setPairCode] = useState('');
   const [me, setMe] = useState<string | null>(() => (cloudOn ? session()?.email ?? null : null));
   const [studyOpen, setStudyOpen] = useState(false);
   useEffect(() => { try { const u = new URL(window.location.href); const g = u.searchParams.get('go'); if (g) { u.searchParams.delete('go'); u.searchParams.delete('source'); window.history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); if (g === 'study') setStudyOpen(true); } } catch { /* no address to read */ } }, []);
@@ -231,6 +236,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [galOpen, setGalOpen] = useState(false);
   const [plusOpen, setPlusOpen] = useState(false);
   const [keysOpen, setKeysOpen] = useState(false);
+  const [pageFor, setPageFor] = useState<(typeof PAGE_STARTS)[number] | null>(null), [pageText, setPageText] = useState(''), [allBlocks, setAllBlocks] = useState(false);
   const [lead, setLeadState] = useState<Lead>('cream');
   const [soundOn, setSoundOn] = useState(false);
   const [due, setDue] = useState(0);
@@ -403,15 +409,20 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     return () => { off = true; window.clearInterval(t); };
   }, [busy, conv.id, conv.messages.length > 0]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { unlockAudio(); }, []);   // Safari only plays sound after one tap on the page
 
   // Another tab or the settings window may change the settings.
   useEffect(() => {
     const on = () => setSettingsState(loadSettings());
     window.addEventListener('pmc:coe-settings', on); return () => window.removeEventListener('pmc:coe-settings', on);
   }, []);
+  // About you is saved to the account when it changes, so a new device or the Coe Mini add-on already knows you.
+  const aboutAt = useRef(settings.profileAt);
+  useEffect(() => {
+    if (!settings.profileAt || settings.profileAt === aboutAt.current) return; aboutAt.current = settings.profileAt;
+    const t = window.setTimeout(() => { if (session()) void pushProfile().catch(() => {}); }, 1500); return () => window.clearTimeout(t);
+  }, [settings.profileAt]);
 
-  useEffect(() => { try { if (conv.messages.length) sessionStorage.setItem('pmc:coe:last', conv.id); else sessionStorage.removeItem('pmc:coe:last'); } catch { /* storage blocked */ } }, [conv.id, conv.messages.length]);
+  useEffect(() => { try { if (conv.messages.length && !conv.temp) sessionStorage.setItem('pmc:coe:last', conv.id); else sessionStorage.removeItem('pmc:coe:last'); } catch { /* storage blocked */ } }, [conv.id, conv.messages.length]);
 
   // ---------------------------------------------------------------- scrolling
   const toBottom = useCallback((smooth = false) => { const el = scroller.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' }); }, []);
@@ -492,11 +503,18 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
   const onPaste = (e: React.ClipboardEvent) => {
     const files = Array.from(e.clipboardData.files);
-    if (files.length) { e.preventDefault(); void addFiles(files); }
+    if (files.length) { e.preventDefault(); void addFiles(files); return; }
+    // A long paste becomes a small card, so it does not bury the message box. It still goes to Coe in full.
+    const txt = e.clipboardData.getData('text/plain');
+    if (txt.length > 1800 || txt.split('\n').length > 24) {
+      e.preventDefault();
+      const n = atts.filter((a) => a.name.startsWith('Pasted text')).length + 1;
+      setAtts((x) => [...x, { name: `Pasted text ${n}.txt`, kind: `${txt.trim().split(/\s+/).length} words pasted`, chars: txt.length, text: txt.slice(0, 40000), cut: txt.length > 40000 || undefined }]);
+    }
   };
 
   // ---------------------------------------------------------------- saving
-  const persist = useCallback(async (c: Conv) => { if (c.messages.length || c.docs?.length) { await saveConv(c); await refreshList(); if (cloudOn && session()) cloudPut(c).catch(() => say('Could not save to your account just now. It is kept on this device.')); } }, [refreshList, say]);
+  const persist = useCallback(async (c: Conv) => { if ((c.messages.length || c.docs?.length) && !c.temp) { await saveConv(c); await refreshList(); if (cloudOn && session()) cloudPut(c).catch(() => say('Could not save to your account just now. It is kept on this device.')); } }, [refreshList, say]);
   persistRef.current = persist;
 
   // ---------------------------------------------------------------- asking
@@ -574,9 +592,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       const patch = (p: Partial<Msg>) => commit({ ...work, messages: work.messages.map((m) => (m.id === holder.id ? { ...m, ...p } : m)) });
       const now = new Date();
       const system = [
-        BASE_COE, SHOW_PROMPT, personaOf(loadPersona()).prompt && `Working style the person chose (${personaOf(loadPersona()).name}): ${personaOf(loadPersona()).prompt}`, voiceActive() && VOICE_PROMPT,
+        BASE_COE, SHOW_PROMPT, personaOf(loadPersona()).prompt && `Working style the person chose (${personaOf(loadPersona()).name}): ${personaOf(loadPersona()).prompt}`,
         toolsPrompt({ plan: pn, work: !!opts.work, web, files: work.files ?? {}, stepsLeft: cap - step, hasApps: !!APPS_ORIGIN, docs: here().docs ?? [], activeId: edOpenRef.current && active() ? edIdRef.current : null, perm: here().perm ?? {} }),
-        memoryPrompt(),
+        base.temp ? '' : memoryPrompt(),
         knowledgeFor([...work.messages].reverse().find((m) => m.role === 'user' && !m.hidden)?.text ?? '', { hasApps: !!APPS_ORIGIN }),
         opts.wrong && `${REDO_NOTE}\n\nThe earlier answer was:\n${opts.wrong}`,
         preferencesPrompt(s),
@@ -613,7 +631,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           else if (!text.trim() && !lastFail) { failWhy = 'Coe sent nothing back'; patch({ error: 'Coe did not write anything back. Try again.', errKind: 'server' }); }
           // A second look at its own answer before finishing: if it finds a mistake, it writes the answer again.
           const lastAsk = [...work.messages].reverse().find((m) => m.role === 'user' && !m.hidden)?.text ?? '';
-          if (!r.cut && !lastFail && text.trim() && !voiceActive() && worthChecking(s.check, text, lastAsk, { work: opts.work, steps: step })) {
+          if (!r.cut && !lastFail && text.trim() && worthChecking(s.check, text, lastAsk, { work: opts.work, steps: step })) {
             phaseA('check');
             let fr = 0, latestFix = '';
             const showFix = () => { fr = 0; const m = /^\s*FIX:[^\n]*\n+([\s\S]+)$/i.exec(latestFix); if (m) patch({ text: m[1] }); };
@@ -641,7 +659,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         const setRun = (p: Partial<ToolRun>) => commit({ ...work, messages: work.messages.map((m) => (m.id === holder.id ? { ...m, runs: [{ ...(m.runs?.[0] ?? run0), ...p }] } : m)) });
         setRun({}); phaseA(phaseOfTool(call?.tool ?? 'unknown'));
         const res = call
-          ? await execute(call, { settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId: run0.id, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), docs: () => here().docs ?? [], setDocs: (d: EDoc[]) => commit({ ...work, docs: d, perm: here().perm }, true), attachments: () => work.messages.flatMap((m) => m.attach ?? []), perm: () => here().perm ?? {}, patch: setRun, say, chats: ops })
+          ? await execute(call, { settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId: run0.id, temp: !!base.temp, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), docs: () => here().docs ?? [], setDocs: (d: EDoc[]) => commit({ ...work, docs: d, perm: here().perm }, true), attachments: () => work.messages.flatMap((m) => m.attach ?? []), perm: () => here().perm ?? {}, patch: setRun, say, chats: ops })
           : { status: 'error' as const, result: found.error ?? 'That tool block could not be read.', out: undefined, images: undefined };
         setRun({ t1: Date.now(), status: res.status, result: res.result, ...(res.shown ? { shown: res.shown } : {}), ...(res.out ? { out: res.out } : {}) });
         if (res.status === 'error' && !ctl.signal.aborted) lastFail = { run: { tool: run0.tool, args: run0.args }, why: res.shown ?? res.result, gate: !!res.gate };
@@ -674,7 +692,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         if (back > 0) { work = { ...work, messages: work.messages.map((m) => (m.id === lastHolder ? { ...m, refund: back } : m)) }; sfx.done(); }
       }
       commit({ ...work, updated: Date.now() });
-      aborts.current.delete(mine); liveWork.current.delete(mine); setRunIds((r) => r.filter((x) => x !== mine)); phaseA('idle'); sfx.done();
+      aborts.current.delete(mine); liveWork.current.delete(mine); setRunIds((r) => r.filter((x) => x !== mine)); phaseA('idle'); sfx.done(); replyReady();
       const lastM = work.messages[work.messages.length - 1];
       setFavicon(lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped ? 'done' : 'idle');
       if (lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped) { noteReply(); if (active() && feedbackDue()) { feedbackShown(); setFb(true); } }
@@ -729,6 +747,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     if (settings.whileBusy === 'interrupt') { setQueue((q) => [{ ...item, late: true }, ...q]); abort.current?.abort(); }
     else setQueue((q) => [...q, item]);
   }, [busy, reading, text, pics, atts, work, sendBody, settings.whileBusy]);
+  /** One tap on what to do with a file, a picture or a long paste (the same four helpers as in Coe Mini). Whatever is typed in the box goes along. */
+  const quickSend = (what: string) => {
+    if (busy || reading) return;
+    const typed = text.trim(), pp = pics, aa = atts;
+    setText(''); setPics([]); setAtts([]); sfx.send();
+    sendBody(typed ? `${what}\n\n${typed}` : what, { pics: pp, atts: aa });
+  };
   useEffect(() => () => setFavicon('idle'), []);
   askRef.current = (t: string) => { if (busy || reading) setQueue((q) => [...q, { cid: convRef.current.id, id: uid(), text: t, pics: [], atts: [], work: false }]); else sendBody(t); };
   const sendQueuedNow = useCallback((id: string) => { setQueue((q) => { const it = q.find((x) => x.id === id); return it ? [{ ...it, late: true }, ...q.filter((x) => x.id !== id)] : q; }); abort.current?.abort(); }, []);
@@ -742,12 +767,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     sendBody(next.text, { pics: next.pics, atts: next.atts, work: next.work, late: next.late });
   }, [busy, reading, queue, sendBody, conv.id]);
 
-  // ---------------------------------------------------------------- voice: dictation, reading aloud, and voice mode
-  const [voiceOpen, setVoiceOpen] = useState(false);
+  // ---------------------------------------------------------------- voice typing: speak, and it types
   const [dict, setDict] = useState<'off' | 'rec' | 'work'>('off');
   const dictRef = useRef<{ stop: () => void } | null>(null);
-  const [aloud, setAloud] = useState<string | null>(null);
-  const aloudRef = useRef<Speaking | null>(null);
   const addText = (t: string) => { if (t.trim()) setText((x) => (x && !/\s$/.test(x) ? x + ' ' : x) + t.trim()); };
   const toggleDict = async () => {
     if (dict === 'rec') { dictRef.current?.stop(); return; }
@@ -762,27 +784,10 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       } else say('This browser cannot listen. Try Chrome, Edge or Safari.');
     } catch (e) {
       const m = (e as Error).message || 'Voice did not work.'; say(/Permission|denied|NotAllowed/i.test(m) ? 'The microphone is blocked. Allow it in the address bar and try again.' : m);
-      if ((e as { code?: string }).code === 'plan' && browserListens()) say(m + ' You can turn on your browser\'s own voice in Settings > Voice.');
+      if ((e as { code?: string }).code === 'plan' && browserListens()) say(m + ' You can turn on your browser\'s own voice in Settings > Voice typing.');
     } finally { setDict('off'); }
   };
-  const readAloud = (m: Msg) => {
-    if (aloud === m.id) { aloudRef.current?.stop(); aloudRef.current = null; setAloud(null); return; }
-    aloudRef.current?.stop();
-    const sp = speak(settings, m.text, loadPrefs()); aloudRef.current = sp; setAloud(m.id);
-    void sp.done.then((r) => { if (aloudRef.current === sp) { aloudRef.current = null; setAloud(null); } if (r.error && !r.fallback) say(r.error); });
-  };
-  useEffect(() => () => { aloudRef.current?.stop(); }, []);
-  // With "Read answers aloud" on, a finished answer is spoken, unless voice mode is already doing that.
-  const wasBusy = useRef(false);
-  useEffect(() => {
-    if (busy) { wasBusy.current = true; return; }
-    if (!wasBusy.current) return; wasBusy.current = false;
-    if (voiceOpen || !loadPrefs().auto) return;
-    const m = conv.messages[conv.messages.length - 1];
-    if (m && m.role === 'assistant' && !m.error && m.text.trim()) readAloud(m);
-  }, [busy]);   // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { applyDisplay(settings); }, [settings.scale, settings.motion, settings.compact, settings.easy, settings.contrast]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const lastReply = useMemo(() => { const m = conv.messages[conv.messages.length - 1]; return m && m.role === 'assistant' ? { id: m.id, text: wordsOf(m.text), error: !!m.error } : null; }, [conv.messages]);
 
   const errAct = (a: ErrAct) => {
     if (a === 'retry') retry();
@@ -810,9 +815,16 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   }, [busy, persist, refreshList, setConv]);
 
   // ---------------------------------------------------------------- conversations
+  /** A chat that is never saved: not on this device, not on the account, and Coe does not read or add to its notes. */
+  const freshTemp = useCallback(() => {
+    if (busy) return;
+    flushDocs(); setConv({ ...blank(convRef.current.model), temp: true }); setText(''); setPics([]); setAtts([]); setNote(''); stick.current = true;
+    if (window.innerWidth < 900) setSide(false);
+    window.setTimeout(() => box.current?.focus(), 30);
+  }, [busy, setConv, flushDocs]);
   const fresh = useCallback(() => {
     const c = convRef.current;
-    if (!c.messages.length && !c.docs?.length) { box.current?.focus(); return; }
+    if (!c.messages.length && !c.docs?.length && !c.temp) { box.current?.focus(); return; }
     flushDocs(); setConv(blank(c.model)); setText(''); setPics([]); setNote(''); stick.current = true;
     if (window.innerWidth < 900) setSide(false);
   }, [setConv, flushDocs]);
@@ -820,6 +832,10 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // The Coe extension can send a question and its answer into a new chat, and its Settings button opens the Chrome tab.
   useEffect(() => {
     if (location.hash === '#chrome') { setTab('ext'); setPanel('settings'); history.replaceState(null, '', location.pathname + location.search); }
+    // Coe Mini sends people here to sign in or sign up. The sign-in window opens by itself.
+    const pc = /^#connect=([A-Z2-9]{6})$/.exec(location.hash);
+    if (pc) { fromMini.current = true; history.replaceState(null, '', location.pathname + location.search); setPairCode(pc[1]); if (!session()) setAcct(true); }
+    else if (location.hash === '#signin') { fromMini.current = true; history.replaceState(null, '', location.pathname + location.search); if (!session()) setAcct(true); }
     return onExtHandoff((t) => { fresh(); setText(t); setPanel(null); window.setTimeout(() => box.current?.focus(), 60); });
   }, [fresh]);
   useEffect(() => onExtRefunds((items) => addSidebarRefunds(items)), []);
@@ -839,13 +855,12 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // About you answers changed in the sidebar: the newer copy wins.
   useEffect(() => onExtProfile((me) => {
     const cur = loadSettings(), at = Number(me.at) || 0; if (at <= (cur.profileAt || 0)) return;
-    const str = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n);
-    const one = <T extends string>(v: unknown, ok: readonly T[], fall: T): T => (ok.includes(String(v) as T) ? (String(v) as T) : fall);
-    setSettings({ ...cur, name: str(me.name, 30), ageBand: one(me.ageBand, ['', 'under11', '11-13', '14-16', '17-18', '19-24', '25+'] as const, ''), role: one(me.role, ['', 'student', 'teacher', 'parent', 'working', 'other'] as const, ''), yearOrJob: str(me.yearOrJob, 60), subjects: str(me.subjects, 100), length: one(me.length, ['short', 'balanced', 'detailed'] as const, cur.length), easy: !!me.easy, profileAt: at });
+    setSettings(withAbout(cur, me, at));
   }), [setSettings]);
   // The very first time: a few short, optional questions about you.
   const [meet, setMeet] = useState(false);
   useEffect(() => {
+    if (fromMini.current) return;
     try { if (localStorage.getItem(MET)) return; if (loadSettings().name) { localStorage.setItem(MET, '1'); return; } } catch { return; }
     const t = window.setTimeout(() => setMeet(true), 1400); return () => window.clearTimeout(t);
   }, []);   // what the Chrome sidebar gave back is listed in Settings > Usage > Refunds
@@ -902,6 +917,19 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     if (id === convRef.current.id) setConv(next);
     await persist(next); setMenu(null);
   }, [persist, setConv]);
+  /** Puts a chat away in the Archive (or brings it back). It is not deleted. The change is dated now so other devices pick it up. */
+  const archive = useCallback(async (id: string, on: boolean) => {
+    const c = id === convRef.current.id ? convRef.current : await loadConv(id); if (!c) return;
+    const next: Conv = { ...c, archived: on || undefined, pinned: on ? false : c.pinned, updated: Date.now() };
+    if (id === convRef.current.id) setConv(next);
+    await persist(next); setMenu(null);
+  }, [persist, setConv]);
+  const bulk = useCallback(async (op: 'archive' | 'unarchive' | 'delete') => {
+    const ids = [...(sel ?? [])]; if (!ids.length) return;
+    for (const id of ids) { if (op === 'delete') await remove(id); else await archive(id, op === 'archive'); }
+    setSel(null); setBulkAsk(false);
+    say(op === 'delete' ? `Deleted ${ids.length} ${ids.length === 1 ? 'chat' : 'chats'}.` : op === 'archive' ? `Archived ${ids.length} ${ids.length === 1 ? 'chat' : 'chats'}.` : `Brought back ${ids.length} ${ids.length === 1 ? 'chat' : 'chats'}.`);
+  }, [sel, remove, archive, say]);
 
   nameRef.current = nameIt;
   chatBits.current = {
@@ -976,7 +1004,6 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   useEffect(() => { setSlashAt(0); }, [slash.length]);
   const useSlash = (c: (typeof SLASH)[number]) => {
     if (c.go === 'maths') { setText(''); setMathOpen(true); return; }
-    if (c.go === 'voice') { setText(''); setVoiceOpen(true); return; }
     if (c.go === 'code') { setText(''); setTool(true); return; }
     setText(c.text); requestAnimationFrame(() => { const el = box.current; el?.focus(); el?.setSelectionRange(c.text.length, c.text.length); });
   };
@@ -995,9 +1022,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const askFor = (t: string) => { setText(t); requestAnimationFrame(() => { const el = box.current; el?.focus(); el?.setSelectionRange(t.length, t.length); }); };
   const cmds: Cmd[] = [
     { id: 'new', group: 'Chat', title: 'New chat', hint: 'Ctrl+Shift+O', run: fresh },
-    { id: 'voice', group: 'Chat', title: 'Talk with Coe (voice mode)', run: () => setVoiceOpen(true) },
     { id: 'dict', group: 'Chat', title: 'Dictate a message', run: () => void toggleDict() },
-    { id: 'aloud', group: 'Chat', title: 'Read the last reply aloud', run: () => { const m = [...conv.messages].reverse().find((x) => x.role === 'assistant' && x.text); if (m) readAloud(m); else say('There is no reply to read yet.'); } },
     { id: 'attach', group: 'Chat', title: 'Add a picture, sound, video or file', run: () => fileIn.current?.click() },
     { id: 'study', group: 'Study', title: 'Open Study', hint: due ? `${due} cards due` : 'decks and reviews', run: () => setStudyOpen(true) },
     { id: 'made', group: 'Chat', title: 'Made in this chat', hint: 'pages, pictures, quizzes', run: () => setGalOpen(true) },
@@ -1007,6 +1032,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     ...(canScreen() ? [{ id: 'screen', group: 'Tools', title: 'Capture your screen', run: () => setCapture('screen') } as Cmd] : []),
     { id: 'math', group: 'Tools', title: 'Maths keyboard', hint: 'equations and chemistry', run: () => setMathOpen(true) },
     { id: 'code', group: 'Tools', title: 'Code check', run: () => setTool(true) },
+    { id: 'temp', group: 'Chat', title: conv.temp ? 'Leave the private chat' : 'Start a private (temporary) chat', hint: 'not saved, not added to your notes', run: () => (conv.temp ? fresh() : freshTemp()) },
     { id: 'find', group: 'Chat', title: 'Find in this chat', hint: 'search the messages, or your bookmarks', run: () => setFind({ q: '', i: 0, marks: false }) },
     { id: 'compact', group: 'Chat', title: 'Summarise the older messages', hint: 'keeps a long chat quick', run: () => { void (async () => { const c2 = await compactConv(loadSettings(), convRef.current).catch(() => null); if (!c2) { say('There is not enough chat to summarise yet.'); return; } setConv(c2); await persist(c2); say('The older messages are now a short summary.'); })(); } },
     { id: 'files', group: 'Tools', title: 'Files', run: () => { setShelfTab(undefined); setShelf(true); } },
@@ -1039,13 +1065,15 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // ---------------------------------------------------------------- what is on screen
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
-    const l = t ? list.filter((m) => m.title.toLowerCase().includes(t)) : list;
+    const mine = list.filter((m) => !!m.archived === showArch);
+    const l = t ? mine.filter((m) => m.title.toLowerCase().includes(t)) : mine;
     const groups: { name: string; items: ConvMeta[] }[] = [];
     const add = (name: string, m: ConvMeta) => { let g = groups.find((x) => x.name === name); if (!g) groups.push((g = { name, items: [] })); g.items.push(m); };
     l.filter((m) => m.pinned).forEach((m) => add('Pinned', m));
     l.filter((m) => !m.pinned).forEach((m) => add(bucket(m.updated), m));
     return groups;
-  }, [list, q]);
+  }, [list, q, showArch]);
+  const archCount = list.filter((m) => m.archived).length;
 
   const empty = conv.messages.length === 0;
   const dk = useMemo(() => dockTarget(conv.messages), [conv.messages]);
@@ -1087,7 +1115,6 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     { id: 'study', icon: 'study', title: 'Study', n: due, run: () => setStudyOpen(true) },
     { id: 'code', icon: 'code', title: 'Code check', run: () => setTool(true) },
     { id: 'made', icon: 'layers', title: 'Made', n: made, off: !made, run: () => setGalOpen(true) },
-    { id: 'voice', icon: 'wave', title: 'Voice', run: () => setVoiceOpen(true) },
   ];
 
   return (
@@ -1105,25 +1132,42 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           <button type="button" className="btn gold cx-new" onClick={fresh}><UiIcon name="plus" size={18} />New chat</button>
           <label className="cx-find"><UiIcon name="search" size={16} /><span className="sr">Search conversations</span>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search" spellCheck={false} /></label>
+          <div className="cx-side-tools" role="group" aria-label="Chat tools">
+            <button type="button" className={`cx-stb${conv.temp ? ' on' : ''}`} aria-pressed={!!conv.temp} title="Private chat (temporary): not saved, and not added to your notes" onClick={() => (conv.temp ? fresh() : freshTemp())}><UiIcon name="lock" size={15} />Private</button>
+            <button type="button" className={`cx-stb${sel ? ' on' : ''}`} aria-pressed={!!sel} title="Pick several chats to archive or delete" onClick={() => { setSel((o) => (o ? null : new Set())); setBulkAsk(false); }}><UiIcon name="check" size={15} />Select</button>
+          </div>
         </div>
         <nav className="cx-list">
-          {!shown.length && <p className="cx-none tx">{q ? 'Nothing found.' : 'Your chats will be listed here.'}</p>}
+          {showArch && <h3 className="cx-group d cx-archh"><UiIcon name="folder" size={14} />Archive</h3>}
+          {!shown.length && <p className="cx-none tx">{q ? 'Nothing found.' : showArch ? 'Nothing is archived. Archive a chat from its ... menu to put it away here.' : 'Your chats will be listed here.'}</p>}
           {shown.map((g) => (
             <section key={g.name}>
               <h3 className="cx-group d">{g.name}</h3>
               {g.items.map((m) => (
-                <div key={m.id} className={`cx-conv${m.id === conv.id ? ' on' : ''}`}>
+                <div key={m.id} className={`cx-conv${m.id === conv.id ? ' on' : ''}${sel?.has(m.id) ? ' picked' : ''}`}>
+                  {sel && <input type="checkbox" className="cx-pick" aria-label={`Pick ${m.title}`} checked={sel.has(m.id)} onChange={() => setSel((o) => { const n = new Set(o); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })} />}
                   {renaming === m.id
                     ? <Rename value={m.title} onDone={(v) => rename(m.id, v)} />
-                    : <button type="button" className="cx-open tx" aria-current={m.id === conv.id ? 'true' : undefined} onClick={() => open(m.id)} onDoubleClick={() => setRenaming(m.id)} title={m.title}>
+                    : <button type="button" className="cx-open tx" aria-current={m.id === conv.id ? 'true' : undefined} onClick={() => (sel ? setSel((o) => { const n = new Set(o); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; }) : void open(m.id))} onDoubleClick={() => setRenaming(m.id)} title={m.title}>
                       {m.pinned && <UiIcon name="pin" size={13} className="cx-pinned" />}<span>{m.title}</span>{runIds.includes(m.id) && <i className="cx-run" role="img" aria-label="Writing a reply" />}</button>}
-                  <button type="button" className="cx-more" aria-label={`Options for ${m.title}`} aria-haspopup="menu" aria-expanded={menu?.id === m.id}
-                    onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.id === m.id ? null : { id: m.id, x: Math.min(r.right, window.innerWidth - 8), y: r.bottom + 4 }); }}><UiIcon name="more" size={18} /></button>
+                  {!sel && <button type="button" className="cx-more" aria-label={`Options for ${m.title}`} aria-haspopup="menu" aria-expanded={menu?.id === m.id}
+                    onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.id === m.id ? null : { id: m.id, x: Math.min(r.right, window.innerWidth - 8), y: r.bottom + 4 }); }}><UiIcon name="more" size={18} /></button>}
                 </div>
               ))}
             </section>
           ))}
+          {(archCount > 0 || showArch) && !sel && <button type="button" className="cx-archrow" onClick={() => { setShowArch((v) => !v); setQ(''); }}><UiIcon name={showArch ? 'left' : 'folder'} size={15} />{showArch ? 'Back to chats' : `Archive (${archCount})`}</button>}
         </nav>
+        {sel && (
+          <div className="cx-selbar" role="group" aria-label="Picked chats">
+            {bulkAsk
+              ? <><span className="d cx-sure-t">Delete {sel.size}? No undo.</span><button type="button" className="btn small danger" onClick={() => void bulk('delete')}><UiIcon name="trash" size={14} />Yes, delete</button><button type="button" className="btn small" onClick={() => setBulkAsk(false)}>Keep</button></>
+              : <><b className="d">{sel.size} picked</b>
+                <button type="button" className="btn small" disabled={!sel.size} onClick={() => void bulk(showArch ? 'unarchive' : 'archive')}><UiIcon name="folder" size={14} />{showArch ? 'Bring back' : 'Archive'}</button>
+                <button type="button" className="btn small danger" disabled={!sel.size} onClick={() => setBulkAsk(true)}><UiIcon name="trash" size={14} />Delete</button>
+                <button type="button" className="btn small" onClick={() => { setSel(null); setBulkAsk(false); }}>Done</button></>}
+          </div>
+        )}
         <div className="cx-side-foot">
           <div className="cx-me-row">
             <button type="button" className="cx-me" title={me ? 'Your account' : 'Sign in'} onClick={() => { if (me) { setTab('account'); setPanel('settings'); } else setAcct(true); }}>
@@ -1142,7 +1186,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
           <button type="button" className="isl-b" title="Chats" aria-label={side ? 'Hide the list' : 'Show the list'} aria-pressed={side} onClick={() => { sideWas.current = false; setSide((s) => !s); }}><UiIcon name="panel" size={22} /></button>
           {titling && conv.messages.length
             ? <Rename className="cx-title-in" value={conv.title} onDone={(v) => rename(conv.id, v)} />
-            : <button type="button" className="isl-title d" disabled={!conv.messages.length} onClick={() => setTitling(true)} title={conv.messages.length ? 'Rename' : undefined}>{conv.messages.length ? conv.title : 'New chat'}</button>}
+            : <button type="button" className="isl-title d" disabled={!conv.messages.length} onClick={() => setTitling(true)} title={conv.messages.length ? 'Rename' : undefined}>{conv.messages.length ? conv.title : conv.temp ? 'Private chat' : 'New chat'}</button>}
           {cItems.length > 0 && <button type="button" className={`isl-b${cpOpen ? ' on' : ''}`} aria-label={cpOpen ? 'Hide the code' : 'Show the code'} title={cpOpen ? 'Hide the code' : 'Show the code'} aria-pressed={cpOpen} onClick={() => { if (cpOpen) { closeCode(); return; } const it = cItems.find((x) => x.id === cpSel) ?? cItems[cItems.length - 1]; openCode(it.id, { changes: it.from === 'coe' && !!it.base }); }}><UiIcon name="code" size={20} />{cpNew && <i className="isl-n dot" aria-label="New code from Coe" />}</button>}
           {pill && <button type="button" className={`isl-step${progOpen ? ' on' : ''}${busy ? ' live' : ''}`} aria-pressed={progOpen} aria-label={`${pill.label}. Show progress`} title="Progress" onClick={() => setProgOpen((v) => !v)}><UiIcon name="list" size={16} /><span className="s-long">{pill.label}</span><span className="s-short">{pill.short}</span></button>}
           <button type="button" className={`isl-b${shelf ? ' on' : ''}`} aria-label="Files" title="Files" aria-pressed={shelf} onClick={() => { setShelfTab(undefined); setShelf((v) => !v); }}><UiIcon name="folder" size={20} />{nFiles > 0 && <i className="isl-n">{nFiles}</i>}</button>
@@ -1151,10 +1195,12 @@ export function Chat({ initialList, initialConv }: ChatProps) {
             {hdMore && (
               <ul className="cx-pop hd-pop" role="menu" aria-label="More">
                 {([
+                  ['Find in this chat', 'search', () => setFind({ q: '', i: 0, marks: false }), empty],
+                  [conv.temp ? 'Leave the private chat' : 'Private chat (temporary)', 'lock', () => (conv.temp ? fresh() : freshTemp()), false],
+                  ['Archive this chat', 'folder', () => { void archive(conv.id, true); }, empty || !!conv.temp || !!conv.archived],
                   ['Study', 'study', () => setStudyOpen(true), false],
                   ['Code check', 'code', () => setTool(true), false],
                   ['Made in Coe', 'layers', () => setGalOpen(true), !made],
-                  ['Talk out loud', 'wave', () => setVoiceOpen(true), false],
                   ['Save this chat as a file', 'download', exportOne, empty],
                   ...(cloudOn ? [['Share this chat as a link', 'share', shareThis, empty]] : []),
                   ['Commands', 'command', () => setPalOpen(true), false],
@@ -1204,8 +1250,18 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                   <button type="button" className="btn gold" onClick={() => { setTab('account'); setPanel('settings'); }}>Set up Coe</button>
                 </div>
               )}
+              <h3 className="hbs-h d">From a page</h3>
+              <div className="hbp" role="group" aria-label="From a page">
+                {PAGE_STARTS.map((s) => (
+                  <button key={s.title} type="button" className="hbp-b" title={s.hint} disabled={!!(busy || reading)}
+                    onClick={() => { if (s.screen) { setText(s.prompt); if (canScreen()) setCapture('screen'); else fileIn.current?.click(); return; } if (text.trim() || atts.length) { quickSend(s.prompt); return; } setPageText(''); setPageFor(s); }}>
+                    <UiIcon name={s.icon} size={17} />{s.title}
+                  </button>
+                ))}
+              </div>
+              <h3 className="hbs-h d">Start from a block</h3>
               <div className="hbs" role="group" aria-label="Start from a block">
-                {STARTERS.slice(0, 4).map((s, i) => (
+                {STARTERS.slice(0, allBlocks ? STARTERS.length : 4).map((s, i) => (
                   <button key={s.title} type="button" className={`hb t${i % 4}`} title={s.hint} style={{ animationDelay: `${i * 40}ms` }}
                     onClick={() => { if (s.tool === 'code') { setTool(true); return; } setText(s.text ?? ''); box.current?.focus(); if (s.pic) (canCamera() ? setCapture('camera') : fileIn.current?.click()); }}>
                     <span className="hb-art" aria-hidden><UiIcon name={s.icon} size={34} /></span>
@@ -1213,6 +1269,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                   </button>
                 ))}
               </div>
+              <button type="button" className="hb-more d" aria-expanded={allBlocks} onClick={() => setAllBlocks((v) => !v)}>{allBlocks ? 'Fewer blocks' : `All ${STARTERS.length} blocks`}</button>
             </div>
           ) : (
             <RichContext.Provider value={richCtx}><ol className="cx-msgs" key={conv.id}>
@@ -1254,7 +1311,6 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                     {!live && (
                       <div className="cx-acts">
                         {m.role === 'assistant' && agg.text && <button type="button" className="cx-act" title="Copy" aria-label="Copy" onClick={() => copyMsg(agg)}><UiIcon name="copy" size={14} />Copy</button>}
-                        {m.role === 'assistant' && agg.text && !m.error && <button type="button" className="cx-act" title={aloud === m.id ? 'Stop reading' : 'Read aloud'} aria-label={aloud === m.id ? 'Stop reading' : 'Read aloud'} aria-pressed={aloud === m.id} onClick={() => readAloud(agg)}><UiIcon name={aloud === m.id ? 'stop' : 'volume'} size={14} />{aloud === m.id ? 'Stop' : 'Read aloud'}</button>}
                         {m.role === 'assistant' && !m.error && lastOne && !busy && worthRedo(agg.text) && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className="cx-act" onClick={redo} aria-label="Try again" title={left > 0 ? `Not right? Try again, free. ${left} free ${left === 1 ? 'try' : 'tries'} left today.` : 'Try again. Today\'s free tries are used, so this counts like a normal message.'}><UiIcon name="refresh" size={14} /></button>; })()}
                         {m.role === 'assistant' && agg.text && !m.error && (
                           <details className="cx-more" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) { const d = e.currentTarget as HTMLDetailsElement; const off = (ev: Event) => { if (!d.contains(ev.target as Node)) { d.open = false; document.removeEventListener('pointerdown', off, true); } }; document.addEventListener('pointerdown', off, true); } }}>
@@ -1269,6 +1325,12 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                         )}
                         {m.role === 'user' && m.id === lastUser && !busy && <button type="button" className="cx-act" title="Edit" aria-label="Edit" onClick={() => edit(m.id)}><UiIcon name="edit" size={14} />Edit</button>}
                         {m.role === 'assistant' && agg.outTokens ? <span className="cx-tok tx">{agg.outTokens} tokens</span> : null}
+                        <time className="cx-when tx" dateTime={new Date(first.ts).toISOString()} title={new Date(first.ts).toLocaleString()}>{whenOf(first.ts)}</time>
+                      </div>
+                    )}
+                    {m.role === 'assistant' && lastOne && !live && !busy && !m.error && agg.text.length > 160 && (
+                      <div className="cx-better" role="group" aria-label="Change this answer">
+                        {([['Shorter', 'Make that shorter.'], ['Simpler', 'Explain that more simply, in plainer words.'], ['More detail', 'Give me more detail on that.']] as const).map(([a, b]) => <button key={a} type="button" className="cx-act" onClick={() => sendBody(b)}>{a}</button>)}
                       </div>
                     )}
                     {m.role === 'assistant' && lastOne && !live && !busy && !m.error && (() => {
@@ -1285,6 +1347,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         <footer className="cx-compose">
           {away && <button type="button" className="cx-jump btn small" onClick={() => { stick.current = true; toBottom(true); setAway(false); }}><UiIcon name="down" size={15} />Latest</button>}
           {remoteLive && !busy && <p className="cx-flag tx" role="status">Coe is replying to this chat on another device. It shows here as it is written.</p>}
+          {conv.temp && <p className="cx-flag tx cx-temp" role="status"><UiIcon name="timer" size={14} />Private chat (temporary). It is not saved, and Coe does not read or add to your notes. It goes when you leave it.</p>}
           {note && <p className="cx-flag tx">{note}</p>}
           {outBox
             ? <ErrorBox small own={keyOn} kind="credits" text={lastErr?.errKind === 'credits' ? lastErr.error ?? '' : ''} canRetry={false} onAct={errAct} />
@@ -1313,6 +1376,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               <div className="cx-chips">
                 {atts.map((a, i) => <AttCard key={i} a={a} onOpen={() => setPeek(a)} onRemove={() => setAtts((x) => x.filter((_, k) => k !== i))} />)}
                 {reading && <span className="cx-att tx"><CoeStar size={18} mode="read" /><b>{reading.endsWith('…') ? reading : `Reading ${reading}`}</b></span>}
+              </div>
+            )}
+            {(atts.length > 0 || pics.length > 0) && !busy && !reading && (
+              <div className="cx-quick" role="group" aria-label="What should Coe do with this?">
+                {([['Find the questions', 'List every question in what I attached, in order and numbered, with the marks if they are shown. Do not answer them yet.'], ['Explain this', 'Explain what I attached simply, step by step, so I understand it.'], ['Give me a hint', 'Give me a hint for the question in what I attached. Do not give the answer.'], ['Check my answer', 'Check my answer. Say what is right and what to fix, without just giving me the full solution.'], ['Summarise', 'Summarise what I attached in 5 short bullet points.']] as const).map(([a, b]) => <button key={a} type="button" className="cx-act" onClick={() => quickSend(b)}>{a}</button>)}
               </div>
             )}
             {slash.length > 0 && (
@@ -1372,6 +1440,15 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         {galOpen && <Gallery conv={conv} onGo={goTo} onClose={() => setGalOpen(false)} />}
         {shareOpen && <ShareDialog conv={conv} say={say} onClose={() => setShareOpen(false)} />}
         {stylesOpen && <StyleEditor current={persona} onUse={pickPersona} onClose={() => setStylesOpen(false)} />}
+        {pageFor && (
+          <Modal title={pageFor.title} onClose={() => setPageFor(null)}>
+            <form className="cx-form" onSubmit={(e) => { e.preventDefault(); if (!pageText.trim() || busy || reading) return; const p = pageFor; setPageFor(null); sfx.send(); sendBody(`${p.prompt}\n\n${pageText.trim()}`, { pics: [], atts: [] }); }}>
+              <p className="tx">Coe cannot see your other tabs. Paste the words of the page here, or close this, add a file with + and press the button again. Coe Mini reads the open page for you.</p>
+              <textarea className="cx-in tall" rows={8} autoFocus value={pageText} maxLength={60000} placeholder="Paste the page here" aria-label="The page" onChange={(e) => setPageText(e.target.value)} />
+              <div className="cx-actions"><button type="submit" className="btn gold" disabled={!pageText.trim()}>{pageFor.title}</button></div>
+            </form>
+          </Modal>
+        )}
         {keysOpen && (
           <Modal title="Keyboard shortcuts" onClose={() => setKeysOpen(false)}>
             <dl className="keys">
@@ -1381,7 +1458,6 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         )}
         {palOpen && <Palette cmds={cmds} onClose={() => { setPalOpen(false); box.current?.focus(); }} />}
         <SelectBar onAsk={(t) => askRef.current(t)} onQuote={(q) => { setText((x) => `${x ? x.replace(/\s*$/, '\n') : ''}> ${q}\n\n`); window.setTimeout(() => box.current?.focus(), 30); }} />
-        {voiceOpen && <VoiceMode settings={settings} busy={busy} reply={lastReply} onSay={(t) => sendBody(t)} onStopChat={stop} onSettings={() => { setVoiceOpen(false); setTab('voice'); setPanel('settings'); }} onClose={() => { setVoiceOpen(false); }} />}
 
         {toolSeen && (
           <div className="cd-over" role="dialog" aria-modal="true" aria-label="Code check" hidden={!tool}>
@@ -1423,6 +1499,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               <>
                 <button type="button" role="menuitem" className="cx-opt" onClick={() => { void pin(menu.id); }}><UiIcon name="pin" size={15} />{row.pinned ? 'Unpin' : 'Pin to the top'}</button>
                 <button type="button" role="menuitem" className="cx-opt" onClick={() => { setRenaming(menu.id); setMenu(null); }}><UiIcon name="edit" size={15} />Rename</button>
+                <button type="button" role="menuitem" className="cx-opt" onClick={() => { void archive(menu.id, !row.archived); }}><UiIcon name="folder" size={15} />{row.archived ? 'Bring back' : 'Archive'}</button>
                 <button type="button" role="menuitem" className="cx-opt danger" onClick={() => setMenu({ ...menu, sure: true })}><UiIcon name="trash" size={15} />Delete</button>
               </>
             )}
@@ -1430,6 +1507,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         );
       })()}
 
+      {pairCode && !acct && !!me && <ConnectMini code={pairCode} email={me} onClose={() => setPairCode('')} onSwitch={() => setAcct(true)} />}
       {acct && <Account onClose={() => setAcct(false)} onChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} />}
       {upgrade && <Upgrade note={upgrade} onClose={() => setUpgrade('')} />}
       {meet && !panel && !acct && !upgrade && <MeetCoe s={settings} save={(p) => setSettings({ ...loadSettings(), ...p })} onClose={() => setMeet(false)} />}

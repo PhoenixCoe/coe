@@ -41,10 +41,10 @@ export interface Msg {
   /** This reply went wrong, so these tokens were given back. */
   refund?: number;
 }
-export interface Conv { id: string; title: string; created: number; updated: number; model: ModelKey; space?: 'chat' | 'aced'; pinned?: boolean; /** Coe or the person has chosen the name, so it is not changed again. */ named?: boolean; /** Set while a reply is being written, so another device can follow it live. */ live?: number; messages: Msg[]; /** The project folder: file name to text. */ files?: Record<string, string>; /** Documents open in the editor panel: essays, code, web pages, tables. */ docs?: EDoc[]; /** What the person allowed Coe to open in this chat. */ perm?: Perm }
+export interface Conv { id: string; title: string; created: number; updated: number; model: ModelKey; space?: 'chat' | 'aced'; pinned?: boolean; /** Put away in the Archive: out of the list, not deleted. */ archived?: boolean; /** A temporary chat: kept in this tab only, never saved to the device or the account. */ temp?: boolean; /** Coe or the person has chosen the name, so it is not changed again. */ named?: boolean; /** Set while a reply is being written, so another device can follow it live. */ live?: number; messages: Msg[]; /** The project folder: file name to text. */ files?: Record<string, string>; /** Documents open in the editor panel: essays, code, web pages, tables. */ docs?: EDoc[]; /** What the person allowed Coe to open in this chat. */ perm?: Perm }
 /** Per chat: may Coe open the editor and apps without asking each time? `ok` lists apps the person said yes to once. */
 export interface Perm { editor?: 'always' | 'never'; app?: 'always' | 'never'; ok?: string[] }
-export interface ConvMeta { id: string; title: string; updated: number; space?: 'chat' | 'aced'; pinned?: boolean; count: number }
+export interface ConvMeta { id: string; title: string; updated: number; space?: 'chat' | 'aced'; pinned?: boolean; archived?: boolean; count: number }
 
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3);
 export const dataUrl = (i: Img) => `data:${i.type};base64,${i.data}`;
@@ -75,9 +75,10 @@ const INDEX = 'index', conv = (id: string) => `conv:${id}`;
 export async function loadIndex(): Promise<ConvMeta[]> { return (await get<ConvMeta[]>(INDEX)) ?? []; }
 export const loadConv = (id: string) => get<Conv>(conv(id));
 export async function saveConv(c: Conv) {
+  if (c.temp) return;   // a temporary chat is never written down
   await put(conv(c.id), c);
   const idx = (await loadIndex()).filter((m) => m.id !== c.id);
-  idx.push({ id: c.id, title: c.title, updated: c.updated, space: c.space, pinned: c.pinned, count: c.messages.length });
+  idx.push({ id: c.id, title: c.title, updated: c.updated, space: c.space, pinned: c.pinned, archived: c.archived || undefined, count: c.messages.length });
   await put(INDEX, idx.sort((a, b) => b.updated - a.updated));
 }
 export async function deleteConv(id: string) { await del(conv(id)); await put(INDEX, (await loadIndex()).filter((m) => m.id !== id)); }
@@ -115,6 +116,8 @@ export function fillToday(limit: number) { const u = usage(); if (u.today < limi
 export function resetToday() { const u = usage(); u.today = 0; try { localStorage.setItem(USAGE, JSON.stringify(u)); } catch { /* storage blocked */ } return u; }
 
 // ---------------------------------------------------------------- words
+/** A clock time for a message: just the time today, the day too before that. */
+export const whenOf = (t: number, now = Date.now()): string => { const d = new Date(t), hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); if (new Date(now).toDateString() === d.toDateString()) return hm; return d.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + hm; };
 export const titleFrom = (text: string) => { const t = text.replace(/\s+/g, ' ').trim(); return t ? (t.length > 48 ? t.slice(0, 46).trimEnd() + '…' : t) : 'New conversation'; };
 
 export function toMarkdown(c: Conv, names: (k: ModelKey) => string): string {
