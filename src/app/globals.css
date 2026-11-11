@@ -1301,31 +1301,28 @@ html[data-motion='off'] .cm-star { animation: none !important; }
 @media (max-width: 640px) { .cx-usage { flex-wrap: wrap; gap: 10px; padding: 10px; } .cx-usage-ic { width: 34px; height: 34px; } .cx-usage-t { flex-basis: calc(100% - 100px); } }
 @media (prefers-reduced-motion: reduce) { .cx-usage { animation: none; } .cx-usage-bar i { transition: none; } }
 
-/* ---------- maps Coe draws ---------- */
-.map { margin: 1em 0; padding: 0; border: 3px solid var(--ink); background: var(--paper); box-shadow: 6px 6px 0 var(--ink); max-width: 760px; }
-.map-h { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: var(--ink); color: var(--cream); font-size: 1.15rem; line-height: 1; }
-.map-frame { position: relative; height: clamp(260px, 44vw, 380px); overflow: hidden; background: #E9E2D2; cursor: grab; touch-action: none; user-select: none; border-bottom: 3px solid var(--ink); }
+/* ---------- maps and place cards Coe shows: flat, one frame, one set of cards, nothing else ---------- */
+.map { margin: 20px 0; padding: 0; width: 100%; max-width: 760px; border: 0; background: transparent; box-shadow: none; }
+.map-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0; padding: 0 0 8px; color: var(--ink); }
+.map-h .d { font-size: 1.2rem; line-height: 1.05; } .map-h .tx { flex: none; font-size: 0.85rem; opacity: 0.65; }
+.map-frame { position: relative; height: clamp(240px, 40vw, 340px); overflow: hidden; background: #E9E2D2; border: 2px solid var(--ink); cursor: grab; touch-action: none; user-select: none; }
 .map-frame:active { cursor: grabbing; }
-.map-tile { position: absolute; width: 256px; height: 256px; max-width: none; pointer-events: none; }
-.map-pin { position: absolute; width: 34px; height: 34px; margin: -34px 0 0 -17px; display: grid; place-items: center; background: var(--g1); color: #fff; border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); font-size: 1.05rem; line-height: 1; cursor: pointer; transition: transform 0.15s var(--x), background 0.15s; z-index: 2; }
-.map-pin::after { content: ''; position: absolute; left: 50%; bottom: -10px; width: 0; height: 0; margin-left: -6px; border: 6px solid transparent; border-top: 8px solid var(--ink); border-bottom: 0; }
-.map-pin.on { background: var(--gold); color: var(--ink); transform: scale(1.18) translateY(-2px); z-index: 3; }
-.map-pin:hover { transform: scale(1.12) translateY(-1px); } .map-pin:focus-visible { outline: 4px solid var(--ink); outline-offset: 2px; }
-.map-ctl { position: absolute; right: 10px; top: 10px; display: grid; gap: 6px; z-index: 4; }
-.map-ctl button { width: 38px; height: 38px; display: grid; place-items: center; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink); }
-.map-ctl button:hover { background: var(--ink); color: var(--cream); } .map-ctl button:active { box-shadow: 1px 1px 0 var(--ink); }
-.map-minus { width: 16px; height: 3px; background: currentColor; }
+.map-tile { position: absolute; width: 256px; height: 256px; max-width: none; pointer-events: none; filter: grayscale(0.45) sepia(0.12) contrast(0.92) brightness(1.05); }   /* calmer colours, so the pins are what you see */
+.map-pin { position: absolute; width: 30px; height: 30px; margin: -38px 0 0 -15px; display: grid; place-items: center; padding: 0; background: var(--g1); color: #fff; border: 2px solid var(--ink); font-size: 1.05rem; line-height: 1; cursor: pointer; transition: transform 0.15s var(--x), background 0.15s; transform-origin: 50% 100%; z-index: 2; }
+.map-pin::after { content: ''; position: absolute; left: 50%; bottom: -8px; width: 0; height: 0; margin-left: -5px; border: 5px solid transparent; border-top: 7px solid var(--ink); border-bottom: 0; }
+.map-pin:hover { transform: scale(1.08); } .map-pin:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.map-pin.on { background: var(--ink); color: var(--cream); transform: scale(1.12); z-index: 5; }
+.map-tag { position: absolute; transform: translate(-50%, -100%); margin-top: -46px; max-width: min(240px, 70%); padding: 5px 9px 3px; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); font-size: 1rem; line-height: 1.05; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 6; }
+.map-tag.below { transform: translate(-50%, 0); margin-top: 8px; }
+.map-ctl { position: absolute; right: 10px; top: 10px; display: grid; background: var(--paper); border: 2px solid var(--ink); z-index: 4; }
+.map-ctl button { width: 36px; height: 36px; display: grid; place-items: center; padding: 0; background: transparent; color: var(--ink); border: 0; }
+.map-ctl button + button { border-top: 2px solid var(--ink); }
+.map-ctl button:hover { background: var(--ink); color: var(--cream); }
+.map-minus { width: 14px; height: 3px; background: currentColor; }
 .map-attr { position: absolute; left: 0; bottom: 0; padding: 2px 6px; font-size: 0.72rem; line-height: 1.3; background: rgba(251, 246, 236, 0.9); color: var(--ink); z-index: 4; text-decoration: underline; }
 .map-off { position: absolute; left: 10px; right: 56px; top: 10px; margin: 0; padding: 6px 10px; font-size: 0.85rem; background: var(--paper); border: 2px solid var(--ink); z-index: 3; }
-.map-card { display: flex; align-items: flex-start; gap: 12px; padding: 12px; flex-wrap: wrap; }
-.map-num, .map-n { flex: none; display: grid; place-items: center; width: 34px; height: 34px; background: var(--gold); color: var(--ink); border: 3px solid var(--ink); font-size: 1.1rem; line-height: 1; }
-.map-info { flex: 1; min-width: 160px; display: grid; gap: 3px; } .map-info b { font-size: 1.25rem; font-weight: 400; line-height: 1.05; } .map-info i { font-style: normal; font-size: 0.82rem; opacity: 0.7; } .map-info span { font-size: 0.92rem; line-height: 1.4; }
-.map-acts { display: flex; flex-wrap: wrap; gap: 8px; }
-.map-list { list-style: none; margin: 0; padding: 0 12px 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-.map-list button { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border: 2px solid var(--ink); background: var(--cream); color: var(--ink); font-size: 0.92rem; text-align: left; } .map-list button:hover { background: var(--ink); color: var(--cream); } .map-list button.on { background: var(--tint); }
-.map-list .map-n { width: 26px; height: 26px; font-size: 0.9rem; border-width: 2px; }
 .map-wait { display: flex; align-items: center; gap: 8px; margin: 1em 0; padding: 12px 14px; border: 3px dashed var(--ink); }
-@media (max-width: 640px) { .map { box-shadow: 4px 4px 0 var(--ink); } .map-acts .btn { flex: 1; justify-content: center; } }
+@media (max-width: 640px) { .map-frame { height: 230px; } }
 
 /* ---------- what Coe is doing: the live line, the steps, and the little browser ---------- */
 .act { margin: 12px 0 4px; border: 3px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 var(--ink); max-width: 720px; }
@@ -1461,61 +1458,49 @@ html[data-scale='xl'] { font-size: 17.5px; }
 html[data-motion='off'] .cw-st { display: none; } html[data-motion='off'] .cw-sy { animation: none; transform: none; opacity: 1; } html[data-motion='off'] .cw-sy * { animation: none !important; }
 .cx-live-star .cw { color: var(--g2); }
 
-/* ---------- business cards under a map ---------- */
-.pc-more .flip { transform: rotate(180deg); }
-.pc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr)); gap: 12px; padding: 12px; background: var(--paper); border-top: 3px solid var(--ink); }
-.pc { display: flex; flex-direction: column; min-width: 0; background: var(--paper); color: var(--ink); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--g2); transition: transform 0.12s var(--x), box-shadow 0.12s var(--x); }
-.pc.on { box-shadow: 4px 4px 0 var(--gold); border-color: var(--g1); }
-.pc-pic { position: relative; display: block; width: 100%; height: 118px; padding: 0; overflow: hidden; background: var(--cream); border-bottom: 3px solid var(--ink); cursor: pointer; }
-.pc-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.pc-ph { display: grid; place-items: center; width: 100%; height: 100%; font-size: 3.4rem; line-height: 1; color: #fff; background: var(--g1); }
+/* ---------- place cards: photo, name, rating, open, why it is worth a look, address, three buttons ---------- */
+.pc-list { display: grid; gap: 10px; margin-top: 12px; } .pl .pc-list { margin-top: 0; }
+.pc { display: grid; min-width: 0; background: var(--paper); color: var(--ink); border: 2px solid var(--ink); box-shadow: 3px 3px 0 var(--g2); transition: box-shadow 0.12s var(--x), border-color 0.12s; }
+.pc.on { border-color: var(--g1); box-shadow: 3px 3px 0 var(--gold); }
+.pc-main { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: stretch; width: 100%; margin: 0; padding: 0; text-align: left; font: inherit; color: inherit; background: none; border: 0; }
+button.pc-main { cursor: pointer; } button.pc-main:hover .pc-t { text-decoration: underline; text-underline-offset: 3px; }
+button.pc-main:focus-visible { outline: 3px solid var(--ink); outline-offset: -3px; }
+.pc-pic { position: relative; display: block; min-height: 96px; overflow: hidden; background: var(--cream); border-right: 2px solid var(--ink); }
+.pc-pic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.pc-ph { position: absolute; inset: 0; display: grid; place-items: center; font-size: 2.6rem; line-height: 1; color: #fff; background: var(--g1); }
 .pc.c1 .pc-ph { background: var(--ink); color: var(--cream); } .pc.c2 .pc-ph { background: var(--g2); } .pc.c3 .pc-ph { background: var(--gold); color: var(--ink); } .pc.c4 .pc-ph { background: #7A5F1F; }
-.pc-n { position: absolute; left: 0; top: 0; min-width: 28px; padding: 5px 8px 3px; background: var(--ink); color: var(--cream); font-style: normal; font-size: 1.05rem; line-height: 1; text-align: center; }
+.pc-n { position: absolute; left: 0; top: 0; min-width: 26px; padding: 4px 7px 2px; background: var(--ink); color: var(--cream); font-style: normal; font-size: 1rem; line-height: 1; text-align: center; z-index: 1; }
 .pc.on .pc-n { background: var(--g1); color: #fff; }
-.pc-by { position: absolute; right: 0; bottom: 0; padding: 2px 6px; background: rgba(23, 23, 23, 0.82); color: #fff; font-size: 0.7rem; line-height: 1.3; font-family: var(--t); }
-.pc-b { display: grid; gap: 4px; padding: 10px 12px 12px; align-content: start; flex: 1; }
-.pc-t { margin: 0; font-size: 1.25rem; line-height: 1; }
-.pc-k { margin: 0; font-size: 0.88rem; opacity: 0.85; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pc-by { position: absolute; right: 0; bottom: 0; padding: 2px 6px; background: rgba(23, 23, 23, 0.82); color: #fff; font-size: 0.7rem; line-height: 1.3; font-family: var(--t); z-index: 1; }
+.pc-b { display: grid; gap: 3px; align-content: center; padding: 10px 12px; min-width: 0; }
+.pc-t { font-size: 1.3rem; font-weight: 400; line-height: 1.05; overflow-wrap: anywhere; }
+.pc-k { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 0.9rem; opacity: 0.85; }
 .pc-open { font-style: normal; padding: 2px 6px 1px; font-size: 0.8rem; line-height: 1; background: #F5D6D0; color: #7F2218; } .pc-open.y { background: var(--tint); color: var(--g2); }
-.pc-r { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; } .pc-r b { font-size: 1.1rem; line-height: 1; }
-.pc-nr { margin: 0; font-size: 0.82rem; opacity: 0.6; }
+.pc-r { display: flex; align-items: center; gap: 6px; font-size: 0.9rem; } .pc-r b { font-size: 1.1rem; font-weight: 400; line-height: 1; }
 .pc-stars { position: relative; display: inline-block; line-height: 0; }
 .pc-s0, .pc-s1 { display: flex; gap: 1px; } .pc-s0 { color: #CFC3A8; }
 .pc-s1 { position: absolute; left: 0; top: 0; overflow: hidden; color: #D39B1C; }
 .pc-s1 svg, .pc-s0 svg { flex: none; fill: currentColor; }
-.pc-about, .pc-note { margin: 2px 0 0; font-size: 0.88rem; line-height: 1.4; }
-.pc-note { border-left: 4px solid var(--gold); padding-left: 8px; }
-.pc-l { list-style: none; display: grid; gap: 3px; margin: 4px 0 0; padding: 0; }
+html[data-lead='ink'] .pc-s0, html[data-lead='green'] .pc-s0 { color: #555; }
+.pc-note { font-size: 0.92rem; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pc-hr, .pc-a { display: flex; align-items: flex-start; gap: 6px; min-width: 0; font-size: 0.84rem; line-height: 1.3; opacity: 0.75; }
+.pc-hr svg, .pc-a svg { flex: none; margin-top: 1px; color: var(--g1); }
+.pc-a > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 10px; border-top: 2px solid color-mix(in srgb, var(--ink) 16%, transparent); }
+.pc-acts .btn { padding: 4px 10px; font-size: 0.9rem; }
+.pc-more { margin-top: 10px; } .pc-more .flip { transform: rotate(180deg); }
+/* the full card in "About this answer": everything is written out */
+.pc-full { display: grid; gap: 12px; margin-top: 10px; }
+.pc-f .pc-note { display: block; } .pc-f .pc-a > span { white-space: normal; }
+.pc-more-d { display: grid; gap: 6px; padding: 10px 12px; border-top: 2px solid color-mix(in srgb, var(--ink) 16%, transparent); }
+.pc-about { margin: 0; font-size: 0.9rem; line-height: 1.4; }
+.pc-l { list-style: none; display: grid; gap: 4px; margin: 0; padding: 0; }
 .pc-l > li { display: flex; align-items: flex-start; gap: 7px; font-size: 0.88rem; line-height: 1.35; min-width: 0; overflow-wrap: anywhere; }
 .pc-l svg { flex: none; margin-top: 2px; color: var(--g1); }
 .pc-l a { text-decoration: underline; text-underline-offset: 2px; } .pc-l a:hover { color: var(--g1); }
 .pc-hrs summary { cursor: pointer; } .pc-hrs ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 1px; font-size: 0.82rem; }
-.pc-acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.pc-acts .btn { padding: 4px 8px; font-size: 0.88rem; }
-.pc-src { margin: 6px 0 0; font-size: 0.72rem; opacity: 0.6; line-height: 1.3; }
-.pc-more { margin: 0 12px 12px; }
-html[data-lead='ink'] .pc-s0, html[data-lead='green'] .pc-s0 { color: #555; }
-.map { width: 100%; }
-
-/* ---------- business cards, version 2: small rows you can scan; every detail lives in the Info window ---------- */
-.pc-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr)); gap: 8px; padding: 10px; }
-.pc-pic { display: block; position: relative; overflow: hidden; }
-.pc-s { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: stretch; gap: 0; padding: 0; text-align: left; border-width: 2px; box-shadow: 3px 3px 0 var(--g2); cursor: pointer; min-height: 66px; font: inherit; color: var(--ink); }
-.pc-s:hover { box-shadow: 4px 4px 0 var(--g2); }
-.pc-s.on { border-color: var(--g1); box-shadow: 3px 3px 0 var(--gold); }
-.pc-s .pc-pic { width: 64px; height: 100%; min-height: 64px; border-bottom: 0; border-right: 2px solid var(--ink); }
-.pc-s .pc-ph { font-size: 1.9rem; }
-.pc-s .pc-n { min-width: 20px; padding: 3px 5px 2px; font-size: 0.8rem; }
-.pc-m { display: grid; align-content: center; gap: 1px; padding: 5px 9px; min-width: 0; }
-.pc-s .pc-t { font-size: 1.05rem; line-height: 1.05; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-s .pc-k { font-size: 0.8rem; line-height: 1.25; opacity: 0.8; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-s .pc-r { font-size: 0.8rem; gap: 5px; } .pc-s .pc-r b { font-size: 0.95rem; } .pc-s .pc-stars svg { width: 13px; height: 13px; }
-.pc-s .pc-nr { font-size: 0.75rem; }
-.pc-a { font-size: 0.76rem; line-height: 1.25; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pc-f .pc-pic { height: 130px; border-bottom: 3px solid var(--ink); }
-.pc-full { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: 14px; margin-top: 10px; }
-.pc-f { box-shadow: 4px 4px 0 var(--g2); }
-@media (max-width: 640px) { .pc-grid { grid-template-columns: 1fr; } }
+.pc-src { margin: 0; padding: 0 12px 10px; font-size: 0.72rem; opacity: 0.6; line-height: 1.3; }
+@media (max-width: 480px) { .pc-main { grid-template-columns: 80px minmax(0, 1fr); } .pc-pic { min-height: 80px; } .pc-ph { font-size: 2.2rem; } .pc-t { font-size: 1.2rem; } .pc-b { padding: 9px 10px; } .pc-acts { padding: 8px 10px 10px; } }
 
 /* ---------- the Info window ---------- */
 .ainfo { display: grid; gap: 22px; }
@@ -2306,8 +2291,7 @@ body.si-open { overflow: hidden; }
 .cx .cx-msg.user { display: flex; flex-direction: column; align-items: flex-end; position: relative; }
 .cx .cx-msg.user .cx-part, .cx .cx-msg.user .cx-clampw { width: auto; max-width: 100%; display: flex; flex-direction: column; align-items: flex-end; }
 .cx .cx-msg.user .cx-says { width: fit-content; max-width: min(100%, 620px); background: var(--cream); color: var(--ink); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--g2) !important; padding: 10px 16px; font-size: 1.05rem; line-height: 1.5; text-align: left; overflow-wrap: anywhere; }
-.cx .cx-msg.user .cx-acts { position: absolute; right: 100%; bottom: 4px; margin: 0 10px 0 0; min-height: 0; }
-@media (hover: none) { .cx .cx-msg.user .cx-acts { display: none; } }
+.cx .cx-msg.user .cx-acts { position: static; margin: 2px 0 0; min-height: 0; justify-content: flex-end; max-width: 100%; }
 .cx .cx-msgs > .cx-msg.assistant { padding-left: 0; border-left: 0; gap: 10px; font-size: 1.06rem; }
 .cx .cx-msg.assistant .cx-md { line-height: 1.72; font-size: 1.06rem; }
 .cx .cx-msg.assistant .cx-md :is(h1, h2, h3) { font-family: var(--d); text-transform: uppercase; font-weight: 400; line-height: 0.95; margin: 1.3em 0 0.4em; }
@@ -2818,25 +2802,13 @@ input.ed-h1[type='text']:focus { outline: none; box-shadow: 0 4px 0 var(--g1); }
 .cx .cx-empty.home > .home-star.cm-spin { z-index: 3; }
 
 /* Coe 9d: the web is one small card (what Coe looked up, and the sites it read), not a pretend browser */
-.cx .web { position: relative; margin: 8px 0; border: 3px solid var(--ink); background: var(--paper); box-shadow: 3px 3px 0 var(--ink); overflow: hidden; }
-.cx .web-h { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; font-size: 1rem; line-height: 1.25; }
-.cx .web-h > svg { flex: none; color: var(--g1); }
-.cx .web-h > b { flex: none; font-weight: 400; font-size: 1.05rem; }
-.cx .web-q { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.72; font-size: 0.92rem; }
-.cx .web-s { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0 12px 10px; }
-.cx .web-s a { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 8px 2px 2px; border: 2px solid var(--ink); background: var(--cream); color: var(--ink); font-size: 0.86rem; line-height: 1.5; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+/* The sites an answer drew on: one quiet line under the answer, no box. */
+.cx .srcrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 8px 0 0; min-width: 0; }
+.cx .srcrow-l { font-size: 0.86rem; opacity: 0.6; }
+.cx .web-s { list-style: none; display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; min-width: 0; }
+.cx .web-s a { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 9px 2px 2px; background: var(--tint, var(--cream)); color: var(--ink); font-size: 0.86rem; line-height: 1.5; text-decoration: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .cx .web-s a i { flex: none; width: 20px; height: 20px; display: grid; place-items: center; background: var(--g1); color: #fff; font-style: normal; font-size: 0.82rem; line-height: 1; }
 .cx .web-s a:hover { background: var(--ink); color: var(--cream); }
-.cx .web-e { margin: 0; padding: 0 12px 9px 36px; color: var(--danger); font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cx .web.error { border-color: var(--danger); box-shadow: 3px 3px 0 var(--danger); }
-.cx .web.error .web-h > svg { color: var(--danger); }
-.cx .web-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--cream); overflow: hidden; }
-.cx .web-bar::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 30%; background: var(--g1); animation: web-sweep 1.1s var(--e) infinite; }
-.cx .web.running .web-h { padding-bottom: 11px; }
-@keyframes web-sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
-@media (prefers-reduced-motion: reduce) { .cx .web-bar::after { animation: none; width: 100%; opacity: 0.35; } }
-html[data-motion='off'] .cx .web-bar::after { animation: none; width: 100%; opacity: 0.35; }
-@media (max-width: 560px) { .cx .web-h { padding: 6px 10px; } .cx .web-s { padding: 0 10px 9px; } .cx .web-e { padding-left: 34px; } }
 
 /* Coe 9e: files are small cards with their first words on them, and open to read */
 .cx .cx-chipic img { cursor: zoom-in; }
@@ -2904,9 +2876,9 @@ html:is([data-lead='ink'], [data-lead='green']) .cx :is(.cx-tool.error .cx-tool-
    same background, no box, no shadow. Just a title above and a quiet row of buttons under.
    Pages, apps, code, quizzes, flash cards, slides and tables keep their frames, because they are things you use, not things you look at.
    ====================================================================================================================== */
-.cx-pv.flat, .map.flat { border: 0; box-shadow: none; background: transparent; margin: 20px 0; padding: 0; }
-.cx-pv.flat .cx-pv-top, .map.flat .map-h { background: transparent; color: var(--ink); padding: 0 0 8px; border: 0; }
-.cx-pv.flat .cx-pv-name, .map.flat .map-h { font-size: 1.2rem; }
+.cx-pv.flat { border: 0; box-shadow: none; background: transparent; margin: 20px 0; padding: 0; }
+.cx-pv.flat .cx-pv-top { background: transparent; color: var(--ink); padding: 0 0 8px; border: 0; }
+.cx-pv.flat .cx-pv-name { font-size: 1.2rem; }
 .cx-pv.flat .cx-pv-pic { background: transparent; padding: 2px 0; max-height: none; place-items: start center; }
 .cx-pv.flat .cx-pv-pic img, .cx-pv.flat .cx-pv-pic svg { margin: 0 auto; }
 .cx-pv.flat .cx-pv-wait, .cx-pv.flat .cx-pv-err { padding: 8px 0; }
@@ -2917,8 +2889,6 @@ html:is([data-lead='ink'], [data-lead='green']) .cx :is(.cx-tool.error .cx-tool-
 .cx-pv.flat .cx-gr-key { border-top: 0; padding: 8px 0 0; }
 .cx-mm { padding: 2px 0; overflow-x: auto; }
 .cx-mm svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
-.map.flat .map-frame { border-bottom: 0; }
-.map.flat .map-card { padding-left: 0; padding-right: 0; }
 .cx-img { border: 0; box-shadow: none; background: transparent; }
 .cx-img.zoom { border: 0; }
 .cx-gen img { border: 0; }
@@ -3476,3 +3446,78 @@ html[data-lead='ink'] .sp-card, html[data-lead='green'] .sp-card { background: v
 .rc-inc { width: 100%; align-items: flex-start; }
 .rc-inc .sp-wk { margin-top: 1px; }
 .rc-sub { display: block; margin-top: 4px; font-size: 0.92rem; line-height: 1.3; text-transform: none; }
+
+/* No box around the chatbox or the buttons while you use them: the ring only appears for keyboard use (Tab and the arrow keys), and the chatbox keeps its plain border. */
+html:not([data-kb]) :focus-visible { outline: none !important; }
+
+/* A dashed line with a small chip (Today, Yesterday or the date) wherever the day changes in a chat. */
+.cx .cx-day { align-self: stretch; display: flex; align-items: center; gap: 12px; margin: 0 0 6px; min-width: 0; }
+.cx .cx-day::before, .cx .cx-day::after { content: ''; flex: 1; border-top: 2px dashed var(--ink); opacity: 0.3; }
+.cx .cx-day-c { flex: none; padding: 2px 12px; background: var(--cream); border: 2px solid var(--ink); font-size: 0.82rem; line-height: 1.5; text-transform: uppercase; }
+
+/* Menus, dropdowns and pop-ups grow out of the side their button is on (the origin is set when they open), in 120 ms. Folds open downward. */
+@keyframes cxgrow { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: none; } }
+.cx-pop, .sel-list, [role='menu'], [role='listbox'] { animation: cxgrow 0.12s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+@keyframes cxunfold { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.cx-fold[open] > .cx-fold-in, .act-body, .qz-body { animation: cxunfold 0.14s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+html[data-motion='off'] :is(.cx-pop, .sel-list, [role='menu'], [role='listbox'], .cx-fold-in, .act-body, .qz-body) { animation: none; }
+@media (prefers-reduced-motion: reduce) { .cx-pop, .sel-list, [role='menu'], [role='listbox'], .cx-fold-in, .act-body, .qz-body { animation: none; } }
+
+/* The linking code: a temporary chat over the chat area. Coe writes it; the only things to press are Accept and Decline. */
+
+/* "I can't do that here" cards: what Coe says when the other Coe is the one that can. */
+.cx .mini-need { display: grid; gap: 8px; justify-items: start; margin: 8px 0; padding: 12px 14px; background: var(--cream); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--g2); max-width: 520px; }
+.cx .mini-need > b { font-size: 1.15rem; text-transform: uppercase; }
+.cx .mini-need p { margin: 0; display: flex; gap: 6px; align-items: flex-start; }
+.cx .mini-get { display: grid; gap: 6px; justify-items: start; }
+.cx .mini-add { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.cx .mini-add.off { opacity: .65; cursor: default; box-shadow: none; }
+.cx .own-trig { max-height: 260px; overflow: auto; }
+.cx .own-trig .cx-link { font: inherit; text-transform: none; }
+
+/* The linking code chat: sits in the normal chat view, the code is the biggest thing on the page. */
+.cx .lk { margin: 0 auto; width: min(680px, 100%); min-height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 18px; padding: 24px 16px 40px; }
+.cx .lk-lead { margin: 0; font-size: 1.6rem; text-transform: uppercase; }
+.cx .lk-code { display: flex; align-items: center; justify-content: center; gap: clamp(10px, 3vw, 24px); padding: clamp(16px, 4vw, 32px) 12px; background: var(--cream); border: 4px solid var(--ink); box-shadow: 8px 8px 0 var(--g2); }
+.cx .lk-code b { font-size: clamp(4rem, 19vw, 9.5rem); line-height: .95; letter-spacing: .04em; font-weight: 400; }
+.cx .lk-code i { width: clamp(18px, 5vw, 44px); height: 8px; background: var(--g1); flex: none; }
+.cx .lk-for { margin: 0; font-size: 1.05rem; }
+.cx .lk-act { display: flex; gap: 12px; flex-wrap: wrap; }
+.cx .lk-act .btn { min-width: 140px; }
+.cx .lk-small { margin: 0; font-size: .9rem; color: var(--g2); }
+.cx .lk-small .cx-link { font: inherit; }.cx .cx-in-w { padding: 0 14px 8px; width: min(720px, 100%); margin: 0 auto; }
+.cx .cx-in { max-width: none; }
+
+/* "What Coe did", the way Claude Code shows it: a quiet one-line summary, and a plain list under it with a dot for each step, its detail beside it and its result tucked under with a corner mark. No box. PMC fonts and ink, square dots. */
+.cx .act { margin: 8px 0 2px; border: 0; background: transparent; box-shadow: none; max-width: 720px; }
+.cx .act-head, .cx .act.bad .act-head { width: auto; max-width: 100%; padding: 3px 0; gap: 8px; background: transparent; border: 0; box-shadow: none; }
+.cx .act-head:hover { background: transparent; box-shadow: none; } .cx .act-head:hover .act-t { text-decoration: underline; text-underline-offset: 3px; }
+.cx .act-ic, .cx .act.bad .act-ic { width: auto; height: auto; background: transparent; border: 0; color: var(--ink); opacity: .6; }
+.cx .act.bad .act-ic { color: var(--danger); opacity: 1; }
+.cx .act-t, .cx .act.bad .act-t { flex: 0 1 auto; padding-top: 0; font-size: .98rem; line-height: 1.25; letter-spacing: 0; opacity: .78; color: var(--ink); white-space: normal; overflow: visible; }
+.cx .act.open .act-t { opacity: 1; }
+.cx .act-n, .cx .act-head:hover .act-n { padding: 0; background: transparent; border: 0; font-size: .8rem; opacity: .55; white-space: nowrap; }
+.cx .act-cv { width: auto; align-self: center; border: 0; margin: 0; opacity: .6; }
+.cx .act-list { margin: 4px 0 2px 7px; padding: 2px 0 2px 16px; gap: 7px; border-top: 0; border-left: 3px solid var(--ink); }
+.cx .act-s { padding-top: 0; gap: 10px; align-items: flex-start; }
+.cx .act-si { width: 9px; height: 9px; margin-top: .5em; background: var(--ink); color: transparent; overflow: hidden; flex: none; border: 0; }
+.cx .act-si svg { display: none; }
+.cx .act-s.error .act-si { background: var(--danger); } .cx .act-s.running .act-si, .cx .act-s.pending .act-si { background: var(--gold); }
+.cx .act-sb { gap: 1px; }
+.cx .act-sl b { font-size: 1rem; }
+.cx .act-sl span { font-family: var(--t); font-size: .85rem; opacity: .7; }
+.cx .act-sm { font-size: .8rem; opacity: .6; }
+.cx .act-sm::before { content: '\23BF\00a0'; opacity: .7; }
+
+/* Two tabs over the chat list when there are chats from Coe Mini: Coe, and Coe Mini. */
+.cx-lt { margin: 0 0 8px; padding: 0 14px; }
+
+/* A job Coe Mini did on a page, the same card as in Coe Mini */
+.cx-job { margin: 8px 0; border: 3px solid var(--ink); background: var(--paper); box-shadow: 4px 4px 0 var(--g2); min-width: 0; max-width: 560px; }
+.cx-job-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px; background: var(--g1); color: #fff; } .cx-job-h b { font-size: 1.05rem; line-height: 1; padding-top: 2px; font-weight: 400; }
+.cx-job-st { font: 400 .85rem/1 var(--d); text-transform: uppercase; letter-spacing: .05em; padding: 3px 7px 1px; background: #fff; color: #1A4934; } .cx-job-st.stopped { background: #EEEBE5; color: #2F2D2A; } .cx-job-st.failed { background: #FDEBD6; color: #7A3A0C; }
+.cx-job-b { display: grid; gap: 8px; padding: 10px; }
+.cx-job-t { margin: 0; font-size: .98rem; line-height: 1.4; font-weight: 700; } .cx-job-t span { font-weight: 400; opacity: .7; }
+.cx-job-s { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: .9rem; line-height: 1.35; } .cx-job-s li { display: flex; gap: 7px; align-items: flex-start; }
+.cx-job-s i { flex: none; display: grid; place-items: center; width: 16px; height: 16px; margin-top: 1px; font: 400 .78rem/1 var(--d); font-style: normal; color: #fff; background: #1A4934; } .cx-job-s li.no i { background: #B35514; } .cx-job-s em { font-style: normal; opacity: .7; }
+.cx-job-e { margin: 0; padding: 6px 8px; font-size: .92rem; line-height: 1.4; border-left: 4px solid #1A4934; background: #E4F0E8; color: #10301F; } .cx-job-e.stopped { border-color: #7A766D; background: #EEEBE5; color: #2F2D2A; } .cx-job-e.failed { border-color: #E8802A; background: #FDEBD6; color: #7A3A0C; }

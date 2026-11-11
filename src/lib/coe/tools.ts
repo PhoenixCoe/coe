@@ -28,6 +28,12 @@ export interface Found { start: number; end: number; call: Call | null; error?: 
 
 const OPEN = /```coe-tool[ \t]*\r?\n/;
 /** The first complete tool block in a reply, if there is one. */
+/** The name of a tool Coe is in the middle of writing (its block has opened but not closed yet), so the status line can say what is coming. */
+export function openToolName(text: string): string {
+  const i = text.lastIndexOf('```coe-tool'); if (i < 0) return '';
+  const tail = text.slice(i + 11); if (tail.includes('```')) return '';
+  return /"tool"\s*:\s*"([a-z_]+)"/.exec(tail)?.[1] ?? '';
+}
 export function findTool(text: string): Found | null {
   const m = OPEN.exec(text); if (!m) return null;
   const from = m.index + m[0].length;
@@ -173,7 +179,7 @@ async function toolPlace(c: Call, x: Ctx): Promise<Done> {
   const text = rows.map(line).join('\n');
   return {
     status: 'ok',
-    result: `Places for "${q}" (${src}):\n${text}\n\nUse these exact positions in a map block, with each place's name written exactly as above. A card with the photo, rating, phone, website and hours appears under the map by itself, using only what was found, so do NOT write ratings, phone numbers, websites, hours or photo links yourself. If the person asks for a detail that is not above, say you could not find it. Hours and ratings can change, so say they are worth checking.`,
+    result: `Places for "${q}" (${src}):\n${text}\n\nUse these exact positions in a places block (cards only; the page adds a "Show me them on a map" button) or, if the person asked for a map, in a map block, with each place's name written exactly as above. A card with the photo, rating, phone, website and hours appears for each place by itself, using only what was found, so do NOT write ratings, phone numbers, websites, hours or photo links yourself. If the person asks for a detail that is not above, say you could not find it. Hours and ratings can change, so say they are worth checking.`,
     out: { kind: 'text', text: rows.map((p, i) => `${i + 1}. ${p.name}${p.rating !== undefined ? ` (${p.rating}/5)` : ''} (${p.lat.toFixed(3)}, ${p.lng.toFixed(3)})`).join('\n') },
     shown: `Looked up "${q}": ${rows.length} ${rows.length === 1 ? 'place' : 'places'}`,
   };
@@ -199,7 +205,7 @@ async function toolApp(c: Call, x: Ctx): Promise<Done> {
   const frameKey = reuse ? key : x.runId;
   if (!reuse) x.patch({ status: 'running', note: 'open' });
   const f = reuse ?? (await frameFor(x.runId));
-  if (!f) return fail('The app window could not be opened. PMC Apps may be unreachable from here.');
+  if (!f) return fail(`The app window could not be opened here (PMC Apps may be unreachable). Say so in one plain sentence, give the person the link to open it themselves: ${APPS_URL}/${slug}, and offer to do the job another way (code, a picture, a document). Do not try the app again.`);
   if (!reuse) { /* the card registers itself under the run id; also under the app key so later steps find it */ }
   await Promise.race([f.ready, new Promise((r) => setTimeout(r, 15000))]);
   // "Ready" can come while the app is still showing its loading screen. Wait (a few seconds at most) until it has something to work with, so Coe never reads the splash.
@@ -227,7 +233,7 @@ async function toolApp(c: Call, x: Ctx): Promise<Done> {
   void frameKey;
   const text = describe(reply, slug) + (files.length ? `\nFiles the app made (now in the chat for the person to download): ${files.map((q) => `${q.name} (${Math.round(q.size / 1024)} KB)`).join(', ')}.` : '');
   const images: Img[] | undefined = reply.image ? [{ name: `${slug}.png`, type: 'image/png', data: reply.image.split(',')[1] ?? '' }] : undefined;
-  return { status: reply.ok ? 'ok' : 'error', result: text + (images ? '\n(A picture of what the app shows is attached so you can see it.)' : ''), images, out: files.length ? { kind: 'files', items: files.filter((q) => q.size <= 8_000_000).map((q) => ({ name: q.name, type: q.mime, size: q.size, data: q.data })) } : undefined };
+  return { status: reply.ok ? 'ok' : 'error', result: text + (reply.ok ? '' : `\nIf the app is not working here, say so plainly, give the person the link to open it themselves (${APPS_URL}/${slug}) and offer to do the job another way. Do not keep retrying it.`) + (images ? '\n(A picture of what the app shows is attached so you can see it.)' : ''), images, out: files.length ? { kind: 'files', items: files.filter((q) => q.size <= 8_000_000).map((q) => ({ name: q.name, type: q.mime, size: q.size, data: q.data })) } : undefined };
 }
 
 // ---------------------------------------------------------------- the project folder
@@ -378,14 +384,14 @@ export function toolsPrompt(o: PromptOpts): string {
   if (o.stepsLeft <= 0) { add('You have used all the tool steps for this request. Do not use any more tools. Write the final answer now with what you have, and say what is left undone.'); return t.join('\n'); }
   add('You can use tools. To use one, end your message with exactly one block like this, then stop writing. Never write the result yourself and never write anything after the block:');
   add('```coe-tool\n{"tool":"js","code":"return 6*7"}\n```');
-  add('The page runs it and sends you the result as the next message, then you carry on. You decide which tools to use and when; nobody switches them on for you. Use one when it makes the answer better or surer: search for anything that may have changed or that you are not certain of, maths or js for any number that matters, an app when one fits the job. Skip them when you already know the answer. Most questions need none. The block must be valid JSON (escape quotes and write line breaks inside strings as \\n). You have up to ' + o.stepsLeft + ' more steps for this request.');
+  add('The page runs it and sends you the result as the next message, then you carry on. You decide which tools to use and when; nobody switches them on for you. Use one when it makes the answer better or surer: search for anything that may have changed or that you are not certain of (news, prices, scores, who holds a job, anything from this year), place for any map, location, business or directions (then a map block), maths or js for any number that matters, image when they ask for a picture, an app when one fits the job. Do not do by hand what a tool does exactly, and do not send the person to another site for something a tool or a block here can show them. Skip tools when you already know the answer and it cannot have changed. Most questions need none. The block must be valid JSON (escape quotes and write line breaks inside strings as \\n). You have up to ' + o.stepsLeft + ' more steps for this request.');
   add('');
   add('Tools you can use now:');
   add('- js {"code": "..."}: runs JavaScript in a safe box (no network). Use console.log, and "return" a value. Use it for exact maths, data work, simulations, parsing, and to check your own answers. Do not guess a calculation you can run.');
   add('- maths {"op": "...", "expr": "..."}: an exact maths engine. ops: eval (numbers, units like "5 km to miles", matrices like "det([[1,2],[3,4]])", statistics like "std([2,4,4,5])"), solve ("expr": "x^2-5x+6=0", "variable": "x"; a system: "exprs": ["x+y=3","x-y=1"], "vars": ["x","y"]), simplify, expand, factor, diff ("variable", optional "at"), integrate (optional "from" and "to" for a definite integral), limit ("at"), sum ("from", "to"). Use * for times and ^ for powers. Prefer it to working out hard algebra, calculus or arithmetic in your head, then explain the method in steps and give the result in LaTeX.');
   add('- remember {"fact": "..."}: saves something the person asked you to remember about them or how they like things done. Only when they ask, or clearly state a lasting preference.');
   add('- search {"q": "..."}: searches the web (always available, and counts toward a small daily limit' + (P ? '' : ' on Free') + '). Use it for anything recent or that you are unsure of. Then cite your sources.');
-  add('- place {"query": "...", "limit": 5, "near": [lat, lng]}: looks up real places and businesses on OpenStreetMap: exact position, address, brand, opening hours, website. Put the town or country in the query ("Greggs, Ipswich, UK"). Use it before you show anything on a map or give a location. Free, and needs no web switch.');
+  add('- place {"query": "...", "limit": 5, "near": [lat, lng]}: looks up real places and businesses on OpenStreetMap: exact position, address, brand, opening hours, website. Put the town or country in the query ("Greggs, Ipswich, UK"). Use it before you show places (cards or a map) or give a location, and whenever the person asks for a map, where something is, what is near somewhere, or directions: look it up, then draw a map block (never send a link to a map site instead). Free, and needs no web switch.');
   add('- image {"prompt": "..."}: makes a picture. Write a full prompt: subject, style, colours, composition, mood, any words to show. It is shown to the person under your message.');
   if (o.hasApps) {
     add('- pmc_app {"slug": "...", "fill": {"Field label": "value"}, "click": ["Button text"], "call": {...}, "use_images": "attached"}: opens one of the PMC Apps in the chat and works it like a person would. Call it with just the slug first: the result lists the fields and buttons. Then fill and click. Anything the app exports comes into the chat as a file the person can download. "use_images" ("attached" or "generated") adds the pictures in the chat to an app that takes files. Keep using the same slug and the same window stays open. The apps:');
@@ -413,6 +419,7 @@ export function toolsPrompt(o: PromptOpts): string {
   const pm = o.perm ?? {};
   if (o.hasApps) {
     add('Opening a PMC App: the page asks the person first, with the buttons Yes, Always open in this chat, and Don\'t open. You do not ask yourself: just call pmc_app. ' + (pm.app === 'always' ? 'They chose Always for this chat, so apps open straight away.' : pm.app === 'never' ? 'They chose Don\'t open for this chat, so do not open any app; do the job another way.' : 'If the call comes back waiting, stop and wait for their answer.'));
+    add('When a PMC App has finished, put what it made in your reply, in plain words or the right block: the converted text, the numbers, a description of the picture, what you changed or filled in. The person must never have to open the app, a fold or the steps list to find the result, so never write "see the app" or "press Open app" instead of saying it. Keep it short: the result first, then one line on what you did.');
     add('Pixel art: if the person asks for pixel art (a sprite, pixel character, pixel icon, tile, retro game art, pixel animation), use the PMC Pixel Art Maker (pmc_app with slug pixel-art-maker) by default, unless they say to make it another way (SVG, code, a picture, another app).');
   }
   if (!o.work) {

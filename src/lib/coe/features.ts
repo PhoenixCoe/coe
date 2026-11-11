@@ -113,7 +113,9 @@ const R: Row[] = [
   ['feel', 'access', 'High contrast', 'Stronger text and borders for easier reading.', 'free'],
   ['feel', 'access', 'Easy to use', 'Big targets, clear focus and labels for screen readers throughout.', 'free'],
   ['feel', 'menu', 'Made for phones', 'A tidy drawer, small controls that still fit, and nothing hidden.', 'free'],
+  ['chat', 'link', 'Hand a job to the other Coe', 'Ask for something only Coe Mini or only Coe can do and the other one offers it, asks first, and opens the right chat there.', 'free'],
   // ---- account
+  ['account', 'link', 'Link Coe Mini safely', 'The linking code shows as a temporary chat in Coe. Only pressing Accept there links it, never anything in Coe Mini.', 'free'],
   ['account', 'chart', 'Tokens you can see', 'A live meter shows what you have used, a warning appears over 90%, and each answer shows its real token count.', 'free', true],
   ['account', 'lock', 'Chats stay on your device', 'They are only sent anywhere when you send a message.', 'free'],
   ['account', 'user', 'Sign in', 'With an email code. No password to remember.', 'free'],

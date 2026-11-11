@@ -76,6 +76,11 @@ export const sfxOn = () => { try { return localStorage.getItem(SFX) === '1'; } c
 export const pingOn = () => { try { return localStorage.getItem(PING) !== '0'; } catch { return true; } };
 export function setPing(v: boolean) { try { localStorage.setItem(PING, v ? '1' : '0'); } catch { /* storage blocked */ } try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ } }
 let baseTitle = '';
+/** The tab title: the chat you are on, then " - Coe"; just "Coe" when no chat is open. A "Reply ready" dot in the title is kept while it shows. */
+export function setPageTitle(t: string) {
+  if (typeof document === 'undefined') return;
+  if (baseTitle) { baseTitle = t; document.title = '\u25CF Reply ready \u00B7 ' + t; } else if (document.title !== t) document.title = t;
+}
 /** A reply finished while the person was on another tab: chime, and put a dot in the tab title until they come back. */
 export function replyReady() {
   if (typeof document === 'undefined' || !document.hidden || !pingOn()) return;

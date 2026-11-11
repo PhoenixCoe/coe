@@ -19,7 +19,7 @@ export function ErrorBox({ kind, text, canRetry, onAct, own, small }: { small?: 
   );
 }
 
-const INFO_ICON = <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="9.5" y="3" width="5" height="5" /><rect x="9.5" y="10" width="5" height="11" /></svg>;
+export const INFO_ICON = <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="9.5" y="3" width="5" height="5" /><rect x="9.5" y="10" width="5" height="11" /></svg>;
 
 /** A notice (grey, info icon) or a problem (orange or red, ! icon) with a line of words and one button, in the same PMC box as the errors. */
 export function Notice({ title, text, act, onAct, level = 'grey', small }: { title: string; text: string; act?: string; onAct?: () => void; level?: 'grey' | 'orange' | 'red'; small?: boolean }) {

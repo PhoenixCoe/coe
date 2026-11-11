@@ -66,7 +66,9 @@ export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, 
   useEffect(() => onStatus(() => setSrvOwner(!!status().owner)), []);
   useEffect(() => { void refreshStatus(settings); }, []);   // eslint-disable-line react-hooks/exhaustive-deps   // so the owner tools show as soon as the server knows you
   const tab: Tab = (owner || tabIn !== 'connect') && (srvOwner || tabIn !== 'owner') ? tabIn : 'ai';
-  const ownerTabs: TabDef[] = [...(owner ? [{ id: 'connect' as Tab, name: 'Server', icon: 'cloud' as const }] : []), ...(srvOwner ? [{ id: 'owner' as Tab, name: 'Tools', icon: 'bolt' as const }] : [])];
+  // The Owner group is not in Settings all the time. It shows only while you are on one of its tabs (opened with /owner or from the Server entry in the top menu), and it goes away again when you leave them.
+  const ownerTabs: TabDef[] = tab === 'connect' || tab === 'owner' ? [...(owner ? [{ id: 'connect' as Tab, name: 'Server', icon: 'cloud' as const }] : []), ...(srvOwner ? [{ id: 'owner' as Tab, name: 'Tools', icon: 'bolt' as const }] : [])] : [];
+  const closeAll = () => { if (tab === 'connect' || tab === 'owner') setTab('account'); onClose(); }; // the next time Settings opens it starts on a normal tab
   const up = (patch: Partial<CoeSettings>) => set({ ...settings, ...patch });
   const [test, setTest] = useState<{ state: 'idle' | 'busy' | 'ok' | 'bad'; text: string }>({ state: 'idle', text: '' });
   const [sure, setSure] = useState(false);
@@ -92,7 +94,7 @@ export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, 
   };
 
   return (
-    <Modal title="Settings" onClose={onClose} wide flush>
+    <Modal title="Settings" onClose={closeAll} wide flush>
       <div className="set-wrap">
       <nav className="set-nav" role="tablist" aria-label="Settings" aria-orientation="vertical">
         {[...GROUPS, ...(ownerTabs.length ? [{ name: 'Owner', tabs: ownerTabs }] : [])].map((g) => (

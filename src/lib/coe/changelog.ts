@@ -1,10 +1,26 @@
-/** The version of Coe, and what changed. The number reads year, day, month: 2026.11.11 is 11 November 2026. Coe Mini uses the same number and the same list.
- *  If more than one version goes out on the same day, the later ones end in a letter: 2026.11.11, then 2026.11.11b, 2026.11.11c (the first of the day has no letter).
- *  Browsers only allow numbers in an extension's version, so Coe Mini's manifest counts the letters as a fourth number (b is .2) and shows the lettered name.
+/** The version of Coe, and what changed. The number reads year, day, month, then a letter: b-2026.11.11.d is the 4th version of 2026, put out on 11 November.
+ *  The b- means Beta. The letter counts the versions put out in the whole YEAR (not the day) and starts again at a each 1 January:
+ *  a to z, then za to zz, then zza to zzz, then zzza and so on (each z in front adds another 26).
+ *  Coe Mini uses the same number and the same list. Browsers only allow numbers in an extension's version, so Coe Mini's manifest says 2026.11.11.4
+ *  (year, month, day, and the letter counted as a number, which always goes up) and shows the name above as its version name.
  *  Coe is also told this list (see prompts.ts), so it can answer "what is new?" and "what can you do now?". Add the newest version at the top. */
-export const COE_VERSION = '2026.11.11c';
+export const COE_VERSION = 'b-2026.11.11.d';
 export const COE_DATE = '11 November 2026';
 export const COE_BETA = true;
+
+/** 1 is a, 26 is z, 27 is za, 52 is zz, 53 is zza: each extra z in front is another 26. */
+export const versionLetter = (n: number): string => { const k = Math.max(1, Math.floor(n)) - 1; return 'z'.repeat(Math.floor(k / 26)) + String.fromCharCode(97 + (k % 26)); };
+/** The other way: a is 1, z is 26, za is 27. Returns 0 for anything that is not a version letter. */
+export const versionLetterNo = (s: string): number => { const m = /^(z*)([a-z])$/.exec(s); return m ? m[1].length * 26 + (m[2].charCodeAt(0) - 96) : 0; };
+/** The name people see: b-2026.11.11.d (day first, then month, no leading zeros). */
+export const versionName = (year: number, month: number, day: number, n: number, beta = true): string => `${beta ? 'b-' : ''}${year}.${day}.${month}.${versionLetter(n)}`;
+/** Takes a name apart again. Anything that is not one of ours gives null. */
+export function parseVersion(v: string): { beta: boolean; year: number; day: number; month: number; letter: string; n: number } | null {
+  const m = /^(b-)?(\d{4})\.(\d{1,2})\.(\d{1,2})\.([a-z]+)$/.exec(String(v || '').trim()); if (!m) return null;
+  const n = versionLetterNo(m[5]); return n ? { beta: !!m[1], year: Number(m[2]), day: Number(m[3]), month: Number(m[4]), letter: m[5], n } : null;
+}
+/** The number the browser keeps for Coe Mini: year, month, day, letter number. It only ever goes up. */
+export const manifestVersion = (v: string): string | null => { const p = parseVersion(v); return p ? `${p.year}.${p.month}.${p.day}.${p.n}` : null; };
 
 export type Where = 'both' | 'web' | 'mini';
 export interface Change { where: Where; text: string }
@@ -14,6 +30,12 @@ export const RELEASES: Release[] = [
   {
     v: COE_VERSION, date: COE_DATE,
     items: [
+      { where: 'both', text: '“What Coe did” looks like the summary in Claude Code: one quiet line, and when you open it a plain list with a dot for each step and its result under it.' },
+      { where: 'both', text: 'Two tabs over your chats, Coe and Coe Mini, once you have chats from both. A chat from the other one opens on the right tab.' },
+      { where: 'both', text: 'A plan is the same card in both: a progress bar, and a tick for each step done.' },
+      { where: 'both', text: 'A job Coe Mini did on a page shows as the same Job card in Coe Mini and on the website.' },
+      { where: 'both', text: 'If a PMC app will not open in a chat, Coe says so plainly, gives you the link to open it yourself, and offers another way.' },
+      { where: 'mini', text: 'Coe Mini also takes pictures of diagrams that a homework site draws as a background image, so it can read them with the question.' },
       { where: 'both', text: 'Setup is a few short screens. Pick your theme, colours and comfort settings as you go. They follow you to your other devices.' },
       { where: 'both', text: 'Any colour. Pick your own theme colour with the PMC colour picker. Coe keeps the text easy to read.' },
       { where: 'both', text: 'The age question now says it’s only used to fit answers to you.' },
@@ -21,7 +43,7 @@ export const RELEASES: Release[] = [
       { where: 'both', text: 'Coe asks how it’s doing much less often.' },
       { where: 'both', text: 'New font names: PMC Header and PMC Font.' },
       { where: 'both', text: 'A short footer: made by PMC Studios, About, Privacy, Contact and the version. Open Coe buttons show the Coe logo.' },
-      { where: 'both', text: 'If two versions come out on the same day, the later one ends in a letter, like 2026.11.11b.' },
+      { where: 'both', text: 'New version numbers. b-2026.11.11.d reads year, day, month, then a letter that counts the versions put out this year (a, b, c … z, then za, zb …). The b means Beta.' },
       { where: 'both', text: 'Question cards. Each shows a tick and Done once answered, folds to one line (the arrow opens it), and can show how Coe got the answer. If it was wrong, Coe says sorry and tries again for free.' },
       { where: 'web', text: 'The shared chat page looks new: details at the top, a wide centred chat, and a way to report a chat.' },
       { where: 'web', text: 'Say yes to a PMC app and it opens in the same reply, not as a new message.' },
@@ -45,7 +67,7 @@ export const RELEASES: Release[] = [
       { where: 'both', text: 'Coe Mini is for computers only (Chrome, Edge and Firefox). Phones and iPads can’t add extensions, so Coe greys out its Coe Mini settings there.' },
       { where: 'both', text: 'A chat opens the same in Coe and in Coe Mini, whichever one made it: pictures, files, maps, plans, question cards, diagrams, folded sections, highlighted words and boxes all show.' },
       { where: 'web', text: 'Coe Mini in Settings shows the Coe Mini logo and the Chrome, Edge and Firefox logos. They say Coming soon, and each becomes a button to its store when Coe Mini is there.' },
-      { where: 'both', text: 'Setup shows once. The first time you open version 2026.11.11c, signed in or not, you get the setup. After that it never comes back, and not on your other devices either. A new account, or one deleted and made again, gets it once.' },
+      { where: 'both', text: 'Setup shows once. The first time you open version b-2026.11.11.d, signed in or not, you get the setup. After that it never comes back, and not on your other devices either. A new account, or one deleted and made again, gets it once.' },
       { where: 'both', text: 'Words fade in one letter at a time, like being unveiled.' },
       { where: 'both', text: 'All the writing animations are gone. While Coe works, writing included, you see just the turning Coe star.' },
       { where: 'both', text: 'The tab icon in Coe and the toolbar button in Coe Mini show a turning ring while an answer is written, then just a tick when it is ready. No badge in the corner.' },
@@ -58,14 +80,26 @@ export const RELEASES: Release[] = [
       { where: 'web', text: 'The home page fits an iPad, even with the browser bar showing: all four blocks are back and nothing is squashed.' },
       { where: 'web', text: 'The shared chat page has one Open Coe button.' },
       { where: 'web', text: 'The code editor looks like the document editor but for code. It closes the sidebar, puts the Coe chat on the left, and lets you see the code, the preview, or both.' },
-      { where: 'web', text: '“Getting a tool ready” looks neater, and the activity summary is clearer.' }
+      { where: 'web', text: '“Getting a tool ready” looks neater, and the activity summary is clearer.' },
+      { where: 'both', text: 'While Coe thinks you see the turning star, a word that changes every few seconds, and a timer. When it is doing something real it says what (Searching the web, Running code, Making a picture).' },
+      { where: 'both', text: 'No more search boxes. A web search shows in the same line as thinking, and a quiet Sources row sits under the answer.' },
+      { where: 'both', text: 'Coe checks an answer before it writes it, so you see the answer once and never a first try that changes.' },
+      { where: 'both', text: 'The tab says the chat name then Coe (just Coe when no chat is open). Days have a divider (Today, Yesterday, the date). Under your message: Copy, Edit and the time.' },
+      { where: 'both', text: 'The focus ring only shows when you use the keyboard. Menus and dropdowns open quickly towards the side that has room.' },
+      { where: 'both', text: 'Maps work in Coe Mini, and Coe draws a map right in the chat instead of giving a Google Maps link.' },
+      { where: 'both', text: 'Hand a job to the other Coe. Ask Coe for something only Coe Mini does and it says so, with the right Add button for your browser and a Send this to Coe Mini button. Ask Coe Mini for something only Coe does and it asks Switch to normal Coe?, then opens your Coe tab (or the one already open). The one that receives it always asks before using it.' },
+      { where: 'both', text: 'Links from Coe Mini to something done in Coe open that chat in Coe, and the document too when there is one.' },
+      { where: 'web', text: 'The Coe Mini linking code shows as a temporary chat in Coe, with a big code. Only Accept or Decline there links it, never in Coe Mini. Leave it by starting or opening another chat.' },
+      { where: 'both', text: 'Coe Mini shows What Coe did the same way Coe does: PMC apps, code, pictures, documents and project steps in one folded line.' },
+      { where: 'both', text: 'When a PMC app has finished, the result is written in the reply. You never have to open the app or a fold to find it.' },
+      { where: 'mini', text: 'Coe Mini is Coe in the sidebar: a little companion and helper. Ask it anything, with or without the page, and it looks at the page when that helps.' },
     ],
     before: [
       'Coe Mini was offered as a file to download from the Coe website.',
       'The setup was one long page, with no theme or colour choices.',
       'You could only pick from a few theme colours.',
       'Fonts were called Caracteres L2 and L4.',
-      'There was no footer or credits page, and a lettered version was not possible.',
+      'There was no footer or credits page. The letter on a version counted the versions in one day.',
       'Setup was remembered by the device, so a deleted and remade account could skip it, and another device could ask again.',
       'A pencil appeared while Coe wrote, and words faded in a few at a time.',
       'Feedback and Report opened your mail app.',
@@ -102,7 +136,7 @@ export const RELEASES: Release[] = [
 ];
 
 export const NEWEST = RELEASES[0];
-export const versionLine = `${COE_VERSION}${COE_BETA ? ' Beta' : ''}`;
+export const versionLine = COE_VERSION;
 
 /** What goes into Coe's own instructions: its version, and the list of what changed, for the app it is running in. */
 export function versionPrompt(app: 'web' | 'mini'): string {
@@ -111,7 +145,7 @@ export function versionPrompt(app: 'web' | 'mini'): string {
   const r = NEWEST;
   return [
     '# Your version and what is new',
-    `You are ${name}, version ${versionLine}. The number reads year, day, month: ${r.v.split('.')[0]}, ${r.v.split('.')[1]}, ${r.v.split('.')[2]}, which is ${r.date}. ${COE_BETA ? 'Coe is still in Beta, so it keeps changing and can have rough edges. ' : ''}Coe and Coe Mini share one version number.`,
+    `You are ${name}, version ${COE_VERSION}. The number reads year, day, month, then a letter: ${parseVersion(r.v)?.year}, ${parseVersion(r.v)?.day}, ${parseVersion(r.v)?.month}, which is ${r.date}. The letter counts the versions put out this year (a is the first, then b, c, and after z comes za, zb), so ${r.v.split('.').pop()} is number ${parseVersion(r.v)?.n} of the year. The b at the front means Beta. ${COE_BETA ? 'Coe is still in Beta, so it keeps changing and can have rough edges. ' : ''}Coe and Coe Mini share one version number.`,
     `If the person asks what is new, what changed, what you can do now, or what you were like before, answer from this list in your own words, short and friendly, and never claim a change that is not on it. Do not bring it up otherwise.`,
     `New in ${r.v}:`,
     ...r.items.filter(mine).map((c) => `- ${c.text}`),

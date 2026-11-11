@@ -97,11 +97,14 @@ function coeMail(o) {
 async function mailTeam(env, o) {
   if (!env.RESEND_API_KEY) return false;
   const mode = String(env.MAIL_URGENT || "").trim().toLowerCase(), urgent = mode === "all" || (mode !== "off" && !!o.urgent);
-  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + String(env.RESEND_API_KEY).trim(), "content-type": "application/json" },
+  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { "User-Agent": COE_UA, authorization: "Bearer " + String(env.RESEND_API_KEY).trim(), "content-type": "application/json" },
     body: JSON.stringify({ from: env.MAIL_FROM || "Coe <coe@pmcstudios.uk>", to: [MAIL_TO], reply_to: o.reply || undefined, subject: (urgent ? "[Urgent] " : "") + o.subject, html: coeMail(o), text: o.plain,
       headers: urgent ? { "X-Priority": "1 (Highest)", "Importance": "high", "Priority": "urgent" } : undefined }) }).catch(() => null);
   return !!r?.ok;
 }
+
+// Every request this server makes to another website says who is asking (some sites turn away anything that does not).
+const COE_UA = "Coe/1.0 (+https://coe.pmcstudios.uk; contact@pmcstudios.uk)";
 
 export default {
   async fetch(request, env, ctx) {
@@ -204,6 +207,18 @@ export default {
 
     if (request.method === "OPTIONS") return new Response(null, { headers: cors });
     if (request.method === "GET" && path === "/") return new Response("Coe server is running.", { headers: cors });
+    // ---- map pictures for Coe Mini. OpenStreetMap's servers turn away requests that do not say who is asking, so the worker asks for the tile with Coe's name and website, keeps it for a week, and hands it on. Only Coe (the website, Coe Mini and test pages) can use it.
+    if (request.method === "GET" && path.startsWith("/tile/")) {
+      const m = /^\/tile\/(\d{1,2})\/(\d{1,7})\/(\d{1,7})(?:\.png)?$/.exec(path);
+      if (!m) return fail(400, "That is not a map tile.");
+      const z = Number(m[1]), tx = Number(m[2]), ty = Number(m[3]);
+      if (z > 19 || tx >= 2 ** z || ty >= 2 ** z) return fail(400, "That is not a map tile.");
+      const ref = String(request.headers.get("referer") || ""), fromCoe = /^(chrome-extension|moz-extension|safari-web-extension):\/\//.test(ref) || allowed.some((o) => o && ref.startsWith(o)) || ref.startsWith("https://coe.pmcstudios.uk/");
+      if (!fromCoe) return fail(403, "Map tiles are for Coe only.");
+      let r; try { r = await fetch("https://tile.openstreetmap.org/" + z + "/" + tx + "/" + ty + ".png", { headers: { "User-Agent": COE_UA, Referer: "https://coe.pmcstudios.uk/", Accept: "image/png" }, cf: { cacheTtl: 604800, cacheEverything: true } }); } catch { return fail(502, "The map could not be fetched."); }
+      if (!r.ok) return fail(502, "The map could not be fetched.");
+      return new Response(r.body, { status: 200, headers: { "content-type": "image/png", "cache-control": "public, max-age=604800", ...cors, "Cross-Origin-Resource-Policy": "cross-origin" } });
+    }
     if (!okOrigin) { note("A request came from a site that is not in ALLOWED_ORIGINS: " + (request.headers.get("origin") || "no origin")); return fail(403, "Coe is not available from here."); }
     if (env.ACCESS_CODE && request.headers.get("x-coe-code") !== env.ACCESS_CODE) return fail(401, "That access code is not right.");
 
@@ -446,7 +461,7 @@ export default {
       }
       const j = await r.json(); const d = j.data && j.data[0];
       let data = d && d.b64_json;
-      if (!data && d && d.url) { try { const f = await fetch(d.url); const buf = new Uint8Array(await f.arrayBuffer()); let bin = ""; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode(...buf.subarray(k, k + 8192)); data = btoa(bin); } catch (e) { /* below */ } }
+      if (!data && d && d.url) { try { const f = await fetch(d.url, { headers: { "User-Agent": COE_UA } }); const buf = new Uint8Array(await f.arrayBuffer()); let bin = ""; for (let k = 0; k < buf.length; k += 8192) bin += String.fromCharCode(...buf.subarray(k, k + 8192)); data = btoa(bin); } catch (e) { /* below */ } }
       if (!data) { await undo(); return fail(502, "The picture service had a problem. Try again in a moment."); }
       const type = data.startsWith("/9j/") ? "image/jpeg" : data.startsWith("UklGR") ? "image/webp" : data.startsWith("R0lGOD") ? "image/gif" : data.startsWith("PHN2Zy") || data.startsWith("PD94bWw") ? "image/svg+xml" : "image/png";
       return reply(200, { data, type });
@@ -518,7 +533,7 @@ export default {
       const ref = String(url.searchParams.get("ref") || "");
       if (!/^places\/[\w-]{5,200}\/photos\/[\w-]{5,400}$/.test(ref)) return fail(400, "That is not a photo.");
       const w = Math.max(100, Math.min(800, Number(url.searchParams.get("w")) || 400));
-      let r; try { r = await fetch((env.PLACES_URL || "https://places.googleapis.com/v1/") + ref + "/media?maxWidthPx=" + w + "&key=" + encodeURIComponent(String(env.GOOGLE_PLACES_KEY).trim())); } catch { return fail(502, "The photo could not be fetched."); }
+      let r; try { r = await fetch((env.PLACES_URL || "https://places.googleapis.com/v1/") + ref + "/media?maxWidthPx=" + w + "&key=" + encodeURIComponent(String(env.GOOGLE_PLACES_KEY).trim()), { headers: { "User-Agent": COE_UA } }); } catch { return fail(502, "The photo could not be fetched."); }
       if (!r.ok) return fail(502, "The photo could not be fetched.");
       return new Response(r.body, { status: 200, headers: { "content-type": r.headers.get("content-type") || "image/jpeg", "cache-control": "public, max-age=86400", ...cors, "Cross-Origin-Resource-Policy": "cross-origin" } });
     }
@@ -536,7 +551,7 @@ export default {
       const body = { textQuery: q, maxResultCount: Math.max(1, Math.min(8, Number(b.limit) || 5)), languageCode: "en-GB" };
       if (Array.isArray(b.near) && b.near.length === 2 && b.near.every((n) => Number.isFinite(Number(n)))) body.locationBias = { circle: { center: { latitude: Number(b.near[0]), longitude: Number(b.near[1]) }, radius: Math.max(500, Math.min(50000, (Number(b.radius_km) || 15) * 1000)) } };
       let r; try {
-        r = await fetch((env.PLACES_URL || "https://places.googleapis.com/v1/") + "places:searchText", { method: "POST", headers: { "content-type": "application/json", "X-Goog-Api-Key": String(env.GOOGLE_PLACES_KEY).trim(), "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri,places.priceLevel,places.regularOpeningHours.weekdayDescriptions,places.regularOpeningHours.openNow,places.photos,places.primaryTypeDisplayName,places.googleMapsUri,places.editorialSummary,places.businessStatus" }, body: JSON.stringify(body) });
+        r = await fetch((env.PLACES_URL || "https://places.googleapis.com/v1/") + "places:searchText", { method: "POST", headers: { "User-Agent": COE_UA, "content-type": "application/json", "X-Goog-Api-Key": String(env.GOOGLE_PLACES_KEY).trim(), "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.nationalPhoneNumber,places.websiteUri,places.priceLevel,places.regularOpeningHours.weekdayDescriptions,places.regularOpeningHours.openNow,places.photos,places.primaryTypeDisplayName,places.googleMapsUri,places.editorialSummary,places.businessStatus" }, body: JSON.stringify(body) });
       } catch (e) { return fail(502, "The business look-up could not be reached."); }
       if (!r.ok) return fail(r.status === 403 || r.status === 400 ? 503 : 502, r.status === 403 || r.status === 400 ? (note("Business look-up was refused. Check GOOGLE_PLACES_KEY and that Places API (New) is switched on."), "The business look-up is not available right now. Try again later.") : "The business look-up failed. Try again in a moment.");
       let j = {}; try { j = await r.json(); } catch { /* none */ }

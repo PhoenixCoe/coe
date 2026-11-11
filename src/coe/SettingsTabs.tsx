@@ -162,7 +162,7 @@ function Version() {
   const mine = NEWEST.items.filter((c) => c.where !== 'mini');
   return (
     <section className="ab-ver" aria-label="Version">
-      <div className="ab-ver-t"><b className="d ab-ver-n">{COE_VERSION}</b><i className="beta">Beta</i><span className="tx cx-small">{COE_DATE}. The number reads year, day, month.</span></div>
+      <div className="ab-ver-t"><b className="d ab-ver-n">{COE_VERSION}</b><span className="tx cx-small">{COE_DATE}. Beta: Coe is still changing, so it can have rough edges. The number reads year, day, month, then a letter for each version put out this year.</span></div>
       <b className="d">New in this version</b>
       <ul className="ab-ver-l">{mine.map((c) => <li key={c.text} className="tx">{c.text}</li>)}</ul>
       <button type="button" className="cx-link" aria-expanded={more} onClick={() => setMore(!more)}>{more ? 'Hide' : 'What it was like before'}</button>

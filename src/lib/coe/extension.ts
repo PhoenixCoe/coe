@@ -41,8 +41,11 @@ export function useExtension(active = true) {
 }
 
 /** The extension can send a question and its answer into a new chat ("Continue in Coe"). Asking for it also tells the extension this page is ready. */
-export function onExtHandoff(cb: (text: string) => void): () => void {
-  const on = (e: MessageEvent) => { const d = e.data; if (e.source === window && d && d.coe === 'from-ext' && d.type === 'handoff' && typeof d.text === 'string') cb(d.text); };
+/** Puts a request in Coe Mini's inbox (Coe Mini asks before using it). Only works when Coe Mini is installed in this browser. */
+export const sendToMini = (text: string) => tell({ type: 'to-mini', text: String(text).slice(0, 4000) });
+
+export function onExtHandoff(cb: (text: string, chat: string) => void): () => void {
+  const on = (e: MessageEvent) => { const d = e.data; if (e.source === window && d && d.coe === 'from-ext' && d.type === 'handoff' && typeof d.text === 'string') cb(d.text, typeof d.chat === 'string' ? d.chat.slice(0, 60) : ''); };
   window.addEventListener('message', on); tell({ type: 'hello' });
   return () => window.removeEventListener('message', on);
 }
@@ -111,6 +114,8 @@ export function connectMini(code: string, email: string) {
   try { localStorage.setItem(PAIR_KEY, JSON.stringify({ code, email, at: Date.now() })); window.dispatchEvent(new Event('pmc:coe-pair')); } catch { /* blocked */ }
 }
 export function forgetPair() { try { localStorage.removeItem(PAIR_KEY); } catch { /* blocked */ } }
+/** "Decline": the person refused the link on Coe. Coe Mini is told, drops its code and says so. */
+export function declineMini() { forgetPair(); tell({ type: 'pair-decline' }); }
 export const disconnectMini = () => tell({ type: 'unlink' });
 /** The extension answers once: yes (connected), or no with a reason ('code' = it was not showing this code, 'account' = Coe Mini is signed in as someone else, 'signin' = Coe Mini is not signed in). */
 export function onExtConnected(cb: (yes: boolean, why: string) => void): () => void {

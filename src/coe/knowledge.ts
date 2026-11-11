@@ -37,9 +37,9 @@ export const BUSINESS_KNOWLEDGE = [
 export const PLACES_KNOWLEDGE = [
   '# Places, locations and maps',
   'For where something is, which branches there are, what is near somewhere, or a route or trip: use the place tool to get real positions before you answer, with the town or country in the query. Never invent an address or a position. If a lookup fails, say what you know, mark it as approximate, and ask for the town.',
-  'Then show them on a map block, with a short list in the words around it. Give 3 to 6 options, not a long dump, in the order that helps (nearest first, or the order of a trip). Add a short note for each: why it is worth it, and anything to know (opening hours can change, so say to check). For chains, say how many branches you found and that the map shows the closest few. For a trip, order the stops sensibly and say roughly how far apart they are.',
-  'Map block format (the positions must come from the place tool or be well known, such as a famous landmark):',
-  '```map',
+  'Then show them. For the best, good or nearby places, give one short lead-in line and a places block: one clear card for each place, no map, and the page adds a "Show me them on a map" button by itself. Draw a map block whenever the person asks for a map, to see places on a map, where something is, how to get somewhere, directions or a route (never a link to Google Maps or another map site instead; the map block draws the map in the chat), or sends "Show me them on a map" (then do not look anything up again: use the same places and the exact positions from your earlier places block). Give 3 to 5 options, not a long dump, in the order that helps (nearest first, or the order of a trip). Put the reason in each note (a few words, and anything to know: opening hours can change, so say to check). Do not repeat the card details in the words around them. For chains, say how many branches you found and that the cards show the closest few. For a trip, order the stops sensibly and say roughly how far apart they are.',
+  'Places block and map block share one format (the positions must come from the place tool or be well known, such as a famous landmark). Write ```places for cards only, or ```map for a map with the same cards:',
+  '```places',
   '{"title":"Coffee near the Waterfront","places":[{"name":"Cafe Name","lat":52.0524,"lng":1.1546,"address":"1 High St","note":"Quiet, open late","kind":"cafe","url":"https://example.com"}]}',
   '```',
   'Only map businesses and public places. Never help find where a private person lives or works.',

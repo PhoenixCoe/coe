@@ -81,5 +81,17 @@ var tk=setInterval(function(){
   if(shown&&cur&&up()&&!d.getElementById('coe-stuck'))draw(cur[0],cur[1],cur[2])
  }catch(e){}
 },600);
+/* the focus ring is for keyboard use only: it shows after Tab or the arrow keys, never after a click or while typing or sending */
+d.addEventListener('keydown',function(e){var k=e.key;if(k==='Tab'||k==='ArrowUp'||k==='ArrowDown'||k==='ArrowLeft'||k==='ArrowRight')d.documentElement.setAttribute('data-kb','1');else if(k!=='Shift'&&k!=='Control'&&k!=='Alt'&&k!=='Meta'&&k!=='Escape')d.documentElement.removeAttribute('data-kb')},true);
+d.addEventListener('pointerdown',function(){d.documentElement.removeAttribute('data-kb')},true);
+/* menus, dropdowns and pop-ups grow out of the side their button is on (above, below, left or right), quickly */
+(function(){var SEL='.cx-pop,.sel-list,[role="menu"],[role="listbox"]';
+function aim(el){try{var t=d.querySelector('[aria-expanded="true"]'),r=el.getBoundingClientRect(),o='50% 50%';
+ if(t&&r.width&&r.height){var b=t.getBoundingClientRect(),cx=b.left+b.width/2,cy=b.top+b.height/2,x=Math.min(100,Math.max(0,(cx-r.left)/r.width*100)),y=Math.min(100,Math.max(0,(cy-r.top)/r.height*100));
+  if(cy<r.top)y=0;else if(cy>r.bottom)y=100;if(cx<r.left)x=0;else if(cx>r.right)x=100;o=Math.round(x)+'% '+Math.round(y)+'%'}
+ el.style.transformOrigin=o}catch(e){}}
+function scan(n){if(n.nodeType!==1)return;if(n.matches&&n.matches(SEL))aim(n);if(n.querySelectorAll){var q=n.querySelectorAll(SEL);for(var k=0;k<q.length;k++)aim(q[k])}}
+function start(){new MutationObserver(function(ms){for(var i=0;i<ms.length;i++){var a=ms[i].addedNodes;for(var j=0;j<a.length;j++)scan(a[j])}}).observe(d.documentElement,{childList:true,subtree:true})}
+if(d.documentElement)start();else d.addEventListener('DOMContentLoaded',start)})();
 w.__coeHideStuck=function(){clearInterval(tk);var e=d.getElementById('coe-stuck');if(e&&e.parentNode)e.parentNode.removeChild(e)}
 })();`;
