@@ -2,7 +2,7 @@ import type { CoeError, ErrorKind } from './client';
 
 export type ErrAct = 'retry' | 'settings' | 'plans' | 'signin' | 'appeal';
 /** Where someone who has been banned can ask for the decision to be looked at again. */
-export const APPEAL_EMAIL = 'appeal@pmcstudios.uk';
+export const APPEAL_EMAIL = 'contact@pmcstudios.uk';
 /** red: something broke. orange: Coe could not get through, so wait or check the connection. grey: a notice (tokens, plan, sign in). */
 export type ErrLevel = 'red' | 'orange' | 'grey';
 export interface Shown { title: string; text: string; acts: ErrAct[]; level: ErrLevel }

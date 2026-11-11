@@ -4,7 +4,7 @@ import { UiIcon } from '@/ui/icons';
 import { CoeStar } from '@/ui/Mark';
 import { AGE_OPTIONS, ROLE_OPTIONS, levelWords } from '@/lib/coe/profile';
 import { markMet, type CoeSettings } from '@/lib/coe/settings';
-import { cloudOn, session } from '@/lib/coe/cloud';
+import { cloudOn, noteAccountMet, session } from '@/lib/coe/cloud';
 import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, setTheme } from '@/lib/coe/look';
 
 type Step = 'hi' | 'name' | 'age' | 'role' | 'about' | 'look' | 'feel' | 'style' | 'done';
@@ -45,7 +45,7 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
   const root = useRef<HTMLDivElement>(null);
   const step = STEPS[i];
   const patch = (): Partial<CoeSettings> => ({ name: name.trim().slice(0, 30), ageBand, role, yearOrJob: yearOrJob.trim().slice(0, 60), subjects: subjects.trim().slice(0, 100), length, tone });
-  const finish = () => { markMet(); save(patch()); onClose(); };
+  const finish = () => { const u = cloudOn ? session()?.uid : undefined; markMet(u || '1'); if (u) noteAccountMet(); save(patch()); onClose(); };
   const go = (to: number, d: 'fwd' | 'back') => { setDir(d); setI(Math.max(0, Math.min(STEPS.length - 1, to))); };
   const next = () => (step === 'done' ? finish() : go(i + 1, 'fwd'));
   const back = () => go(i - 1, 'back');

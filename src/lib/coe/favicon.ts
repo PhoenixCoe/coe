@@ -1,6 +1,6 @@
 /**
- * The tab icon shows what Coe is doing: three dots that bounce while it works, then the Coe star with a tick in the corner when the answer is
- * ready. The tick goes away on its own once you have seen it (you are on the tab), or a few seconds after you come back to the tab.
+ * The tab icon shows what Coe is doing: a loading ring that turns while it works, then just a tick when the answer is ready (no star, no badge in
+ * the corner). The tick goes away on its own once you have seen it (you are on the tab), or a few seconds after you come back to the tab.
  */
 import { STAR } from '@/ui/Mark';
 
@@ -30,24 +30,24 @@ function mark(c: CanvasRenderingContext2D) {
   const k = look(); frame0(c, k);
   const s = (46 * 0.74) / 780; c.save(); c.translate(28 - 796 * s, 28 - 398 * s); c.scale(s, s); c.fillStyle = k.star; c.fill(new Path2D(STAR), 'evenodd'); c.restore();
 }
-function dots(c: CanvasRenderingContext2D, f: number) {
+/** Working: a ring turns inside the button, one quarter of it bright. */
+function spinner(c: CanvasRenderingContext2D, f: number) {
   const k = look(); frame0(c, k);
-  for (let i = 0; i < 3; i++) {
-    const on = calm() ? 1 : Math.max(0, Math.sin(((f / 6) - i / 3) * Math.PI * 2));     // each dot rises in turn
-    const s = 8 + on * 3, x = 9 + i * 13 + (8 - s) / 2, y = 28 - s / 2 - on * 4;
-    c.fillStyle = k.star; c.globalAlpha = on > 0.45 ? 1 : 0.55; c.fillRect(x, y, s, s); c.globalAlpha = 1;
-  }
+  c.lineWidth = 7; c.lineCap = 'butt'; c.strokeStyle = k.star;
+  c.globalAlpha = 0.3; c.beginPath(); c.arc(28, 28, 14, 0, Math.PI * 2); c.stroke(); c.globalAlpha = 1;
+  const at = calm() ? -Math.PI / 2 : f * 0.8; c.beginPath(); c.arc(28, 28, 14, at, at + Math.PI * 0.75); c.stroke();
 }
-function tick(c: CanvasRenderingContext2D) {
-  c.fillStyle = INK; c.fillRect(30, 30, 34, 34);                // a border, so it shows against the button
-  c.fillStyle = '#FFFFFF'; c.fillRect(33, 33, 28, 28);
-  c.strokeStyle = mixHex(loadAccent(), '#000000', 0.42); c.lineWidth = 6; c.lineCap = 'butt'; c.lineJoin = 'miter'; c.beginPath(); c.moveTo(38, 47); c.lineTo(45, 54); c.lineTo(57, 38); c.stroke();
+/** Done: the whole icon is one big tick. */
+function tickMark(c: CanvasRenderingContext2D) {
+  const k = look(); frame0(c, k);
+  c.strokeStyle = k.star; c.lineWidth = 8; c.lineCap = 'butt'; c.lineJoin = 'miter';
+  c.beginPath(); c.moveTo(14, 29); c.lineTo(24, 39); c.lineTo(43, 17); c.stroke();
 }
 function paint() {
   if (!canvas) { canvas = document.createElement('canvas'); canvas.width = canvas.height = 64; }
   const c = canvas.getContext('2d'); if (!c) return;
   c.clearRect(0, 0, 64, 64);
-  if (state === 'busy') dots(c, frame++); else { mark(c); if (state === 'done') tick(c); }
+  if (state === 'busy') spinner(c, frame++); else if (state === 'done') tickMark(c); else mark(c);
   if (!link) { link = document.createElement('link'); link.id = 'coe-fav'; link.rel = 'icon'; link.type = 'image/png'; link.setAttribute('sizes', '64x64'); }
   link.href = canvas.toDataURL('image/png'); link.dataset.state = state;
   if (!link.isConnected) {
@@ -71,7 +71,7 @@ export function setFavicon(next: FavState) {
   if (timer) { clearInterval(timer); timer = undefined; }
   if (next === 'idle') { paint(); return; }
   paint();
-  if (next === 'busy' && !calm()) timer = window.setInterval(paint, 170);
+  if (next === 'busy' && !calm()) timer = window.setInterval(paint, 110);
   if (next === 'done' && seen()) scheduleClear(6000);       // already looking at it: the tick only needs a moment
 }
 

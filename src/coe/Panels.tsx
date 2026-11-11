@@ -11,7 +11,7 @@ import { canOwnKey, onStatus, refreshStatus, status } from '@/lib/coe/account';
 import { connection, modeOf, own, type CoeSettings } from '@/lib/coe/settings';
 import { You } from './You';
 import { Select } from '@/ui/Controls';
-import { AboutTab, ChatTab, ChromeTab, LearnTab, LookTab, MiniNotHere } from './SettingsTabs';
+import { AboutTab, ChatTab, ChromeTab, FeedbackTab, LearnTab, LookTab, MiniNotHere } from './SettingsTabs';
 import { useMiniHere } from '@/lib/coe/device';
 import { VoiceFields } from './VoiceFields';
 import { AccountTab } from './Account';
@@ -50,12 +50,12 @@ export function Upgrade({ note, onClose }: { note: string; onClose: () => void }
 }
 
 // ---------------------------------------------------------------- settings
-export type Tab = 'owner' | 'account' | 'usage' | 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'ext' | 'about';
+export type Tab = 'owner' | 'account' | 'usage' | 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'ext' | 'feedback' | 'about';
 type TabDef = { id: Tab; name: string; icon: Parameters<typeof UiIcon>[0]['name'] };
 const GROUPS: { name: string; tabs: TabDef[] }[] = [
   { name: 'You', tabs: [{ id: 'account', name: 'Account', icon: 'user' }, { id: 'usage', name: 'Usage', icon: 'chart' }, { id: 'you', name: 'Memory', icon: 'sparkle' }] },
   { name: 'Coe', tabs: [{ id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice typing', icon: 'mic' }, { id: 'look', name: 'Look', icon: 'theme' }] },
-  { name: 'More', tabs: [{ id: 'ext', name: 'Coe Mini', icon: 'globe' }, { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'about', name: 'About', icon: 'info' }] },
+  { name: 'More', tabs: [{ id: 'ext', name: 'Coe Mini', icon: 'globe' }, { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'feedback', name: 'Feedback', icon: 'mail' }, { id: 'about', name: 'About', icon: 'info' }] },
 ];
 export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, setTab, convCount, used, limit, onSignIn, onAccountChange, onExport, onImport, onDeleteAll, onClose }: {
   owner: boolean; onClearFiles: () => void; settings: CoeSettings; set: (s: CoeSettings) => void; tab: Tab; setTab: (t: Tab) => void; convCount: number;
@@ -173,6 +173,7 @@ export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, 
       {tab === 'learn' && <LearnTab s={settings} up={up} />}
       {tab === 'voice' && <VoiceFields />}
       {tab === 'ext' && (miniHere ? <ChromeTab /> : <MiniNotHere />)}
+      {tab === 'feedback' && <FeedbackTab />}
       {tab === 'about' && <AboutTab />}
 
       {tab === 'you' && <You pro={pro || st.plan === 'pro'} signedIn={st.signedIn} />}

@@ -191,7 +191,7 @@ export function Check({ settings, onUsed, onSettings, onUpgrade, say }: { settin
           {err && (err.kind ? <ErrorBox own={modeOf(settings) === 'key'} kind={err.kind} text={err.text} canRetry={false} onAct={(a: ErrAct) => { if (a === 'settings') onSettings(); else if (a === 'plans') window.location.href = '/plans/'; else if (a === 'signin') onUpgrade('Sign in from the sidebar, then try again.'); }} /> : <div className="cd-note bad tx" role="alert"><UiIcon name="alert" size={18} /><span>{err.text}</span></div>)}
           {stale && <div className="cd-note tx"><UiIcon name="info" size={18} /><span>You changed the code since Coe looked. Its notes may be out of date.</span><button type="button" className="btn small" onClick={ask}>Ask again</button></div>}
           {summary && !err && <div className="cd-note coe tx"><span className="cd-src d">Coe</span><span>{summary}</span></div>}
-          {busy && <div className="cd-note tx"><span className="cx-dots" aria-hidden="true"><i /><i /><i /></span><span>Coe is reading your code…</span></div>}
+          {busy && <div className="cd-note tx"><span>Coe is reading your code…</span></div>}
           {empty ? <p className="cd-empty tx">Results show here. Your code is checked as you type, on this device.</p>
             : pending && !all.length ? <p className="cd-empty tx">Checking…</p>
             : !all.length && !busy ? <div className="cd-ok"><UiIcon name="check" size={26} /><b className="d">No problems found</b><span className="tx">Ask Coe for a deeper look.</span></div>

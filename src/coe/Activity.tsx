@@ -87,9 +87,10 @@ export function Activity({ steps: every, live, phaseNote }: { steps: Step[]; liv
   return (
     <div className={`act${open ? ' open' : ''}${bad ? ' bad' : ''}`}>
       <button type="button" className="act-head" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <span className="act-ic" aria-hidden><UiIcon name={bad ? 'alert' : steps[steps.length - 1].icon} size={16} /></span>
         <span className="act-t d">{summarise(steps)}</span>
         <span className="act-n tx">{total ? sec(total) : pend ? 'waiting for you' : ''}</span>
-        <UiIcon name="down" size={15} className="act-chev" />
+        <span className="act-cv" aria-hidden><UiIcon name="down" size={14} className="act-chev" /></span>
       </button>
       {open && (
         <ol className="act-list">

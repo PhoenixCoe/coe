@@ -2,7 +2,7 @@
  *  If more than one version goes out on the same day, the later ones end in a letter: 2026.11.11, then 2026.11.11b, 2026.11.11c (the first of the day has no letter).
  *  Browsers only allow numbers in an extension's version, so Coe Mini's manifest counts the letters as a fourth number (b is .2) and shows the lettered name.
  *  Coe is also told this list (see prompts.ts), so it can answer "what is new?" and "what can you do now?". Add the newest version at the top. */
-export const COE_VERSION = '2026.11.11';
+export const COE_VERSION = '2026.11.11c';
 export const COE_DATE = '11 November 2026';
 export const COE_BETA = true;
 
@@ -20,12 +20,12 @@ export const RELEASES: Release[] = [
       { where: 'both', text: 'Button words stay visible when you hover or press. Text boxes no longer get a coloured outline when you click in.' },
       { where: 'both', text: 'Coe asks how it’s doing much less often.' },
       { where: 'both', text: 'New font names: PMC Header and PMC Font.' },
-      { where: 'both', text: 'A footer with the Coe and PMC Studios copyright, About, Privacy, Contact and the version. Open Coe buttons show the Coe logo.' },
+      { where: 'both', text: 'A short footer: made by PMC Studios, About, Privacy, Contact and the version. Open Coe buttons show the Coe logo.' },
       { where: 'both', text: 'If two versions come out on the same day, the later one ends in a letter, like 2026.11.11b.' },
       { where: 'both', text: 'Question cards. Each shows a tick and Done once answered, folds to one line (the arrow opens it), and can show how Coe got the answer. If it was wrong, Coe says sorry and tries again for free.' },
       { where: 'web', text: 'The shared chat page looks new: details at the top, a wide centred chat, and a way to report a chat.' },
       { where: 'web', text: 'Say yes to a PMC app and it opens in the same reply, not as a new message.' },
-      { where: 'both', text: 'While Coe works you see just the Coe star, with a pencil when it writes.' },
+      { where: 'both', text: 'While Coe works you see just the turning Coe star.' },
       { where: 'web', text: 'A list of questions shows as the same cards as Coe Mini, so you can read and tick them off.' },
       { where: 'mini', text: 'Coe Mini can type an answer into an ordinary page with its own cursor, like a person: quick bursts, small pauses, and a slip it fixes. Never on homework or quiz sites.' },
       { where: 'mini', text: 'The cursor shows the Coe logo and what it’s doing, and wanders while an answer takes a while. Stop is in the panel (Esc still works).' },
@@ -43,13 +43,32 @@ export const RELEASES: Release[] = [
       { where: 'mini', text: 'The home screen is tidier. The buttons change to fit the page you are on (a homework site, a video, a document), the extras are in a More window, and the Coe star sits top right like on the website.' },
       { where: 'mini', text: 'If the sidebar is too narrow, Coe Mini shows which edge to drag, whether the sidebar is on the left or the right.' },
       { where: 'both', text: 'Coe Mini is for computers only (Chrome, Edge and Firefox). Phones and iPads can’t add extensions, so Coe greys out its Coe Mini settings there.' },
-      { where: 'both', text: 'A chat opens the same in Coe and in Coe Mini, whichever one made it: pictures, files, maps, plans, question cards, diagrams, folded sections, highlighted words and boxes all show.' }
+      { where: 'both', text: 'A chat opens the same in Coe and in Coe Mini, whichever one made it: pictures, files, maps, plans, question cards, diagrams, folded sections, highlighted words and boxes all show.' },
+      { where: 'web', text: 'Coe Mini in Settings shows the Coe Mini logo and the Chrome, Edge and Firefox logos. They say Coming soon, and each becomes a button to its store when Coe Mini is there.' },
+      { where: 'both', text: 'Setup shows once. The first time you open version 2026.11.11c, signed in or not, you get the setup. After that it never comes back, and not on your other devices either. A new account, or one deleted and made again, gets it once.' },
+      { where: 'both', text: 'Words fade in one letter at a time, like being unveiled.' },
+      { where: 'both', text: 'All the writing animations are gone. While Coe works, writing included, you see just the turning Coe star.' },
+      { where: 'both', text: 'The tab icon in Coe and the toolbar button in Coe Mini show a turning ring while an answer is written, then just a tick when it is ready. No badge in the corner.' },
+      { where: 'web', text: 'In the sidebar, a chat’s name shows a loading ring while its answer is written and a tick when it is done.' },
+      { where: 'both', text: 'Every button looks right and reacts to hover and press without jumping about. The chat box buttons are redrawn.' },
+      { where: 'web', text: 'Drop-downs match: Save, Find in this chat and the More menus share one look and one set of icons. (Coe Mini’s menus already did.)' },
+      { where: 'both', text: 'Feedback and Report send an email to the Coe team by themselves, in a layout in the Coe style and fonts. No mail app opens.' },
+      { where: 'both', text: 'A Feedback tab in Settings. The feedback box moved there from About.' },
+      { where: 'both', text: 'Report chat is in the chat menu at the top. Say why, add a few words if you like, and choose whether the last few messages go with it.' },
+      { where: 'web', text: 'The home page fits an iPad, even with the browser bar showing: all four blocks are back and nothing is squashed.' },
+      { where: 'web', text: 'The shared chat page has one Open Coe button.' },
+      { where: 'web', text: 'The code editor looks like the document editor but for code. It closes the sidebar, puts the Coe chat on the left, and lets you see the code, the preview, or both.' },
+      { where: 'web', text: '“Getting a tool ready” looks neater, and the activity summary is clearer.' }
     ],
     before: [
+      'Coe Mini was offered as a file to download from the Coe website.',
       'The setup was one long page, with no theme or colour choices.',
       'You could only pick from a few theme colours.',
       'Fonts were called Caracteres L2 and L4.',
       'There was no footer or credits page, and a lettered version was not possible.',
+      'Setup was remembered by the device, so a deleted and remade account could skip it, and another device could ask again.',
+      'A pencil appeared while Coe wrote, and words faded in a few at a time.',
+      'Feedback and Report opened your mail app.',
       'A question card had no Done tick and could not be folded.',
     ],
   },
@@ -58,7 +77,7 @@ export const RELEASES: Release[] = [
     items: [
       { where: 'both', text: 'Profile picture. Add one in Settings, Account. It shows in Coe and in Coe Mini, with or without an account.' },
       { where: 'both', text: 'Kinder answers. Coe is gentler and less blunt, and greets you in five words or fewer.' },
-      { where: 'both', text: 'Banned accounts. A banned account cannot ask or make more answers, and is told to write to appeal@pmcstudios.uk.' },
+      { where: 'both', text: 'Banned accounts. A banned account cannot ask or make more answers, and is told to write to contact@pmcstudios.uk.' },
       { where: 'both', text: 'Errors look and read the same in Coe and Coe Mini, and sit just above the chat box.' },
       { where: 'both', text: 'The green page colour is now called Theme.' },
       { where: 'both', text: 'The words Coe shows while it thinks change as it works, so a long wait never says the same thing twice.' },

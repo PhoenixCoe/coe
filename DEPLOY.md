@@ -41,6 +41,7 @@ Do parts 1 to 3 first. Already set up from an earlier zip? You only need to uplo
 | `MODEL_TRANSCRIBE` | Text | optional. Voice in (and audio or video files). Leave empty to use `gpt-transcribe` (it falls back to `gpt-4o-mini-transcribe`) |
 | `MODEL_AUDIO` | Text | optional. The model that listens in the Sound lab and names instruments and noises. Leave empty to use `gpt-audio-mini` |
 | `RESEND_API_KEY` | Secret | optional. Emails written feedback to contact@pmcstudios.uk. See part 5. |
+| `MAIL_URGENT` | Text | optional. Reports and "something is wrong" emails are marked urgent. Type `all` to mark every email, or `off` to mark none. |
 | `GOOGLE_PLACES_KEY` | Secret | optional. Adds photos, ratings, phone numbers and websites to the business cards on maps. See part 9. Without it, maps still work through OpenStreetMap |
 
 4. Copy the Worker address (like `https://coe-server.yourname.workers.dev`). GitHub repository > Settings > Secrets and variables > Actions > **Variables** > add `COE_SERVER` with that address. Then Actions > Deploy to GitHub Pages > **Run workflow**. Visitors never have to paste it.
@@ -75,8 +76,8 @@ Messages people write in Coe (Settings > About > Tell us something, and the box 
 1. resend.com > make a free account > **Domains** > **Add Domain** > `pmcstudios.uk` > add the DNS records it shows in Cloudflare (DNS > Records) > **Verify**.
 2. Resend > **API Keys** > **Create API Key** (permission: Sending access) > copy it.
 3. Cloudflare Worker > **Settings** > **Variables and Secrets** > **Add**: type **Secret**, name `RESEND_API_KEY`, paste the key > **Deploy**.
-4. Optional: add a **Text** variable `MAIL_FROM` = `Coe <coe@pmcstudios.uk>` (must be on the domain you verified) and `FEEDBACK_TO` = another address if you want mail to go somewhere else.
-5. Test: Coe > Settings > About > Tell us something > write a line > Send. It should reach contact@pmcstudios.uk in a few seconds.
+4. Optional: add a **Text** variable `MAIL_FROM` = `Coe <coe@pmcstudios.uk>` (must be on the domain you verified).
+5. Test: Coe > Settings > About > Tell us something > write a line > Send. It should reach contact@pmcstudios.uk in a few seconds, laid out in the Coe style. Every email Coe sends goes to contact@pmcstudios.uk.
 
 ## 7. Coe using PMC Apps
 Coe opens apps from `https://apps.pmcstudios.uk` inside the chat. Deploy the new PMC Apps build from this delivery first, because it contains the small piece that lets Coe drive an app. Without it the apps still open, but Coe cannot press their buttons. Free gets 5 runs a day in Coe, Pro is unlimited. The apps site itself stays free and AI-free.
@@ -116,7 +117,6 @@ Supabase > SQL Editor > paste all of `supabase/setup.sql` again and run. It only
 - `REQUIRE_SIGNIN`: set to `1` so only signed-in people can chat.
 - `OWNER_EMAILS`: your email (commas between several). It shows the owner tools in Settings. Checked on the server from the signed-in account.
 - `BANNED`: emails to ban (commas, spaces or new lines). A banned person can sign in and see why, but cannot ask for or make anything.
-- `REPORT_TO`: where "Report this chat" goes. If empty it uses `FEEDBACK_TO`, then contact@pmcstudios.uk. Needs `RESEND_API_KEY`.
 - `FEEDBACK_BONUS` (50000, highest 100000): extra tokens, once a day, for answering "How am I doing?" or sending a message.
 - `EXTENSION_IDS`: the store IDs of Coe Mini, comma separated (Chrome and Edge each give their own). Needed once a store has approved it. Leave `REQUIRE_SIGNIN` off while the stores review it.
 - `ACCESS_CODE` (Secret): people need this word to use the server.

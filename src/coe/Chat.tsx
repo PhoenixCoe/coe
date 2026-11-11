@@ -50,7 +50,7 @@ import { StyleEditor } from './Styles';
 import { ShareDialog } from './Share';
 import { installCoe, isInstalled } from '@/lib/coe/pwa';
 import { browserListen, browserListens, canListen, listening, loadPrefs, serverVoice, transcribe } from '@/lib/coe/voice';
-import { profileSeen, pushProfile, cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
+import { accountDone, noteAccountMet, profileSeen, pushProfile, cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
 import { knowledgeFor } from './knowledge';
 import { COE_VERSION } from '@/lib/coe/changelog';
 import { BASE_COE, CHECK_SYSTEM, PAGE_STARTS, REDO_NOTE, STARTERS, greeting, picsNote, todayLine, preferencesPrompt, worthChecking } from './prompts';
@@ -64,6 +64,7 @@ import { filesOf, madeCount } from './Workspace';
 import { putLive as cloudLive, peek as cloudPeek } from '@/lib/coe/cloud';
 import { compactConv, tooLong } from '@/lib/coe/compact';
 import { Feedback } from './Feedback';
+import { ReportChat } from './ReportChat';
 import { CodePane } from './CodePane';
 import type { EDoc } from '@/lib/coe/editors';
 const Editor = lazy(() => import('./Editor'));
@@ -157,6 +158,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [reading, setReading] = useState('');                  // a file being read
   // Each chat runs on its own: opening another chat leaves a reply going, and it is all there when you come back.
   const [runIds, setRunIds] = useState<string[]>([]);
+  /** Chats whose reply has just been finished: a tick shows beside the name until you have seen it. */
+  const [doneIds, setDoneIds] = useState<string[]>([]);
   const busy = runIds.includes(conv.id);
   const aborts = useRef(new Map<string, AbortController>());
   const liveWork = useRef(new Map<string, Conv>());
@@ -262,6 +265,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [pairCode, setPairCode] = useState('');
   const [me, setMe] = useState<string | null>(() => (cloudOn ? session()?.email ?? null : null));
   const [studyOpen, setStudyOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   useEffect(() => { try { const u = new URL(window.location.href); const g = u.searchParams.get('go'); if (g) { u.searchParams.delete('go'); u.searchParams.delete('source'); window.history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); if (g === 'study') setStudyOpen(true); } } catch { /* no address to read */ } }, []);
   const [sketchOpen, setSketchOpen] = useState(false);
   const [labOpen, setLabOpen] = useState(false);
@@ -376,10 +380,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const openEditor = useCallback((id?: string) => {
     const c = convRef.current, pick = (id && c.docs?.find((d) => d.id === id)?.id) || null;
     setEdId((cur) => pick ?? (cur && c.docs?.some((d) => d.id === cur) ? cur : c.docs?.[c.docs.length - 1]?.id ?? null));
+    const wasOpen = (sideNow.current || sideWas.current) && window.innerWidth >= 900;   // the list makes room for the editor and comes back when it closes
     setEdOpen(true); setShelf(false); setHdMore(false);
     if (cpOpenRef.current) closeCode();
+    if (wasOpen) sideWas.current = true;
+    setSide(false);
   }, [closeCode]);   // eslint-disable-line react-hooks/exhaustive-deps
-  const closeEditor = useCallback(() => { flushDocs(); setEdOpen(false); window.setTimeout(() => box.current?.focus({ preventScroll: true }), 40); }, [flushDocs]);
+  const closeEditor = useCallback(() => { flushDocs(); setEdOpen(false); if (sideWas.current) { sideWas.current = false; if (window.innerWidth >= 900) setSide(true); } window.setTimeout(() => box.current?.focus({ preventScroll: true }), 40); }, [flushDocs]);
   const sizeEditor = useCallback((w: number) => { const v = w <= 0 ? 600 : Math.max(360, Math.min(1100, Math.round(w))); setEdW(v); try { localStorage.setItem('coe:ed-w', String(v)); } catch { /* not saved */ } }, []);
   openEditorRef.current = openEditor;
   // A different chat starts with the editor put away; opening Files puts it away too, so the two never fight for room.
@@ -614,7 +621,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       remove: async (id) => { if (id === base.id) killed = true; else await chatBits.current.remove(id); },
       compact: async () => { const c2 = await compactConv(s, work).catch(() => null); if (!c2) return false; commit(c2); return true; },
     };
-    const ctl = new AbortController(); aborts.current.set(mine, ctl); liveWork.current.set(mine, base); setRunIds((r) => [...r.filter((x) => x !== mine), mine]); setFavicon('busy'); stick.current = true;
+    const ctl = new AbortController(); aborts.current.set(mine, ctl); liveWork.current.set(mine, base); setRunIds((r) => [...r.filter((x) => x !== mine), mine]); setDoneIds((d) => d.filter((x) => x !== mine)); setFavicon('busy'); stick.current = true;
     void persist(base);   // the chat is in the list from the first word, so you can leave it and come back
     const cap = opts.work ? STEPS.work : STEPS[pn];
 
@@ -754,6 +761,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       aborts.current.delete(mine); liveWork.current.delete(mine); setRunIds((r) => r.filter((x) => x !== mine)); phaseA('idle'); sfx.done(); replyReady();
       const lastM = work.messages[work.messages.length - 1];
       setFavicon(lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped ? 'done' : 'idle');
+      if (!killed && lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped) setDoneIds((d) => [...d.filter((x) => x !== mine), mine]);
       if (lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped) { noteReply(); if (active() && feedbackDue()) { feedbackShown(); setFb(true); } }
       if (killed) await chatBits.current.remove(base.id); else { await persist(work); if (!work.named && lastM?.role === 'assistant' && lastM.text && !lastM.error && !lastM.stopped) void nameRef.current(work); }
     }
@@ -830,6 +838,14 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     sendBody(typed ? `${what}\n\n${typed}` : what, { pics: pp, atts: aa });
   };
   useEffect(() => () => setFavicon('idle'), []);
+  // The tick beside a chat's name goes once you have seen it: a few seconds after you are looking at that chat. A chat in the background keeps its tick until you open it.
+  useEffect(() => {
+    if (!doneIds.includes(conv.id)) return;
+    let t = 0;
+    const arm = () => { window.clearTimeout(t); if (document.visibilityState === 'visible' && (typeof document.hasFocus !== 'function' || document.hasFocus())) t = window.setTimeout(() => setDoneIds((d) => d.filter((x) => x !== conv.id)), 6000); };
+    arm(); window.addEventListener('focus', arm); document.addEventListener('visibilitychange', arm);
+    return () => { window.clearTimeout(t); window.removeEventListener('focus', arm); document.removeEventListener('visibilitychange', arm); };
+  }, [doneIds, conv.id]);
   askRef.current = (t: string) => { if (bannedRef.current) return; if (busy || reading) setQueue((q) => [...q, { cid: convRef.current.id, id: uid(), text: t, pics: [], atts: [], work: false }]); else sendBody(t); };
   const sendQueuedNow = useCallback((id: string) => { setQueue((q) => { const it = q.find((x) => x.id === id); return it ? [{ ...it, late: true }, ...q.filter((x) => x.id !== id)] : q; }); abort.current?.abort(); }, []);
   const dropQueued = useCallback((id: string) => setQueue((q) => q.filter((x) => x.id !== id)), []);
@@ -938,20 +954,25 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   }), [setSettings]);
   // The page colour or accent was changed in Coe Mini: the newer choice wins.
   useEffect(() => onExtLook((l) => takeLookFrom(l)), []);
-  useEffect(() => onExtMet(() => markMet()), []);   // setup was done in Coe Mini
+  useEffect(() => onExtMet(() => { const u = cloudOn ? session()?.uid : undefined; markMet(u || '1'); if (u) noteAccountMet(); }), []);   // setup was done in Coe Mini (for this same account)
   // The very first time: a few short, optional questions about you.
   // Setup is asked once per person, not once per device: the account remembers it, and Coe Mini hears about it too.
   const [meet, setMeet] = useState(false);
   useEffect(() => {
     if (fromMini.current) return;
     let t = 0;
+    // Signed in: setup belongs to the ACCOUNT, so it is asked once for each account and never again on any other device.
+    // Signed out: once for this device. A new account, or a deleted one made again, is asked once.
+    const due = (): boolean | null => {
+      if (cloudOn && session()) return profileSeen() ? !accountDone() : null;   // null: the account has not answered yet (offline, nothing is shown)
+      if (isMet()) return false;
+      if (loadSettings().name) { markMet(); return false; }
+      return true;
+    };
     const decide = () => {
       window.clearTimeout(t);
-      if (isMet()) return;
-      if (loadSettings().name) { markMet(); return; }
-      // Signed in: the account may already know the answers. Wait until it has been asked (offline, nothing is shown).
-      if (cloudOn && session() && !profileSeen()) return;
-      t = window.setTimeout(() => { if (!isMet() && !loadSettings().name) setMeet(true); }, 1400);
+      if (due() !== true) return;
+      t = window.setTimeout(() => { if (due() === true) setMeet(true); }, 1400);
     };
     const done = () => { window.clearTimeout(t); setMeet(false); };
     decide();
@@ -1132,6 +1153,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     { id: 'find', group: 'Chat', title: 'Find in this chat', hint: 'search the messages, or your bookmarks', run: () => setFind({ q: '', i: 0, marks: false }) },
     { id: 'compact', group: 'Chat', title: 'Summarise the older messages', hint: 'keeps a long chat quick', run: () => { void (async () => { const c2 = await compactConv(loadSettings(), convRef.current).catch(() => null); if (!c2) { say('There is not enough chat to summarise yet.'); return; } setConv(c2); await persist(c2); say('The older messages are now a short summary.'); })(); } },
     { id: 'files', group: 'Tools', title: 'Files', run: () => { setShelfTab(undefined); setShelf(true); } },
+    { id: 'report', group: 'This chat', title: 'Report chat', hint: 'tell the Coe team about a problem', run: () => { if (convRef.current.messages.length) setReportOpen(true); } },
     { id: 'prog', group: 'Chat', title: 'Show progress and outputs', hint: 'steps, documents, what was used', run: () => setProgOpen(true) },
     ...SLASH.filter((c) => !c.go).map((c): Cmd => ({ id: 'sl-' + c.cmd, group: 'Start with', title: c.title, hint: '/' + c.cmd, run: () => useSlash(c) })),
     { id: 'ex-chat-quiz', group: 'This chat', title: 'Quiz me on this chat', run: () => sendBody('Make me a quiz (a quiz block, 6 questions, with the reason for each answer) on what we have covered in this chat.') },
@@ -1247,7 +1269,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                   {renaming === m.id
                     ? <Rename value={m.title} onDone={(v) => rename(m.id, v)} />
                     : <button type="button" className="cx-open tx" aria-current={m.id === conv.id ? 'true' : undefined} onClick={() => (sel ? setSel((o) => { const n = new Set(o); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; }) : void open(m.id))} onDoubleClick={() => setRenaming(m.id)} title={m.title}>
-                      {m.pinned && <UiIcon name="pin" size={13} className="cx-pinned" />}<span>{m.title}</span>{runIds.includes(m.id) && <i className="cx-run" role="img" aria-label="Writing a reply" />}</button>}
+                      {m.pinned && <UiIcon name="pin" size={13} className="cx-pinned" />}<span>{m.title}</span>{runIds.includes(m.id) ? <i className="cx-chatrun" role="img" aria-label="Writing a reply" /> : doneIds.includes(m.id) && <i className="cx-done" role="img" aria-label="Reply ready"><UiIcon name="check" size={13} /></i>}</button>}
                   {!sel && <button type="button" className="cx-more" aria-label={`Options for ${m.title}`} aria-haspopup="menu" aria-expanded={menu?.id === m.id}
                     onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); setMenu(menu?.id === m.id ? null : { id: m.id, x: Math.min(r.right, window.innerWidth - 8), y: r.bottom + 4 }); }}><UiIcon name="more" size={18} /></button>}
                 </div>
@@ -1301,6 +1323,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                   ['Made in Coe', 'layers', () => setGalOpen(true), !made],
                   ['Save this chat as a file', 'download', exportOne, empty],
                   ...(cloudOn ? [['Share this chat as a link', 'share', shareThis, empty]] : []),
+                  ['Report chat', 'alert', () => setReportOpen(true), empty],
                   ['Commands', 'command', () => setPalOpen(true), false],
                   ['Settings', 'gear', () => { setTab('look'); setPanel('settings'); }, false],
                   ...(isInstalled() ? [] : [['Install Coe as an app', 'install', () => { void installCoe().then(say); }, false]]),
@@ -1358,7 +1381,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                 ))}
               </div>
               <h3 className="hbs-h d">Start from a block</h3>
-              <div className="hbs" role="group" aria-label="Start from a block">
+              <div className={`hbs${allBlocks ? ' all' : ''}`} role="group" aria-label="Start from a block">
                 {STARTERS.slice(0, allBlocks ? STARTERS.length : 4).map((s, i) => (
                   <button key={s.title} type="button" className={`hb t${i % 4}`} title={s.hint} style={{ animationDelay: `${i * 40}ms` }}
                     onClick={() => { if (s.tool === 'code') { setTool(true); return; } setText(s.text ?? ''); box.current?.focus(); if (s.pic) (canCamera() ? setCapture('camera') : fileIn.current?.click()); }}>
@@ -1531,10 +1554,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               {(!busy || hasInput) && <button type="button" className={`cx-send${busy ? ' later' : ''}`} aria-label={busy ? (settings.whileBusy === 'interrupt' ? 'Send now' : 'Send next') : 'Send'} title={busy ? (settings.whileBusy === 'interrupt' ? 'Send now: Coe stops this reply, keeps it, and answers both' : 'Send next: it goes after this reply') : 'Send'} disabled={!canSend} onClick={send}><UiIcon name="send" size={20} /></button>}
             </div>
           </div>
-          <p className="cx-fine tx">{settings.enter === 'send' ? 'Enter sends, Shift+Enter adds a line.' : 'Ctrl+Enter sends.'} {assistant} can be wrong. Check anything important. <span className="cx-by">© {new Date().getFullYear()} PMC Studios · <a href="/privacy/">Privacy</a> · <a href="/about/">About</a></span></p>
+          <p className="cx-fine tx">{assistant} can be wrong. Check anything important. <span className="cx-by"><a href="/privacy/">Privacy</a> · <a href="/about/">About</a></span></p>
         </footer>
 
         {infoFor && (() => { const m = conv.messages.find((x) => x.id === infoFor); return m ? <AnswerInfo msg={m} onClose={() => setInfoFor(null)} /> : null; })()}
+        {reportOpen && <ReportChat title={conv.title} lines={conv.messages.filter((m) => m.text).slice(-6).map((m) => ({ r: m.role === 'user' ? 'you' as const : 'coe' as const, t: m.text }))} onClose={() => setReportOpen(false)} />}
         {studyOpen && <StudyHub onClose={() => setStudyOpen(false)} onAsk={askFor} say={say} />}
         {labOpen && <SoundLab settings={settings} onClose={() => setLabOpen(false)} onAttach={(a) => setAtts((x) => [...x, a].slice(0, 8))} />}
         {sketchOpen && <Sketch onDone={(f) => void addFiles([f])} onClose={() => setSketchOpen(false)} />}

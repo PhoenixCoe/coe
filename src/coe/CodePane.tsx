@@ -35,10 +35,13 @@ export function CodePane({ items, sel, changes, narrow, frac, onSel, onChanges, 
   const [wrap, setWrap] = useState(() => { try { return localStorage.getItem(WRAP) === '1'; } catch { return false; } });
   const [range, setRange] = useState<[number, number] | null>(null);
   const [pi, setPi] = useState(-1);
+  const [asPage, setAsPage] = useState(false);   // html and svg can be shown as the page itself
   const [seen, setSeen] = useState(() => { try { return localStorage.getItem('coe:cp-hint') === '1'; } catch { return false; } });
   const [ci, setCi] = useState(-1);
   const [found, setFound] = useState<{ id: string; list: Finding[]; done: boolean } | null>(null);
   useEffect(() => { setRange(null); setPi(-1); setCi(-1); }, [item?.id, changes]);
+  useEffect(() => { setAsPage(false); }, [item?.id]);
+  const page = !!item && (item.lang === 'html' || item.lang === 'svg');
   useEffect(() => { try { localStorage.setItem(WRAP, wrap ? '1' : '0'); } catch { /* not saved */ } }, [wrap]);
 
   // Problems are looked for here, on this device, as soon as the code shows. Nothing is sent anywhere.
@@ -85,7 +88,7 @@ export function CodePane({ items, sel, changes, narrow, frac, onSel, onChanges, 
   const drag = (e: React.PointerEvent<HTMLDivElement>) => {
     const box = root.current?.parentElement?.getBoundingClientRect(); if (!box) return;
     e.preventDefault(); const t = e.currentTarget; t.setPointerCapture(e.pointerId);
-    const mv = (ev: PointerEvent) => onSize((ev.clientX - box.left) / box.width);
+    const mv = (ev: PointerEvent) => onSize((box.right - ev.clientX) / box.width);   // the code is on the right, so its width is what is left of the pointer's right side
     const up = () => { t.removeEventListener('pointermove', mv); t.removeEventListener('pointerup', up); t.removeEventListener('pointercancel', up); };
     t.addEventListener('pointermove', mv); t.addEventListener('pointerup', up); t.addEventListener('pointercancel', up);
   };
@@ -95,7 +98,14 @@ export function CodePane({ items, sel, changes, narrow, frac, onSel, onChanges, 
   return (
     <aside ref={root} className={`cx-cp${narrow ? ' narrow' : ''}${wrap ? ' wrap' : ''}`} aria-label="Code">
       <header className="cp-h">
-        {narrow && <button type="button" className="cp-back" onClick={onClose}><UiIcon name="left" size={18} />Chat</button>}
+        <button type="button" className="ed-back" onClick={onClose} aria-label="Back to chat"><UiIcon name="back" size={22} strokeWidth={3} /><span className="d">Back to chat</span></button>
+        <span className="cx-grow" />
+        <div className="cp-tools">
+          <button type="button" className="cp-t" title="Copy all the code" aria-label="Copy all the code" onClick={async () => say((await copyText(item.code)) ? 'Code copied.' : 'Could not copy.')}><UiIcon name="copy" size={18} /></button>
+          <button type="button" className="cp-t" title="Save as a file" aria-label="Save as a file" onClick={download}><UiIcon name="download" size={18} /></button>
+        </div>
+      </header>
+      <div className="cp-strip">
         <label className="cp-pick">
           <UiIcon name="code" size={18} />
           <select value={item.id} aria-label="Which code" onChange={(e) => onSel(e.target.value)}>
@@ -103,13 +113,12 @@ export function CodePane({ items, sel, changes, narrow, frac, onSel, onChanges, 
           </select>
           <UiIcon name="down" size={14} />
         </label>
-        <div className="cp-tools">
-          <button type="button" className={`cp-t txt${wrap ? ' on' : ''}`} aria-pressed={wrap} title="Wrap long lines" onClick={() => setWrap((w) => !w)}>Wrap</button>
-          <button type="button" className="cp-t" title="Copy all the code" aria-label="Copy all the code" onClick={async () => say((await copyText(item.code)) ? 'Code copied.' : 'Could not copy.')}><UiIcon name="copy" size={18} /></button>
-          <button type="button" className="cp-t" title="Save as a file" aria-label="Save as a file" onClick={download}><UiIcon name="download" size={18} /></button>
-          {!narrow && <button type="button" className="cp-t" title="Hide the code" aria-label="Hide the code" onClick={onClose}><UiIcon name="close" size={18} /></button>}
-        </div>
-      </header>
+        {page && <div className="cp-seg" role="group" aria-label="What to show">
+          <button type="button" aria-pressed={!asPage} onClick={() => setAsPage(false)}>Code</button>
+          <button type="button" aria-pressed={asPage} onClick={() => setAsPage(true)}>Preview</button>
+        </div>}
+        {!asPage && <button type="button" className={`cp-t txt${wrap ? ' on' : ''}`} aria-pressed={wrap} title="Wrap long lines" onClick={() => setWrap((w) => !w)}>Wrap</button>}
+      </div>
 
       {(base || checked || problems.length > 0) && (
         <div className="cp-sub">
@@ -134,7 +143,8 @@ export function CodePane({ items, sel, changes, narrow, frac, onSel, onChanges, 
         </div>
       )}
 
-      <div className="cp-body" ref={body} key={`${item.id}${diff ? 'd' : ''}`} role="region" aria-label={label(item)} tabIndex={0}>
+      {asPage && page && <iframe className="cp-page" title={`${label(item)}, as a page`} sandbox="allow-scripts" srcDoc={item.lang === 'svg' ? `<!doctype html><meta charset="utf-8"><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#fff">${item.code}</body>` : item.code} />}
+      <div className="cp-body" ref={body} key={`${item.id}${diff ? 'd' : ''}`} role="region" aria-label={label(item)} tabIndex={0} hidden={asPage && page}>
         {shown.map((r, ri) => {
           const n = r.k === 'del' ? undefined : (r.b ?? 0) + 1;
           const html = r.k === 'del' ? hlOld[r.a ?? 0] : hlNew[r.b ?? 0];
@@ -163,7 +173,7 @@ export function CodePane({ items, sel, changes, narrow, frac, onSel, onChanges, 
       {!narrow && (
         <div className="cp-grip" role="separator" aria-orientation="vertical" aria-label="Make the code wider or narrower" aria-valuemin={25} aria-valuemax={65} aria-valuenow={Math.round(frac * 100)} tabIndex={0}
           title="Drag to resize. Double-click to reset." onPointerDown={drag} onDoubleClick={() => onSize(null)}
-          onKeyDown={(e) => { if (e.key === 'ArrowLeft') { e.preventDefault(); onSize(frac - 0.03); } else if (e.key === 'ArrowRight') { e.preventDefault(); onSize(frac + 0.03); } else if (e.key === 'Home' || e.key === 'Escape') { onSize(null); } }} />
+          onKeyDown={(e) => { if (e.key === 'ArrowLeft') { e.preventDefault(); onSize(frac + 0.03); } else if (e.key === 'ArrowRight') { e.preventDefault(); onSize(frac - 0.03); } else if (e.key === 'Home' || e.key === 'Escape') { onSize(null); } }} />
       )}
     </aside>
   );

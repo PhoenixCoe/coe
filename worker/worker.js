@@ -17,7 +17,8 @@
 //      APPS_FREE (5)  PMC App runs a day on Free. Pro is unlimited.
 //      PRO_EMAILS                        (text, optional)  emails that get Pro without paying, comma separated. For you, for testing.
 //      REQUIRE_SIGNIN                    (text, optional)  set to 1 so only signed-in people can chat
-//      RESEND_API_KEY (secret), MAIL_FROM, FEEDBACK_TO  (optional)  emails written feedback to FEEDBACK_TO (contact@pmcstudios.uk). MAIL_FROM must be on a domain you verified in Resend.
+//      RESEND_API_KEY (secret), MAIL_FROM  (optional)  emails feedback and reports to contact@pmcstudios.uk, laid out in the Coe style. MAIL_FROM must be on a domain you verified in Resend.
+//      MAIL_URGENT  (text, optional)  reports and "something is wrong" are marked urgent. Set to all to mark every email, or off to mark none.
 // 3. Deploy, then paste the Worker's address into Coe > Settings.
 
 const MOST = 16000;              // the longest reply it will ever ask for
@@ -33,7 +34,7 @@ const REPLY = { free: 2048, pro: 16000, work: 24000 };   // longest reply by pla
 // Things a day that need Pro, with a small taste on Free. Counted separately from tokens.
 const QUOTA = { work: { free: 1, pro: 200 }, search: { free: 3, pro: 100 }, image: { free: 2, pro: 40 }, app: { free: 5, pro: 100000 }, voice: { free: 24, pro: 3000 }, places: { free: 12, pro: 400 }, hear: { free: 3, pro: 60 } };
 const REDO = { free: 3, pro: 10 };                     // free "wrong? redo" a day (REDO_FREE / REDO_PRO change it). After that a redo counts like any message.
-const FEEDBACK_BONUS = 20000;                           // extra tokens for the day, for answering "How am I doing?" (never mentioned to the person)
+const FEEDBACK_BONUS = 50000;                           // extra tokens for the day, once a day, for answering "How am I doing?" or sending a message (FEEDBACK_BONUS changes it, never above 100000). It is shown in Settings > Usage.
 const CHECK = { free: 10, pro: 60 };                   // free "double-check my answer" passes a day (CHECK_FREE / CHECK_PRO change it)
 
 const num2 = (n) => Number(n).toLocaleString("en-GB");
@@ -55,6 +56,53 @@ async function hmac(secret, text) {
 
 const EXTENSION_IDS = ["ahmngjbjogpihonafedkcmhllmbccboa", "coe-mini@pmcstudios.uk"];   // Coe Mini: the Chrome-based id, and the Firefox id
 
+// ---- Email to the Coe team. Every email Coe sends goes to contact@pmcstudios.uk, through Resend, laid out in the Coe style.
+const MAIL_TO = "contact@pmcstudios.uk";
+const SITE = "https://coe.pmcstudios.uk";
+const escH = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const FACE = { good: ["Good", "#337957", "#F2E4CE"], fine: ["Fine", "#B49A57", "#171717"], bad: ["Not good", "#B3392B", "#F2E4CE"] };
+/** One email in the Coe look, kept plain so it reads quickly: the logo, a green title bar, one line that says which app, which version and what kind it is, then the message, then what is needed to answer it.
+ *  o.app is "web" or "mini". o.tag is [short word, colour] (an idea, a problem, a reason). o.chips are small extras (a mood). o.lines is a short piece of the chat, as [who, text] pairs. o.action is [label, link]. */
+function coeMail(o) {
+  const font = "'PMC Symbols L4','PMC Font','Arial',Helvetica,sans-serif", head = "'PMC Symbols L2','PMC Header','Arial Black',Impact,Arial,sans-serif";
+  const hot = !!o.tag && o.tag[1] === "#B3392B";
+  const parts = [{ t: o.app === "mini" ? "Coe Mini" : "Coe website", c: "#171717" }, o.ver ? { t: o.ver, c: "#1A4934" } : null, o.tag ? { t: o.tag[0], c: hot ? "#B3392B" : "#1A4934" } : null, ...(o.chips || []).map((c) => ({ t: c[0], c: "#1A4934" }))].filter(Boolean);
+  const strip = '<tr><td style="padding:20px 26px 6px 26px;font-family:' + head + ';font-size:20px;line-height:1.3;letter-spacing:1px;text-transform:uppercase;">'
+    + parts.map((p) => '<span style="color:' + p.c + ';">' + escH(p.t) + "</span>").join(' <span style="color:#B49A57;">&middot;</span> ') + "</td></tr>";
+  const text = '<tr><td style="padding:10px 26px 20px 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-left:4px solid #337957;padding:2px 0 2px 16px;font-family:' + font + ';font-size:17px;line-height:1.55;color:#171717;word-break:break-word;">'
+    + (o.message ? escH(o.message).replace(/\r?\n/g, "<br>") : '<span style="color:#6B6B6B;">No note was written.</span>') + "</td></tr></table></td></tr>";
+  const chat = o.lines && o.lines.length ? '<tr><td style="padding:0 26px 20px 26px;"><div style="padding:0 0 6px 0;font-family:' + head + ';font-size:11px;line-height:1.3;letter-spacing:1px;text-transform:uppercase;color:#1A4934;">The last few messages</div><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-left:2px solid #D8C6A6;padding:0 0 0 14px;font-family:' + font + ';font-size:14px;line-height:1.5;color:#3A3A3A;word-break:break-word;">'
+    + o.lines.map((l) => '<div style="padding:0 0 7px 0;"><span style="font-family:' + head + ';font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#1A4934;">' + escH(l[0]) + "</span> " + escH(l[1]).replace(/\r?\n/g, "<br>") + "</div>").join("") + "</td></tr></table></td></tr>" : "";
+  const button = (label, href) => '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td bgcolor="#B49A57" style="background:#B49A57;border:3px solid #171717;"><a href="' + escH(href) + '" style="display:block;padding:10px 18px 8px 18px;font-family:' + head + ';font-size:16px;line-height:1;letter-spacing:1px;text-transform:uppercase;color:#171717;text-decoration:none;">' + escH(label) + "</a></td></tr></table>";
+  const mail = o.reply ? "mailto:" + o.reply + "?subject=" + encodeURIComponent(o.replySubject || "Re: your message to Coe") : "";
+  const who = o.reply ? (o.reply.length > 30 ? o.reply.slice(0, 29) + "…" : o.reply) : "";
+  const buttons = o.action || o.reply ? '<tr><td style="padding:0 26px 22px 26px;font-family:' + font + ';font-size:14px;line-height:1.5;">' + (o.action ? button(o.action[0], o.action[1]) + (o.reply ? '<div style="padding-top:12px;"><a href="' + escH(mail) + '" style="color:#1A4934;">Reply to ' + escH(who) + "</a></div>" : "") : button("Reply to " + who, mail)) + "</td></tr>" : "";
+  const rows = (o.rows || []).filter((r) => r[1]).map((r) => '<span style="color:#1A4934;">' + escH(r[0]) + "</span> " + (r[2] ? '<a href="' + escH(r[1]) + '" style="color:#1A4934;">' + escH(r[1]) + "</a>" : escH(r[1]))).join("<br>");
+  const small = rows ? '<tr><td style="padding:0 26px 22px 26px;"><div style="border-top:2px solid #D8C6A6;padding-top:12px;font-family:' + font + ';font-size:13px;line-height:1.7;color:#4A4A4A;word-break:break-word;">' + rows + "</div></td></tr>" : "";
+  return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="light only"><title>' + escH(o.subject) + '</title>'
+    + "<style>@font-face{font-family:'PMC Font';src:url(" + SITE + "/fonts/PMCFont.woff2) format('woff2');}@font-face{font-family:'PMC Header';src:url(" + SITE + "/fonts/PMCHeader.woff2) format('woff2');}@font-face{font-family:'PMC Symbols L2';src:url(" + SITE + "/fonts/PMCSymbolsL2.woff2) format('woff2');unicode-range:U+0022,U+0023,U+0024,U+0025,U+0026,U+0027,U+002A,U+003C,U+003E,U+003F,U+0040,U+005B,U+005D,U+005E,U+005F,U+0060,U+007B,U+007C,U+007D,U+007E,U+00A1,U+00A3,U+00A9,U+00AB,U+00AE,U+00B0,U+00B1,U+00B7,U+00BB,U+00BF,U+00D7,U+00F7,U+2013,U+2014,U+2018,U+2019,U+201C,U+201D,U+2022,U+2026,U+2190,U+2191,U+2192,U+2193,U+2212,U+2713;}@font-face{font-family:'PMC Symbols L4';src:url(" + SITE + "/fonts/PMCSymbolsL4.woff2) format('woff2');unicode-range:U+0022,U+0023,U+0024,U+0025,U+0026,U+0027,U+002A,U+003C,U+003E,U+003F,U+0040,U+005B,U+005D,U+005E,U+005F,U+0060,U+007B,U+007C,U+007D,U+007E,U+00A1,U+00A3,U+00A9,U+00AB,U+00AE,U+00B0,U+00B1,U+00B7,U+00BB,U+00BF,U+00D7,U+00F7,U+2013,U+2014,U+2018,U+2019,U+201C,U+201D,U+2022,U+2026,U+2190,U+2191,U+2192,U+2193,U+2212,U+2713;}</style></head>"
+    + '<body style="margin:0;padding:0;background:#171717;"><div style="display:none;max-height:0;overflow:hidden;opacity:0;">' + escH(o.preheader || "") + "</div>"
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#171717" style="background:#171717;"><tr><td align="center" style="padding:28px 14px;">'
+    + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">'
+    + '<tr><td bgcolor="#171717" style="padding:0 0 18px 0;"><img src="' + SITE + '/email/logo.png" width="90" height="44" alt="Coe" style="display:block;border:0;"></td></tr>'
+    + '<tr><td bgcolor="#F2E4CE" style="background:#F2E4CE;border:4px solid #337957;padding:0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">'
+    + '<tr><td bgcolor="#337957" style="background:#337957;padding:16px 26px;font-family:' + head + ';font-size:22px;font-weight:bold;color:#F2E4CE;text-transform:uppercase;"><img src="' + SITE + "/email/" + o.titleImg + '.png" width="' + o.titleW + '" height="36" alt="' + escH(o.title) + '" style="display:block;border:0;color:#F2E4CE;font-size:22px;"></td></tr>'
+    + strip + text + chat + buttons + small
+    + "</table></td></tr>"
+    + '<tr><td style="padding:18px 4px 0 4px;font-family:' + font + ';font-size:12px;line-height:1.5;color:#B49A57;"><a href="' + SITE + '" style="text-decoration:none;"><img src="' + SITE + '/email/pmc.png" width="64" height="36" alt="PMC Studios" style="display:block;border:0;color:#B49A57;"></a></td></tr>'
+    + "</table></td></tr></table></body></html>";
+}
+/** Sends one email to the team. Resolves to whether Resend took it.
+ *  An urgent one (a report, or something wrong) is flagged high priority, and its subject starts with [Urgent], because Gmail ignores the flag. MAIL_URGENT: "all" flags every email, "off" flags none. */
+async function mailTeam(env, o) {
+  if (!env.RESEND_API_KEY) return false;
+  const mode = String(env.MAIL_URGENT || "").trim().toLowerCase(), urgent = mode === "all" || (mode !== "off" && !!o.urgent);
+  const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + String(env.RESEND_API_KEY).trim(), "content-type": "application/json" },
+    body: JSON.stringify({ from: env.MAIL_FROM || "Coe <coe@pmcstudios.uk>", to: [MAIL_TO], reply_to: o.reply || undefined, subject: (urgent ? "[Urgent] " : "") + o.subject, html: coeMail(o), text: o.plain,
+      headers: urgent ? { "X-Priority": "1 (Highest)", "Importance": "high", "Priority": "urgent" } : undefined }) }).catch(() => null);
+  return !!r?.ok;
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -70,7 +118,7 @@ export default {
     const okOrigin = allowed.includes(origin) || fromExt;
     const cors = {
       "Access-Control-Allow-Origin": origin && okOrigin ? origin : "null",
-      "Access-Control-Allow-Headers": "content-type, x-coe-code, x-coe-redo, x-coe-step, x-coe-check, x-coe-lang, x-coe-ext, x-coe-call, authorization",
+      "Access-Control-Allow-Headers": "content-type, x-coe-code, x-coe-redo, x-coe-step, x-coe-check, x-coe-lang, x-coe-ext, x-coe-call, x-coe-test, authorization",
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Expose-Headers": "x-coe-used, x-coe-limit, x-coe-plan",
       "Vary": "Origin",
@@ -168,6 +216,19 @@ export default {
       const u = await r.json(); who = { id: u.id, email: u.email };
     }
 
+    // ---- banned accounts: BANNED holds emails or account ids (separated by commas, spaces or new lines). A banned account can sign in and see its status, but cannot ask for or make anything.
+    const banned = !!who && String(env.BANNED || "").toLowerCase().split(/[\s,;]+/).filter(Boolean).some((x) => x === String(who.email || "").toLowerCase() || x === String(who.id || "").toLowerCase());
+    const BAN_TEXT = "You cannot ask or generate any more responses. To appeal, contact contact@pmcstudios.uk for an answer.";
+    if (banned) {
+      if (request.method === "GET" && path === "/me") return reply(200, { billing: !!billing, signedIn: true, email: who.email, plan: "free", used: 0, limit: 0, banned: true });
+      return fail(403, BAN_TEXT, "banned");
+    }
+
+    // ---- the owner: OWNER_EMAILS holds the emails (commas, spaces or new lines) that may use the owner tools. It is checked here, from the signed-in account, never from anything the page says.
+    const owners = String(env.OWNER_EMAILS || "").toLowerCase().split(/[\s,;]+/).filter(Boolean);
+    const isOwner = !!who && owners.includes(String(who.email || "").toLowerCase());
+    const ownerBit = isOwner ? { owner: true } : {};
+
     // ---- who counts: the account, or the network for people who are not signed in
     let subjectMemo = null, planMemo = null;
     const subjectOf = async () => (subjectMemo ??= who ? who.id : "ip:" + (await sha((request.headers.get("cf-connecting-ip") || "unknown") + (env.API_KEY || ""))));
@@ -178,33 +239,41 @@ export default {
 
     // Extra tokens earned today (by answering "How am I doing?"). They are added to the day's limit.
     const bonusToday = async () => (billing ? await usedToday("bonus:" + (await subjectOf())) : 0);
+    const fbBonus = Math.max(0, Math.min(100000, Math.round(Number(env.FEEDBACK_BONUS)) || FEEDBACK_BONUS));
 
     // ---- "How am I doing?" and the feedback form. A rating is counted (and quietly earns a few extra tokens, once a day).
-    // A written message is emailed to FEEDBACK_TO (default contact@pmcstudios.uk) through Resend, when RESEND_API_KEY is set.
+    // A written message is emailed to contact@pmcstudios.uk through Resend, when RESEND_API_KEY is set.
     if (request.method === "POST" && path === "/feedback") {
       let b = {}; try { b = await request.json(); } catch { /* an empty body is refused below */ }
       const message = String(b.message || "").trim().slice(0, 2000), kind = ["idea", "problem", "other", "rating"].includes(b.kind) ? b.kind : "rating";
       if (!["bad", "fine", "good"].includes(b.rating) && !message) return fail(400, "Write a message or pick a face.");
-      if (billing && ["bad", "fine", "good"].includes(b.rating)) {
-        const sub = await subjectOf();
-        await spend("fbtally:" + b.rating, 1, 1e9).catch(() => {});
-        if ((await spend("fb:" + sub, 1, 1).catch(() => -1)) >= 0) await spend("bonus:" + sub, FEEDBACK_BONUS, 1e9).catch(() => {});
-      }
+      const rated = ["bad", "fine", "good"].includes(b.rating);
+      if (billing && rated) await spend("fbtally:" + b.rating, 1, 1e9).catch(() => {});
       let emailed = false;
       if (message && env.RESEND_API_KEY) {
         const ok = billing ? (await spend("fbmsg:" + (await subjectOf()), 1, 8).catch(() => 0)) >= 0 : true;   // 8 messages a day each
         if (ok) {
-          const r = await fetch("https://api.resend.com/emails", { method: "POST", headers: { authorization: "Bearer " + String(env.RESEND_API_KEY).trim(), "content-type": "application/json" },
-            body: JSON.stringify({ from: env.MAIL_FROM || "Coe <coe@pmcstudios.uk>", to: [env.FEEDBACK_TO || "contact@pmcstudios.uk"], reply_to: who?.email || undefined,
-              subject: "Coe feedback: " + kind + (b.rating ? " (" + b.rating + ")" : ""), text: message + "\n\n---\nFrom: " + (who?.email || "not signed in") + "\nRating: " + (b.rating || "none") + "\nPage: " + String(b.page || "").slice(0, 200) }) }).catch(() => null);
-          emailed = !!r?.ok;
+          const KIND = { idea: ["Idea", "#F2E4CE", "#171717"], problem: ["Problem", "#B3392B", "#F2E4CE"], other: ["Other", "#F2E4CE", "#171717"], rating: ["Rating", "#F2E4CE", "#171717"] }, face = FACE[b.rating];
+          const app = fromExt ? "mini" : "web", appName = fromExt ? "Coe Mini" : "Coe website", ver = String(b.v || "").replace(/[^0-9A-Za-z.\-]/g, "").slice(0, 24);
+          const page = String(b.page || "").slice(0, 200), from = who?.email || "", k = KIND[kind] || KIND.other, head = appName + (ver ? " " + ver : "");
+          const subject = head + " \u00b7 " + k[0] + ": " + message.replace(/\s+/g, " ").slice(0, 60) + (message.length > 60 ? "\u2026" : "");
+          emailed = await mailTeam(env, { subject, replySubject: "Re: your feedback on Coe", preheader: head + ". " + message.slice(0, 80), title: "New feedback", titleImg: "title-feedback", titleW: 231, urgent: kind === "problem", app, ver, tag: [k[0], k[1]], message, reply: from,
+            chips: face ? [[face[0], face[1], face[2]]] : [],
+            rows: [["From", from || "Not signed in"], ["Plan", who ? (await planOf().catch(() => ({}))).plan : ""], ["Page", app === "web" && page ? SITE + page : "", true], ["Sent", new Date().toUTCString().replace(" GMT", " UTC")]],
+            plain: head + " | " + k[0] + (face ? " | " + face[0] : "") + "\n\n" + message + "\n\n---\nFrom: " + (from || "not signed in") + "\nPage: " + page });
         }
       }
-      return reply(200, { ok: true, emailed });
+      // The bonus: once a day, for a rating or for a message that really was sent.
+      let bonus = 0;
+      if (billing && (rated || emailed)) {
+        const sub = await subjectOf();
+        if ((await spend("fb:" + sub, 1, 1).catch(() => -1)) >= 0) { bonus = fbBonus; await spend("bonus:" + sub, bonus, 1e9).catch(() => { bonus = 0; }); }
+      }
+      return reply(200, { ok: true, emailed, bonus });
     }
 
     if (request.method === "GET" && path === "/me") {
-      if (!billing) return reply(200, { billing: false, signedIn: !!who, plan: "free", used: 0, limit: limits.free });
+      if (!billing) return reply(200, { billing: false, signedIn: !!who, plan: "free", used: 0, limit: limits.free, ...ownerBit });
       const pl = await planOf(), plan = pl.plan, sub = await subjectOf();
       const q = {};
       for (const k of Object.keys(quotas)) q[k] = { used: await usedToday(k + ":" + sub), limit: quotas[k][plan] };
@@ -220,7 +289,62 @@ export default {
         const r2 = await sb("/rest/v1/usage?select=day,used&subject=eq." + encodeURIComponent("refunded:" + who.id) + "&day=gte." + since2 + "&order=day.asc");
         if (r2.ok) refunds = await r2.json();
       }
-      return reply(200, { billing: true, canBuy: !!env.STRIPE_SECRET_KEY, signedIn: !!who, email: who?.email, plan, given: !!pl.given, used: who ? await usedToday(who.id) : 0, limit: (who ? limits[plan] : limits.anon) + (await bonusToday()), renews: pl.sub && plan === "pro" ? pl.sub.period_end : undefined, quotas: q, week, refunds });
+      return reply(200, { ...ownerBit, billing: true, canBuy: !!env.STRIPE_SECRET_KEY, signedIn: !!who, email: who?.email, plan, given: !!pl.given, used: who ? await usedToday(who.id) : 0, limit: (who ? limits[plan] : limits.anon) + (await bonusToday()), renews: pl.sub && plan === "pro" ? pl.sub.period_end : undefined, quotas: q, week, refunds, bonus: await bonusToday(), fbBonus, fbDone: (await usedToday("fb:" + sub)) > 0 });
+    }
+
+    // ---- Report a chat: a shared one (it comes with its link) or one open in Coe or Coe Mini (it can come with its last few messages, only when the person left that ticked). 5 a day each. It is emailed to contact@pmcstudios.uk when RESEND_API_KEY is set.
+    if (request.method === "POST" && path === "/report") {
+      let b = {}; try { b = await request.json(); } catch { /* refused below */ }
+      const link = String(b.link || "").slice(0, 400), why = ["unsafe", "private", "wrong", "other"].includes(b.why) ? b.why : "other", note = String(b.note || "").trim().slice(0, 1000);
+      const c = b.chat && typeof b.chat === "object" ? b.chat : null, title = String(c?.title || "").replace(/\s+/g, " ").trim().slice(0, 120);
+      if (!c && !/^https?:\/\//.test(link)) return fail(400, "That link could not be read.");
+      const lines = []; let room = 4000;
+      for (const m of Array.isArray(c?.msgs) ? c.msgs.slice(-8) : []) { const t = String(m?.t || "").trim().slice(0, Math.min(700, room)); if (!t) continue; room -= t.length; lines.push([m.r === "you" ? "You" : "Coe", t]); if (room <= 0) break; }
+      if (billing && (await spend("report:" + (await subjectOf()), 1, 5).catch(() => 0)) < 0) return fail(429, "You have sent enough reports for today. Thank you.");
+      let emailed = false;
+      if (env.RESEND_API_KEY) {
+        const WHYT = { unsafe: "Unsafe or harmful", private: "Shows private details", wrong: "Wrong or misleading", other: "Something else" }, SHORT = { unsafe: "Unsafe", private: "Private", wrong: "Wrong", other: "Other" }, from = who?.email || "";
+        const app = fromExt ? "mini" : "web", appName = fromExt ? "Coe Mini" : "Coe website", ver = String(b.v || "").replace(/[^0-9A-Za-z.\-]/g, "").slice(0, 24), head = appName + (ver ? " " + ver : "");
+        const red = why === "other" ? ["#F2E4CE", "#171717"] : ["#B3392B", "#F2E4CE"];
+        emailed = await mailTeam(env, { subject: head + " \u00b7 Report: " + SHORT[why] + (title ? " \u2014 " + title.slice(0, 50) : ""), replySubject: "Re: your report on Coe", preheader: head + ". " + (c ? "A chat was reported: " : "A shared chat was reported: ") + WHYT[why], title: "Chat reported", titleImg: "title-report", titleW: 239, urgent: true, app, ver,
+          tag: [SHORT[why], red[0]], message: note, lines, reply: from, action: link ? ["Open the shared chat", link] : null,
+          rows: [["Chat", c ? (title || "Untitled") + (lines.length ? "" : " (messages not sent)") : "A shared chat"], ["Reported by", from || "Not signed in"], ["Sent", new Date().toUTCString().replace(" GMT", " UTC")]],
+          plain: head + " | Report: " + WHYT[why] + "\n" + (link ? "Link: " + link + "\n" : "Chat: " + (title || "Untitled") + "\n") + "Note: " + (note || "none") + (lines.length ? "\n\n" + lines.map((l) => l[0] + ": " + l[1]).join("\n\n") : "") + "\n\n---\nFrom: " + (from || "not signed in") });
+      }
+      return reply(200, { ok: true, emailed });
+    }
+
+    // ---- Owner tools. Only for an email in OWNER_EMAILS. To anyone else this does not exist.
+    if (path === "/owner") {
+      if (!isOwner) return fail(404, "Not found.");
+      if (request.method !== "POST") return fail(405, "Use POST.");
+      let b = {}; try { b = await request.json(); } catch { /* an empty body means no command */ }
+      const cmd = String(b.cmd || "");
+      const yes = (v) => !!String(v || "").trim();
+      if (cmd === "refill") {
+        if (!billing) return fail(503, "Accounts are not switched on, so there is no count to refill.");
+        let reset = 0;
+        const used = await usedToday(who.id);
+        if (used > 0) { await spend(who.id, -used, 1e9); reset++; }
+        for (const k of ["work", "search", "image", "app", "voice", "redo", "check", "fb", "fbmsg", "bonus", "refunded", "report"]) {
+          const key = (k === "refunded" ? "refunded:" + who.id : k + ":" + who.id), u = await usedToday(key);
+          if (u > 0) { await spend(key, -u, 1e9).catch(() => {}); reset++; }
+        }
+        return reply(200, { ok: true, reset });
+      }
+      if (cmd === "status" || cmd === "debug") {
+        const pl = billing ? await planFor(who) : { plan: "free" };
+        const out = {
+          time: new Date().toISOString(), accounts: billing, aiKey: yes(env.API_KEY), stripe: yes(env.STRIPE_SECRET_KEY), stripeWebhook: yes(env.STRIPE_WEBHOOK_SECRET), email: yes(env.RESEND_API_KEY), places: yes(env.GOOGLE_PLACES_KEY),
+          models: { swift: env.MODEL_SWIFT || DEFAULTS.swift, core: env.MODEL_CORE || DEFAULTS.core, deep: env.MODEL_DEEP || DEFAULTS.deep },
+          allowedOrigins: allowed.length, extensionIds: extIds.length, owners: owners.length, banned: String(env.BANNED || "").split(/[\s,;]+/).filter(Boolean).length, proEmails: proEmails.length,
+          accessCode: yes(env.ACCESS_CODE), requireSignIn: yes(env.REQUIRE_SIGNIN), limits, feedbackBonus: fbBonus,
+          you: { email: who.email, plan: pl.plan, given: !!pl.given, usedToday: billing ? await usedToday(who.id) : 0 },
+        };
+        if (cmd === "debug") out.request = { origin: origin || "none", fromExtension: fromExt, country: request.headers.get("cf-ipcountry") || "unknown", ray: request.headers.get("cf-ray") || "none", agent: String(request.headers.get("user-agent") || "").slice(0, 160) };
+        return reply(200, { ok: true, status: out });
+      }
+      return fail(400, "That command is not known.");
     }
 
     if (request.method === "POST" && path === "/checkout") {
@@ -387,28 +511,6 @@ export default {
       return reply(200, out && typeof out === "object" ? { heard: out } : { heard: { summary: said.slice(0, 600) } });
     }
 
-    // ---- voice: text to speech. Streams the sound back.
-    if (request.method === "POST" && path === "/speak") {
-      if (billing && env.REQUIRE_SIGNIN && !who) return fail(401, "Sign in to use Coe.", "signin");
-      let b = {}; try { b = await request.json(); } catch { /* none */ }
-      const text = String(b.text || "").replace(/\s+/g, " ").trim().slice(0, 3500);
-      if (!text) return fail(400, "There is nothing to say.");
-      const VOICES = ["alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse", "marin", "cedar"];
-      const voice = VOICES.includes(b.voice) ? b.voice : "marin";
-      let plan = "free", paid = false; if (billing) plan = (await planOf()).plan;
-      if (billing) {
-        try { if (!(await quota("voice", plan))) return fail(403, plan === "pro" ? "You have used today's voice. It comes back at midnight (UTC)." : `Free includes ${quotas.voice.free} voice turns a day. Pro has ${quotas.voice.pro}.`, "plan"); paid = true; }
-        catch (e) { return fail(503, "Voice could not be checked just now. Try again in a moment."); }
-      }
-      const speed = Math.min(1.5, Math.max(0.7, Number(b.speed) || 1));
-      let r; const payload = { model: env.MODEL_SPEECH || "gpt-4o-mini-tts", voice, input: text, response_format: "mp3", speed };
-      if (typeof b.style === "string" && b.style.trim()) payload.instructions = b.style.trim().slice(0, 300);
-      try { r = await fetch(env.OPENAI_SPEECH_URL || "https://api.openai.com/v1/audio/speech", { method: "POST", headers: { "content-type": "application/json", authorization: "Bearer " + String(env.API_KEY || "").trim().replace(/^["']|["']$/g, "") }, body: JSON.stringify(payload) }); }
-      catch (e) { if (paid) await giveBack("voice"); return fail(502, "The voice could not be reached. Try again in a moment."); }
-      if (!r.ok) { if (paid) await giveBack("voice"); return fail(r.status === 401 ? 503 : 502, r.status === 401 ? keyMsg() : "The voice could not be made. Try again in a moment."); }
-      return new Response(r.body, { status: 200, headers: { ...cors, "content-type": r.headers.get("content-type") || "audio/mpeg", "cache-control": "no-store" } });
-    }
-
     // ---- a run of a PMC App inside the chat. Free has a few a day. Pro never runs out.
     // ---- businesses and places with ratings, phone, website and photos. Optional: it needs GOOGLE_PLACES_KEY. Without it Coe still finds places through OpenStreetMap.
     if (request.method === "GET" && path === "/places/photo") {
@@ -516,6 +618,15 @@ export default {
 
     if (request.method !== "POST" || path !== "/") return fail(404, "Not found.");
     if (env.REQUIRE_SIGNIN && !who) return fail(401, "Sign in to use Coe.", "signin");
+    // The owner can ask for a pretend problem (x-coe-test), to see how each one looks. Anyone else's header is ignored.
+    const test = isOwner ? String(request.headers.get("x-coe-test") || "") : "";
+    if (test) {
+      const T = { limit: [402, "Your tokens for today are used up. They come back at midnight (UTC). This is a test."], plan: [403, "Coe Deep is part of Pro. This is a test.", "plan"], busy: [429, "Coe is busy right now. Try again in a moment. This is a test."],
+        down: [502, "The model could not be reached. Try again in a moment. This is a test."], key: [503, "Coe is not available right now. Try again later. This is a test."], signin: [401, "Sign in again to use Coe. This is a test.", "signin"],
+        banned: [403, BAN_TEXT, "banned"], check: [429, "The free double-checks for today are used. This is a test.", "check_cap"], big: [413, "That is too big for Free. This is a test."] };
+      if (test === "slow") await new Promise((r) => setTimeout(r, 8000));
+      else if (T[test]) return fail(T[test][0], T[test][1], T[test][2]);
+    }
     const planEarly = billing ? (await planOf()).plan : "free";
     if (Number(request.headers.get("content-length") || 0) > BIGGEST[planEarly]) return fail(413, planEarly === "pro" ? "That is too much to send at once." : "That is too big for Free. Pro can send much bigger files.", planEarly === "pro" ? undefined : "plan");
     let body;

@@ -71,7 +71,8 @@ export default function Editor(p: EditorProps) {
   const remove = (d: EDoc) => { flush(); const rest = docsRef.current.filter((x) => x.id !== d.id); p.onDocs(rest); setConfirm(false); if (rest.length) p.onActive(rest[Math.max(0, docsRef.current.findIndex((x) => x.id === d.id) - 1)]?.id ?? rest[0].id); };
   const undoCoe = (d: EDoc) => { if (d.prev === undefined) return; p.onDocs(docsRef.current.map((x) => (x.id === d.id ? { ...x, text: d.prev as string, prev: undefined, rev: x.rev + 1, by: 'you', at: Date.now() } : x))); };
 
-  const view: View = active ? views[active.id] ?? (active.kind === 'web' ? 'both' : active.kind === 'data' ? (active.by === 'coe' ? 'table' : 'text') : 'text') : 'text';
+  const pretty = !!active && active.kind === 'code' && (active.lang === 'html' || active.lang === 'svg');   // code that is also a page: it can be shown as code, as the page, or both
+  const view: View = active ? views[active.id] ?? (active.kind === 'web' ? 'both' : pretty ? 'code' : active.kind === 'data' ? (active.by === 'coe' ? 'table' : 'text') : 'text') : 'text';
   const setView = (v: View) => { if (active) setViews((o) => ({ ...o, [active.id]: v })); };
   const api = useMemo(() => ({ send: p.send, compose: p.compose, toast: p.toast }), [p.send, p.compose, p.toast]);
 
@@ -207,7 +208,7 @@ export default function Editor(p: EditorProps) {
           {active.kind === 'code' && (
             <select className="ed-sel" aria-label="Language" value={active.lang ?? 'code'} onChange={(e) => patch(active, { lang: e.target.value })}>{Object.entries(LANG_NAME).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select>
           )}
-          {active.kind === 'web' && <Seg label="What to show" value={view as 'preview' | 'code' | 'both'} onChange={setView} items={[{ v: 'preview', n: 'Page' }, { v: 'code', n: 'Code' }, { v: 'both', n: 'Both' }]} />}
+          {(active.kind === 'web' || pretty) && <Seg label="What to show" value={(pretty && view === 'text' ? 'code' : view) as 'preview' | 'code' | 'both'} onChange={setView} items={[{ v: 'preview', n: pretty ? 'Preview' : 'Page' }, { v: 'code', n: 'Code' }, { v: 'both', n: 'Both' }]} />}
           {active.kind === 'data' && <Seg label="What to show" value={view as 'table' | 'text'} onChange={setView} items={[{ v: 'table', n: 'Table' }, { v: 'text', n: 'Text' }]} />}
           <span className="ed-tools" ref={setSlot} />
           <span className="cx-grow" />
@@ -232,7 +233,13 @@ export default function Editor(p: EditorProps) {
 
       <div className="ed-body">
         {active?.kind === 'doc' && <DocEditor key={`${active.id}:${active.rev}`} initial={active.text} title={active.title} api={api} slot={slot} ctl={ctl} head={head} onText={(h) => push(active, h)} onStats={(w, ch) => setStats({ w, c: ch })} onSel={setSel} />}
-        {active?.kind === 'code' && <div className="ed-pane"><CodeArea key={`${active.id}:${active.rev}`} initial={active.text} lang={active.lang ?? 'code'} label={`${active.title}, code`} api={api} slot={slot} ctl={ctl} fileName={exportOf(active).name} onSel={setSel} onText={(t) => push(active, t)} /></div>}
+        {active?.kind === 'code' && pretty && view !== 'code' && view !== 'text' && (
+          <div className="ed-pane"><div className={`ed-split${view === 'both' ? ' both' : ''}`}>
+            {view === 'both' && <div className="ed-half"><CodeArea key={`${active.id}:${active.rev}`} initial={active.text} lang={active.lang ?? 'code'} label={`${active.title}, code`} api={api} ctl={ctl} fileName={exportOf(active).name} runnable={false} onSel={setSel} onText={(t) => push(active, t)} /></div>}
+            <div className="ed-half"><WebPreview html={active.lang === 'svg' ? `<!doctype html><meta charset="utf-8"><body style="margin:0;display:grid;place-items:center;min-height:100vh;background:#fff">${textOf(active)}</body>` : textOf(active)} title={active.title} api={api} ctl={ctl} /></div>
+          </div></div>
+        )}
+        {active?.kind === 'code' && !(pretty && view !== 'code' && view !== 'text') && <div className="ed-pane"><CodeArea key={`${active.id}:${active.rev}`} initial={active.text} lang={active.lang ?? 'code'} label={`${active.title}, code`} api={api} slot={slot} ctl={ctl} fileName={exportOf(active).name} onSel={setSel} onText={(t) => push(active, t)} /></div>}
         {active?.kind === 'web' && (
           <div className="ed-pane"><div className={`ed-split${view === 'both' ? ' both' : ''}`}>
             {view !== 'preview' && <div className="ed-half"><CodeArea key={`${active.id}:${active.rev}`} initial={active.text} lang="html" label={`${active.title}, page code`} api={api} ctl={ctl} fileName={exportOf(active).name} runnable={false} onSel={setSel} onText={(t) => push(active, t)} /></div>}

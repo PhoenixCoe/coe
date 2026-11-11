@@ -10,12 +10,13 @@ import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, set
 import { DEFAULTS, type CoeSettings } from '@/lib/coe/settings';
 import { FEATURES, FEATURE_GROUPS, type FeaturePlan } from '@/lib/coe/features';
 import { loadSettings } from '@/lib/coe/settings';
-import { EXT_FILE, EXT_FILE_FIREFOX, connectMini, disconnectMini, onExtConnected, useExtension } from '@/lib/coe/extension';
+import { CoeStar } from '@/ui/Mark';
+import { MINI_STORE, connectMini, disconnectMini, onExtConnected, useExtension } from '@/lib/coe/extension';
 import { session } from '@/lib/coe/cloud';
 import { AGE_OPTIONS, ROLE_OPTIONS, levelWords } from '@/lib/coe/profile';
 import { GoodRisk } from './GoodRisk';
 import { Notice } from './ErrorBox';
-import { mailtoFeedback, sendFeedback, type FeedbackKind } from '@/lib/coe/feedback';
+import { sendFeedback, type FeedbackKind } from '@/lib/coe/feedback';
 
 type Up = (patch: Partial<CoeSettings>) => void;
 type Icon = Parameters<typeof UiIcon>[0]['name'];
@@ -131,16 +132,26 @@ export function LearnTab({ s, up }: { s: CoeSettings; up: Up }) {
 function FeedbackForm() {
   const [kind, setKind] = useState<FeedbackKind>('idea'), [text, setText] = useState(''), [st, setSt] = useState<'' | 'sending' | 'sent' | 'failed'>('');
   return (
-    <form className="cx-fbform" onSubmit={(e) => { e.preventDefault(); if (!text.trim()) return; setSt('sending'); void sendFeedback(loadSettings(), undefined, text, kind).then((r) => setSt(r.emailed ? 'sent' : 'failed')); }}>
+    <form className="cx-fbform" onSubmit={(e) => { e.preventDefault(); if (!text.trim()) return; setSt('sending'); void sendFeedback(loadSettings(), undefined, text, kind).then((r) => { setSt(r.emailed ? 'sent' : 'failed'); if (r.emailed) setText(''); }); }}>
       <b className="d">Tell us something</b>
       <Select label="What is it?" value={kind} onChange={(v) => setKind(v)} options={[{ value: 'idea', label: 'An idea' }, { value: 'problem', label: 'Something is wrong' }, { value: 'other', label: 'Something else' }]} />
       <textarea className="cx-in tall" rows={4} maxLength={2000} value={text} placeholder="Write it here" aria-label="Your message" onChange={(e) => { setText(e.target.value); setSt(''); }} />
       <div className="cx-actions">
         <button type="submit" className="btn small gold" disabled={!text.trim() || st === 'sending'}>{st === 'sending' ? 'Sending…' : 'Send'}</button>
         {st === 'sent' && <span className="tx" role="status">Sent. Thank you.</span>}
-        {st === 'failed' && <><span className="tx" role="status">It could not be sent from here.</span><button type="button" className="btn small" onClick={() => mailtoFeedback(text, kind)}>Email it instead</button></>}
+        {st === 'failed' && <span className="tx" role="status">It did not send. Press Send to try again.</span>}
       </div>
     </form>
+  );
+}
+
+/** Settings > Feedback: a message to the people who make Coe. */
+export function FeedbackTab() {
+  return (
+    <div className="ab">
+      <FeedbackForm />
+      <SiteFooter className="sf-in" />
+    </div>
   );
 }
 
@@ -197,54 +208,43 @@ export function AboutTab() {
           </section>
         );
       })}
-      <FeedbackForm />
       <SiteFooter className="sf-in" />
     </div>
   );
 }
 
-/** Coe Mini: get it (Chrome, Edge, Brave, Opera, Vivaldi or Firefox), and set it up from here. The extension answers through the page, so the two stay in step. */
+/** Coe Mini: add it from your browser's store (Chrome, Edge, Brave, Opera, Vivaldi or Firefox), and set it up from here. The website carries no copy of it. The extension answers through the page, so the two stay in step. */
 export function ChromeTab() {
   const { state, version, browser, prefs, change, linked } = useExtension(true);
   const [pairIn, setPairIn] = useState(''), [pairMsg, setPairMsg] = useState(''), [pairBusy, setPairBusy] = useState(false);
   const me = session()?.email ?? '';
   useEffect(() => { if (!pairBusy) return; const off = onExtConnected((yes, why) => { setPairBusy(false); setPairMsg(yes ? '' : why === 'account' ? 'Coe Mini is signed in as someone else. Sign in to both with the same account.' : why === 'signin' ? 'Sign in to Coe Mini first.' : 'That code is not the one Coe Mini is showing.'); if (yes) setPairIn(''); }); const t = window.setTimeout(() => { setPairBusy(false); setPairMsg('Coe Mini did not answer. Open it, press Connect with Coe in its Settings, and try again.'); }, 9000); return () => { off(); window.clearTimeout(t); }; }, [pairBusy]);
-  const [which, setWhich] = useState<'chrome' | 'firefox'>(() => (typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent) ? 'firefox' : 'chrome'));
-  const [copied, setCopied] = useState(false), [askOff, setAskOff] = useState(false);
+  const [askOff, setAskOff] = useState(false);
   const on = state === 'on';
-  const addr = which === 'firefox' ? 'about:debugging#/runtime/this-firefox' : 'chrome://extensions';
-  const copy = async () => { try { await navigator.clipboard.writeText(addr); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* blocked */ } };
+  const anyStore = Object.values(MINI_STORE).some(Boolean);
   return (
     <div className="set-list ex">
       <div className={`ex-top${on ? ' on' : ''}`}>
-        <span className="ex-dot" aria-hidden />
+        <span className="ex-mark" aria-hidden><CoeStar size={28} live={false} /></span>
         <div><b className="d">{on ? 'Coe Mini is on' : state === 'checking' ? 'Looking for Coe Mini' : 'Coe Mini'}</b>
           <p className="tx">{on ? `Version ${version}${browser === 'firefox' ? ' in Firefox' : ''}. ${linked ? 'Connected: About you, these settings and its chats are shared with Coe.' : 'Not connected: Coe and Coe Mini stay separate. They still use the same account when you sign in to both.'}` : 'Coe in a side panel next to any page. It finds the questions, explains, checks your work and looks at your screen.'}</p></div>
       </div>
       {!on && (
         <>
-          <div className="ex-which" role="radiogroup" aria-label="Your browser">
-            <button type="button" role="radio" aria-checked={which === 'chrome'} className={which === 'chrome' ? 'on' : ''} onClick={() => setWhich('chrome')}>Chrome, Edge, Brave, Opera, Vivaldi</button>
-            <button type="button" role="radio" aria-checked={which === 'firefox'} className={which === 'firefox' ? 'on' : ''} onClick={() => setWhich('firefox')}>Firefox</button>
+          <div className="ex-stores">
+            {([['chrome', 'Chrome', 'Chrome Web Store'], ['edge', 'Edge', 'Edge Add-ons'], ['firefox', 'Firefox', 'Firefox Add-ons']] as const).map(([k, name, store]) => {
+              const href = MINI_STORE[k];
+              const inner = (<><img className="ex-logo" src={`/browsers/${k}.svg`} alt="" width={24} height={24} /><b className="d">{name}</b><span className="ex-sr">{href ? `: add from ${store}` : ': coming soon'}</span></>);
+              return href ? <a key={k} className="ex-br" href={href} target="_blank" rel="noopener noreferrer">{inner}</a> : <div key={k} className="ex-br off" aria-disabled="true">{inner}</div>;
+            })}
           </div>
-          <a className="btn primary ex-get" href={`/${which === 'firefox' ? EXT_FILE_FIREFOX : EXT_FILE}`} download><UiIcon name="download" size={18} />{which === 'firefox' ? 'Get Coe Mini for Firefox' : 'Get Coe Mini'}</a>
-          {which === 'chrome' ? (
+          {anyStore ? (
             <ol className="ex-steps">
-              <li><span className="d">1</span><p className="tx">Open the file you got and choose <b>Extract all</b> (or double-click it on a Mac). You get a folder called <b>coe-mini</b>.</p></li>
-              <li><span className="d">2</span><p className="tx">Open your browser&rsquo;s extensions page: <b>chrome://extensions</b> (Edge: <b>edge://extensions</b>, Brave: <b>brave://extensions</b>, Opera: <b>opera://extensions</b>, Vivaldi: <b>vivaldi://extensions</b>). <button type="button" className="ex-copy" onClick={copy}>{copied ? 'Copied' : 'Copy chrome://extensions'}</button></p></li>
-              <li><span className="d">3</span><p className="tx">Turn on <b>Developer mode</b>.</p></li>
-              <li><span className="d">4</span><p className="tx">Click <b>Load unpacked</b> and choose the <b>coe-mini</b> folder.</p></li>
-              <li><span className="d">5</span><p className="tx">Click the puzzle piece and <b>pin</b> One click opens the side panel. If your browser has none, it opens as a small window.</p></li>
-              <li><span className="d">6</span><p className="tx">Open Coe Mini and press <b>Sign in or sign up</b>. Use the same account as on this page. Nothing else to set up.</p></li>
+              <li><span className="d">1</span><p className="tx">Add Coe Mini from the store (Chrome&rsquo;s store also covers Brave, Opera and Vivaldi). Then click the puzzle piece and <b>pin</b> it. One click opens the side panel. If your browser has none, it opens as a small window.</p></li>
+              <li><span className="d">2</span><p className="tx">Open Coe Mini and press <b>Sign in or sign up</b>. Use the same account as on this page. Nothing else to set up.</p></li>
             </ol>
           ) : (
-            <ol className="ex-steps">
-              <li><span className="d">1</span><p className="tx">Open the file you got and extract it (Windows: <b>Extract all</b>. Mac: double-click). You get a folder called <b>coe-extension-firefox</b>.</p></li>
-              <li><span className="d">2</span><p className="tx">In Firefox, go to <b>about:debugging#/runtime/this-firefox</b>. <button type="button" className="ex-copy" onClick={copy}>{copied ? 'Copied' : 'Copy this address'}</button></p></li>
-              <li><span className="d">3</span><p className="tx">Click <b>Load Temporary Add-on</b> and choose the file <b>manifest.json</b> inside the folder.</p></li>
-              <li><span className="d">4</span><p className="tx">Click the Coe Mini button in the toolbar (or press <b>Alt+Shift+Y</b>). The sidebar opens. Press <b>Let Coe Mini see the Coe website</b> and say yes. Then press <b>Sign in or sign up</b>. Coe Mini already knows you, so there is nothing else to set up.</p></li>
-              <li><span className="d">5</span><p className="tx">Firefox removes a temporary add-on when it closes. To keep it, sign it for free: go to <b>addons.mozilla.org/developers</b>, click <b>Submit a New Add-on</b>, choose <b>On your own</b> and upload the zip you got (do not unzip it). When it is signed, download the file it gives you. In Firefox open <b>Add-ons and themes</b>, click the cog, choose <b>Install Add-on From File</b> and pick that file.</p></li>
-            </ol>
+            <p className="tx ex-soon" role="status">Coming soon. Coe Mini will be added from your browser&rsquo;s store.</p>
           )}
         </>
       )}

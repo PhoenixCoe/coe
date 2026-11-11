@@ -61,18 +61,17 @@ export function Working({ phase, label, detail, size = 30 }: { phase: Phase; lab
   return (
     <div className={`cx-think cx-live ph-${phase}`} role="status" aria-live={phase === 'think' && !label ? 'off' : 'polite'} aria-label={phase === 'think' && !label ? 'Thinking' : undefined}>
       <span className="cx-live-star"><CoeWork phase={phase} size={size} /></span>
-      <span className="d cx-live-t">{label ?? (phase === 'think' ? <ThinkWord /> : p.label)}</span>{detail && <span className="cx-live-d tx">{detail}</span>}<span className="cx-dots" aria-hidden><i /><i /><i /></span>
+      <span className="d cx-live-t">{label ?? p.label}</span>{detail && <span className="cx-live-d tx">{detail}</span>}
     </div>
   );
 }
 
-/** The one "Coe is working" element: soft sweeping lines before the first word, then a small shimmering label. Nothing else animates while a reply is made. */
+/** The one "Coe is working" element: the turning Coe star and a plain label. Nothing else animates while a reply is made. */
 export function Generating({ phase, label, detail, empty, since, timing }: { phase: Phase; label?: string; detail?: string; empty?: boolean; since?: number; timing?: Timing }) {
   const p = PHASES[phase === 'rest' ? 'idle' : phase];
   return (
     <div className={`gen${empty ? ' empty' : ''}`} role="status" aria-live={phase === 'think' && !label ? 'off' : 'polite'} aria-label={phase === 'think' && !label ? 'Thinking' : undefined}>
-      {empty && <div className="gen-bub" aria-hidden><i /><i /><i /></div>}
-      <div className="gen-row"><span className="gen-star" aria-hidden><CoeWork phase={phase} size={20} /></span><span className="gen-t tx">{label ?? (phase === 'think' ? <ThinkWord seed={since} /> : p.label)}</span>{detail && <span className="gen-d tx">{detail}</span>}{since && !timing ? <Timer since={since} /> : null}</div>
+      <div className="gen-row"><span className="gen-star" aria-hidden><CoeWork phase={phase} size={20} /></span><span className="gen-t tx">{label ?? p.label}</span>{detail && <span className="gen-d tx">{detail}</span>}{since && !timing ? <Timer since={since} /> : null}</div>
       {timing && <Timers timing={timing} />}
     </div>
   );

@@ -2,7 +2,7 @@
 /** "How am I doing?": a small row above the message box, made by the site (not by Coe), so it costs nothing to answer. */
 import { useEffect, useState } from 'react';
 import { UiIcon } from '@/ui/icons';
-import { mailtoFeedback, type Rating } from '@/lib/coe/feedback';
+import { type Rating } from '@/lib/coe/feedback';
 
 const FACES: { id: Rating; label: string; fill: string }[] = [
   { id: 'bad', label: 'Bad', fill: '#E8A99E' },
@@ -38,7 +38,7 @@ export function Feedback({ onRate, onMessage, onLater, onDone }: { onRate: (r: R
           <form className="fb-more" onSubmit={(e) => { e.preventDefault(); if (!text.trim()) return; setState('sending'); void onMessage(done, text).then((ok) => setState(ok ? 'sent' : 'failed')); }}>
             <input className="cx-in" value={text} maxLength={600} placeholder="Optional" aria-label="What could be better?" onChange={(e) => setText(e.target.value)} />
             <button type="submit" className="btn small" disabled={!text.trim() || state === 'sending'}>{state === 'sending' ? 'Sending…' : 'Send'}</button>
-            {state === 'failed' && <button type="button" className="cx-act" onClick={() => { mailtoFeedback(text, 'problem'); setState('sent'); }}>Email it instead</button>}
+            {state === 'failed' && <span className="tx fb-fail">It did not send. Try again.</span>}
             <button type="button" className="cx-act" onClick={onDone}>Skip</button>
           </form>
         )}

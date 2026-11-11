@@ -6,8 +6,9 @@
 import { useCallback, useEffect, useState } from 'react';
 
 export interface ExtPrefs { scope: 'page' | 'screen'; speed: 'swift' | 'core' | 'deep'; askTabs: 'ask' | 'allow'; askChg: 'ask' | 'allow' }
-export const EXT_FILE = 'coe-extension.zip';
-export const EXT_FILE_FIREFOX = 'coe-extension-firefox.zip';
+/** Where Coe Mini is listed. Coe Mini is not part of this website: it comes only from the browser stores. Leave a link empty until that store has approved it,
+ *  then paste its address here (Chrome Web Store for Chrome, Brave, Opera and Vivaldi; Edge Add-ons for Edge; Firefox Add-ons for Firefox). */
+export const MINI_STORE = { chrome: '', edge: '', firefox: '' };
 
 const tell = (m: Record<string, unknown>) => { try { window.postMessage({ coe: 'to-ext', ...m }, location.origin); } catch { /* ignore */ } };
 
