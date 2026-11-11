@@ -83,7 +83,7 @@ export function extractCode(text: string): Found | null {
   return { blocks: [{ lang: guessLang(code), code }], rest: [...L.slice(0, b.a), ...L.slice(b.z + 1)].join('\n').replace(/\n{3,}/g, '\n\n').trim() };
 }
 
-const SPECIAL = /^(coe-|mermaid|svg|slides|data|map|ask|followups|fold|quiz|cards|flash|study|math|tool)/i;
+const SPECIAL = /^(coe-|mermaid|svg|slides|data|map|places|ask|followups|fold|quiz|cards|flash|study|math|tool)/i;
 const cache = new WeakMap<Msg, { len: number; items: Omit<CodeItem, 'base'>[] }>();
 
 function itemsOf(m: Msg): Omit<CodeItem, 'base'>[] {

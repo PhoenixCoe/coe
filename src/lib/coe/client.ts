@@ -97,8 +97,32 @@ async function explain(res: Response): Promise<CoeError> {
   return new CoeError('server', message || `The server had a problem (${res.status}). Try again in a moment.`);
 }
 
+/** The owner's TRIGGER-NAME messages: a ready-made reply, written out like a real one. Nothing is sent to the AI and no tokens are used; tool blocks in it still run for real. For anyone but the owner this returns null and the message goes through as usual. */
+async function canned(r: Request, onText?: (soFar: string) => void): Promise<Reply | null> {
+  if (r.check || r.step || /You name chats|You write a summary|You check code|checking step/.test(r.system ?? '')) return null;
+  const users = r.messages.filter((m) => m.role === 'user'), isRes = (t: string) => /^\[(Result of|The web search FAILED)/.test(t.trimStart());
+  let at = -1; users.forEach((m, i) => { if (!isRes(m.text)) at = i; });
+  if (at < 0 || !/^\s*TRIGGER-[A-Z]/.test(users[at].text)) return null;
+  const { isOwner } = await import('./owner'); let ok = isOwner();
+  if (!ok) { try { ok = !!(await import('./account')).status().owner; } catch { ok = false; } }
+  if (!ok) return null;
+  const { triggerOf, triggerReply, SLOW_MS } = await import('./triggers'), name = triggerOf(users[at].text);
+  if (!name) return null;
+  const nres = users.slice(at + 1).filter((m) => isRes(m.text)).length, text = triggerReply(users[at].text, nres, users[users.length - 1].text);
+  if (text === null) return null;
+  const wait = (ms: number) => new Promise<void>((ok2) => window.setTimeout(ok2, ms));
+  if (name === 'SLOW') await wait(SLOW_MS);
+  let soFar = '';
+  for (const piece of text.match(/[\s\S]{1,14}/g) ?? []) {
+    if (r.signal?.aborted) return { text: soFar, stopped: true, cut: false };
+    soFar += piece; onText?.(soFar); await wait(30);
+  }
+  return { text: soFar, inTokens: 0, outTokens: 0, stopped: false, cut: name === 'CUTCODE' };
+}
+
 /** Sends a conversation and calls onText with the whole reply so far each time more arrives. */
 export async function stream(s: CoeSettings, r: Request, onText?: (soFar: string) => void): Promise<Reply> {
+  const fake = await canned(r, onText); if (fake) return fake;
   const c = connection(s);
   if (!c.ok) throw new CoeError('setup', c.why);
   const { url, headers } = await target(s); const pretend = takePretend(); if (pretend && pretend !== 'offline') headers['x-coe-test'] = pretend; if (r.redo) headers['x-coe-redo'] = '1'; if (r.step) headers['x-coe-step'] = '1'; if (r.check) headers['x-coe-check'] = '1'; if (r.call) headers['x-coe-call'] = r.call;

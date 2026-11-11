@@ -32,11 +32,15 @@ export function Timers({ timing }: { timing: Timing }) {
 export function TookLine({ took }: { took: Took }) {
   return <p className="tk tx"><UiIcon name="timer" size={14} /><span>{took.stopped ? 'Stopped after' : 'Took'} {dur(took.total)}</span></p>;
 }
-/** The word shown while Coe is only thinking: a different one about every second (the list is in lib/coe/thinking.ts). */
+/** The word shown while Coe is only thinking (not running anything): a new one every 3 to 5 seconds, never the same one twice in a row (the list is in lib/coe/thinking.ts). */
+export const THINK_EVERY = [3000, 5000] as const;
 export function ThinkWord({ seed }: { seed?: number }) {
   const [order] = useState(() => thinkOrder(seed ?? Date.now()));
   const [i, setI] = useState(0);
-  useEffect(() => { const t = window.setInterval(() => setI((n) => (n + 1) % order.length), 1100); return () => window.clearInterval(t); }, [order]);
+  useEffect(() => {
+    let t = 0; const next = () => { t = window.setTimeout(() => { setI((n) => (n + 1) % order.length); next(); }, THINK_EVERY[0] + Math.random() * (THINK_EVERY[1] - THINK_EVERY[0])); };
+    next(); return () => window.clearTimeout(t);
+  }, [order]);
   return <span key={i} className="think-w">{order[i]}</span>;
 }
 export const PHASES: Record<Exclude<Phase, 'rest'>, { label: string; icon: IconName }> = {
@@ -71,7 +75,7 @@ export function Generating({ phase, label, detail, empty, since, timing }: { pha
   const p = PHASES[phase === 'rest' ? 'idle' : phase];
   return (
     <div className={`gen${empty ? ' empty' : ''}`} role="status" aria-live={phase === 'think' && !label ? 'off' : 'polite'} aria-label={phase === 'think' && !label ? 'Thinking' : undefined}>
-      <div className="gen-row"><span className="gen-star" aria-hidden><CoeWork phase={phase} size={20} /></span><span className="gen-t tx">{label ?? p.label}</span>{detail && <span className="gen-d tx">{detail}</span>}{since && !timing ? <Timer since={since} /> : null}</div>
+      <div className="gen-row"><span className="gen-star" aria-hidden><CoeWork phase={phase} size={20} /></span><span className="gen-t tx">{label ?? (phase === 'think' ? <ThinkWord /> : p.label)}</span>{detail && <span className="gen-d tx">{detail}</span>}{since && !timing ? <Timer since={since} /> : null}</div>
       {timing && <Timers timing={timing} />}
     </div>
   );

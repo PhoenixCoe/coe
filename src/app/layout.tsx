@@ -6,9 +6,16 @@ import { BOOT_JS } from '@/lib/coe/boot';
 const SITE = 'https://coe.pmcstudios.uk';
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
-  title: { default: 'Coe: chat, study help and code check', template: '%s | Coe' },
+  title: { default: 'Coe', template: '%s - Coe' },
   description: 'A study and writing helper from PMC Studios. Chat, get step-by-step help and check your code.',
-  openGraph: { siteName: 'Coe', type: 'website' },
+  applicationName: 'Coe',
+  authors: [{ name: 'PMC Studios', url: 'https://pmcstudios.uk' }],
+  creator: 'PMC Studios',
+  publisher: 'PMC Studios',
+  alternates: { canonical: '/' },
+  robots: { index: true, follow: true },
+  openGraph: { siteName: 'Coe', type: 'website', url: SITE, title: 'Coe', description: 'A study and writing helper from PMC Studios.', locale: 'en_GB', images: [{ url: '/icon-512.png', width: 512, height: 512, alt: 'Coe' }] },
+  twitter: { card: 'summary', title: 'Coe', description: 'A study and writing helper from PMC Studios.', images: ['/icon-512.png'] },
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Coe', statusBarStyle: 'black' },
   icons: { icon: [{ url: '/favicon.ico', sizes: '48x48' }, { url: '/favicon.svg', type: 'image/svg+xml' }], apple: '/apple-touch-icon.png' },

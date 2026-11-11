@@ -2,7 +2,6 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Activity, turnSteps } from './Activity';
 import { UiIcon } from '@/ui/icons';
-import { CoeWork } from '@/ui/CoeWork';
 import { CopyButton, downloadBlob, downloadText } from '@/ui/copy';
 import { cleanSvg, hasMath, loadMath, renderMarkdown } from './markdown';
 import { STUDY_LANGS, StudyBlock } from './Study';
@@ -10,7 +9,8 @@ import { SlidesBlock } from './Slides';
 import { DataBlock } from './DataTable';
 import { AskCard } from './AskCard';
 import { QuestionsBlock } from './Questions';
-import { MapBlock } from './MapBlock';
+import { MapBlock, PlacesBlock } from './MapBlock';
+import { MiniNeed, SwitchNote } from './Handoff';
 import { dataUrl, type Img, type Msg, type Perm, type ToolOut, type ToolRun } from './store';
 import { KINDS, type EDoc } from '@/lib/coe/editors';
 import { appsFrameSrc, defOf, findTool, type Call } from '@/lib/coe/tools';
@@ -24,7 +24,7 @@ export const RichContext = createContext<RichCtx | null>(null);
 
 // ---------------------------------------------------------------- splitting a reply into words and special blocks
 export type Seg = { t: 'md'; text: string } | { t: 'fold'; title: string; text: string; closed: boolean } | { t: 'block'; lang: string; code: string; closed: boolean; n: number };
-const SPECIAL = new Set(['html', 'htm', 'svg', 'mermaid', 'coe-tool', 'coe-plan', 'followups', 'slides', 'data', 'map', 'ask', 'questions', ...STUDY_LANGS]);
+const SPECIAL = new Set(['html', 'htm', 'svg', 'mermaid', 'coe-tool', 'coe-plan', 'followups', 'slides', 'data', 'map', 'places', 'ask', 'questions', 'coe-mini', 'coe-switch', 'coe-job', ...STUDY_LANGS]);
 
 export function splitBlocks(text: string): Seg[] {
   const lines = text.split('\n'), segs: Seg[] = [], count: Record<string, number> = {};
@@ -53,12 +53,17 @@ export function splitBlocks(text: string): Seg[] {
 /** The words of a reply, as the person reads them, without the tool block. */
 export const wordsOf = (text: string) => { const f = findTool(text); const t = f ? (text.slice(0, f.start) + text.slice(f.end)).trim() : text; return t.replace(/\n?`{3}followups[\s\S]*?(`{3}|$)/g, '').trim(); };
 
+/** The button Coe adds under a list of places. Sending it makes Coe draw the same places on a map. */
+export const MAP_CHIP = 'Show me them on a map';
 /** The "what next?" suggestions at the end of a reply: up to three short lines. */
 export function followupsOf(text: string): string[] {
-  const m = /`{3}followups[^\n]*\n([\s\S]*?)`{3}/.exec(text); if (!m) return [];
+  const m = /`{3}followups[^\n]*\n([\s\S]*?)`{3}/.exec(text);
   let list: unknown[] = [];
-  try { const j = JSON.parse(m[1]); if (Array.isArray(j)) list = j; } catch { list = m[1].split('\n'); }
-  return list.map((x) => String(x ?? '').replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/^["']|["']$/g, '').trim()).filter((x) => x.length > 2 && x.length <= 90).slice(0, 3);
+  if (m) { try { const j = JSON.parse(m[1]); if (Array.isArray(j)) list = j; } catch { list = m[1].split('\n'); } }
+  const out = list.map((x) => String(x ?? '').replace(/^\s*(?:[-*•]|\d+[.)])\s*/, '').replace(/^["']|["']$/g, '').trim()).filter((x) => x.length > 2 && x.length <= 90);
+  // Places shown as cards (and not yet on a map): one of the buttons is always "Show me them on a map", first.
+  if (/(?:^|\n)\s{0,3}`{3,}\s*places\b/.test(text) && !/(?:^|\n)\s{0,3}`{3,}\s*map\b/.test(text)) return [MAP_CHIP, ...out.filter((x) => !/\bmap\b/i.test(x))].slice(0, 3);
+  return out.slice(0, 3);
 }
 
 // ---------------------------------------------------------------- a reply
@@ -143,8 +148,12 @@ export const Rich = memo(function Rich({ text, msg, live }: { text: string; msg?
         if (s.lang === 'slides') return <SlidesBlock key={i} code={s.code} closed={s.closed && !live} />;
         if (s.lang === 'data') return <DataBlock key={i} code={s.code} closed={s.closed && !live} ask={ctx?.ask} />;
         if (s.lang === 'map') return <MapBlock key={i} code={s.code} closed={s.closed && !live} />;
+        if (s.lang === 'coe-mini') return <MiniNeed key={i} code={s.code} closed={s.closed && !live} />;
+        if (s.lang === 'coe-switch') return <SwitchNote key={i} code={s.code} closed={s.closed && !live} ask={ctx?.ask} />;
+        if (s.lang === 'places') return <PlacesBlock key={i} code={s.code} closed={s.closed && !live} />;
         if (s.lang === 'ask') return <AskCard key={i} code={s.code} closed={s.closed && !live} id={`${msg?.id ?? 'x'}:${s.n}`} send={ctx?.ask} />;
         if (s.lang === 'questions') return <QuestionsBlock key={i} code={s.code} closed={s.closed && !live} id={`${msg?.id ?? 'x'}:${s.n}`} ask={ctx?.ask} redo={ctx?.redo} />;
+        if (s.lang === 'coe-job') return s.closed ? <JobCard key={i} code={s.code} /> : null;
         if (s.lang === 'coe-plan') return s.closed && i === lastPlan && !(msg && ctx?.oldPlans?.has(msg.id)) ? <PlanCard key={i} code={s.code} /> : null;
         if (s.lang === 'coe-tool') return msg ? <ToolSlot key={i} msg={msg} n={s.n} closed={s.closed} code={s.code} /> : null;
         return null;
@@ -152,6 +161,24 @@ export const Rich = memo(function Rich({ text, msg, live }: { text: string; msg?
     </>
   );
 });
+
+// ---------------------------------------------------------------- a job Coe Mini did on a page (written by Coe Mini, shown the same here)
+function JobCard({ code }: { code: string }) {
+  let j: { task?: string; host?: string; steps?: { say?: string; ok?: boolean; why?: string }[]; end?: { kind?: string; text?: string } } | null = null; try { j = JSON.parse(code); } catch { /* shown as nothing */ }
+  if (!j || !j.task) return null;
+  const kind = j.end?.kind === 'done' ? 'done' : j.end?.kind === 'stopped' ? 'stopped' : 'failed', label = kind === 'done' ? 'Done' : kind === 'stopped' ? 'Stopped' : 'Not finished';
+  const steps = (j.steps ?? []).slice(-7);
+  return (
+    <div className="cx-job" role="group" aria-label="Job">
+      <div className="cx-job-h"><b className="d">Job</b><span className={`cx-job-st ${kind}`}>{label}</span></div>
+      <div className="cx-job-b">
+        <p className="cx-job-t">{String(j.task).slice(0, 140)}{j.host ? <span> on {String(j.host).slice(0, 60)}</span> : null}</p>
+        {steps.length > 0 && <ol className="cx-job-s">{steps.map((x, i) => <li key={i} className={x.ok ? 'ok' : 'no'}><i aria-hidden>{x.ok ? '✓' : '✕'}</i><span>{String(x.say ?? '').slice(0, 80)}{!x.ok && x.why ? <em> {String(x.why).slice(0, 60)}</em> : null}</span></li>)}</ol>}
+        {j.end?.text && <p className={`cx-job-e ${kind}`}>{String(j.end.text).slice(0, 200)}</p>}
+      </div>
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------- the checklist in Deep Work
 function PlanCard({ code }: { code: string }) {
@@ -319,7 +346,7 @@ export function ProjectPreview({ files, entry }: { files: Files; entry?: string 
 function ToolSlot({ msg, n, closed, code }: { msg: Msg; n: number; closed: boolean; code: string }) {
   const run = msg.runs?.[n];
   let call: Call | null = null; try { call = JSON.parse(code); } catch { /* not complete yet */ }
-  if (!closed) return <div className="cx-tool working" role="status"><div className="cx-tool-h"><span className="cx-tool-star" aria-hidden><CoeWork phase="app" size={24} /></span><b className="d">Getting a tool ready</b></div></div>;
+  if (!closed) return null;   // the status line already says what Coe is doing; no second box
   if (!call || typeof call.tool !== 'string') return null;
   return <ToolCard msg={msg} call={call} run={run} />;
 }
@@ -335,23 +362,16 @@ function titleOf(c: Call): string {
   return TITLES[c.tool] ?? c.tool;
 }
 
-/** The web, in one small card: what Coe looked up and the sites it read. Nothing else; the answer is the reply. */
-function WebCard({ call, run }: { call: Call; run?: ToolRun }) {
-  const st = run?.status ?? 'running';
-  const q = str(call.q).replace(/\s+/g, ' ').trim();
+/** The sites an answer drew on, in one quiet line under the answer. There is no box while Coe searches: the status line says it. */
+export function SourceRow({ runs }: { runs: ToolRun[] }) {
   const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch { return u; } };
   const sites: { url: string; title: string; host: string }[] = [];
-  if (run?.out?.kind === 'search') for (const s of run.out.sources) { const h = host(s.url); if (h && !sites.some((x) => x.host === h)) sites.push({ url: s.url, title: s.title, host: h }); }
+  for (const r of runs) if (r?.out?.kind === 'search') for (const s of r.out.sources) { const h = host(s.url); if (h && !sites.some((x) => x.host === h)) sites.push({ url: s.url, title: s.title, host: h }); }
+  if (!sites.length) return null;
   return (
-    <div className={`web ${st}`} role="group" aria-label={st === 'running' ? 'Searching the web' : 'The web'}>
-      <div className="web-h">
-        <UiIcon name={st === 'error' ? 'alert' : 'globe'} size={16} />
-        <b className="d">{st === 'running' ? 'Searching the web' : st === 'error' ? 'Could not search the web' : 'Searched the web'}</b>
-        {q && <span className="web-q tx" title={q}>{q}</span>}
-      </div>
-      {st === 'error' && run?.result && <p className="web-e tx" title={run.shown ?? run.result}>{run.shown ?? run.result}</p>}
-      {sites.length > 0 && <ul className="web-s">{sites.slice(0, 6).map((s) => <li key={s.host}><a href={s.url} target="_blank" rel="noopener noreferrer" title={s.title || s.host}><i className="d" aria-hidden>{s.host[0].toUpperCase()}</i>{s.host}</a></li>)}</ul>}
-      {st === 'running' && <i className="web-bar" aria-hidden />}
+    <div className="srcrow" role="group" aria-label="Sources">
+      <span className="d srcrow-l">Sources</span>
+      <ul className="web-s">{sites.slice(0, 6).map((s) => <li key={s.host}><a href={s.url} target="_blank" rel="noopener noreferrer" title={s.title || s.host}><i className="d" aria-hidden>{s.host[0].toUpperCase()}</i>{s.host}</a></li>)}</ul>
     </div>
   );
 }
@@ -366,7 +386,7 @@ function ToolCard({ msg, call, run }: { msg: Msg; call: Call; run?: ToolRun }) {
   if (run?.out?.kind === 'permit') return <PermitCard run={run} ctx={ctx} />;
   if (call.tool === 'editor') return run?.out?.kind === 'doc' ? <DocCard out={run.out} ctx={ctx} /> : st === 'error' ? <div className="cx-tool error"><div className="cx-tool-h"><UiIcon name="alert" size={16} /><b className="d">Editor</b><span className="cx-grow" /><i className="cx-tool-st">Did not work</i></div><p className="cx-tool-err tx">{run?.shown ?? run?.result}</p></div> : null;   // changes to a document are steps, shown under "What Coe did"
   if (call.tool === 'read' || call.tool === 'screenshot') return st === 'error' ? <div className="cx-tool error"><div className="cx-tool-h"><UiIcon name="alert" size={16} /><b className="d">{call.tool === 'read' ? 'Reading a file' : 'Screenshot'}</b><span className="cx-grow" /><i className="cx-tool-st">Did not work</i></div><p className="cx-tool-err tx">{run?.shown ?? run?.result}</p></div> : null;
-  if (call.tool === 'search') return <WebCard call={call} run={run} />;
+  if (call.tool === 'search') return null;   // the status line says it while it runs; the sites sit in one line under the answer
   const state = st === 'running' ? 'Working' : st === 'error' ? 'Did not work' : 'Done';
   return (
     <div className={`cx-tool ${st}`}>
