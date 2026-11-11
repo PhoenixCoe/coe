@@ -5,77 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:name: Deploy to GitHub Pages
-
-on:
-  push:
-    branches: [main]
-  workflow_dispatch:
-
 permissions:
-  contents: write
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      # If the upload folders went in as folders, move what is inside them into place, once, and save that to the repo.
-      # A file that was uploaded to the main place after the folder went in is left alone.
-      - name: Put the upload folders in place
-        run: |
-          moved=0
-          for d in 1-upload-to-github-*; do
-            [ -d "$d" ] || continue
-            find "$d" -type f | while IFS= read -r f; do
-              r="${f#"$d"/}"
-              t_in=$(git log -1 --format=%ct -- "$f")
-              t_main=$(git log -1 --format=%ct -- "$r")
-              if [ -z "$t_main" ] || [ "$t_main" -le "${t_in:-0}" ]; then mkdir -p "$(dirname "$r")"; cp "$f" "$r"; fi
-            done
-            rm -rf "$d"; moved=1
-          done
-          rm -f READ-ME-FIRST.txt
-          if [ "$moved" = "1" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git commit -m "Move the upload folders into place" || true
-            git push || echo "Could not save the tidy-up to the repo. Building anyway."
-          fi
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
-      - run: npm run build:static
-        env:
-          SITE_URL: https://coe.pmcstudios.uk
-          NEXT_PUBLIC_COE_SERVER: ${{ vars.COE_SERVER }}
-          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: out
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
-
   contents: write
   pages: write
   id-token: write
