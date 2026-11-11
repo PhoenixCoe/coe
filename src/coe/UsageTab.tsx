@@ -25,7 +25,7 @@ export function UsageTab({ usedLocal, limitLocal }: { usedLocal: number; limitLo
     <div className="acc">
       <section className="acc-card"><h3 className="d">Today</h3>
         <UsageBar used={used} limit={limit} note={me ? undefined : `Counted on this device. Sign in and you get ${fmtTok(FREE_SIGNED)} a day instead of ${fmtTok(limit)}.`} />
-        {me && st.billing && st.fbBonus ? <p className="tx cx-bonus">{st.fbDone ? `Thanks for your feedback. You got +${fmtTok(st.fbBonus)} extra tokens today.` : `Send feedback (Settings > About) and get +${fmtTok(st.fbBonus)} extra tokens, once a day.`}</p> : null}</section>
+        {me && st.billing && st.fbBonus ? <p className="tx cx-bonus">{st.fbDone ? `Thanks for your feedback. You got +${fmtTok(st.fbBonus)} extra tokens today.` : `Send feedback (Settings > Feedback) and get +${fmtTok(st.fbBonus)} extra tokens, once a day.`}</p> : null}</section>
       {me && rows.length > 0 && (
         <section className="acc-card"><h3 className="d">Other limits</h3>
           <ul className="acc-q">{rows.map((r) => { const lim = r.q!.limit > 99999 ? 0 : r.q!.limit; return <li key={r.k}><span className="tx">{r.label}</span><b className="d">{lim ? `${Math.max(0, lim - r.q!.used)} left of ${lim}` : 'no limit'}</b>{lim > 0 && <i className="acc-mini"><u style={{ width: `${Math.min(100, (r.q!.used / lim) * 100)}%` }} /></i>}</li>; })}</ul></section>

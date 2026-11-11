@@ -2,6 +2,7 @@
 import { createContext, memo, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Activity, turnSteps } from './Activity';
 import { UiIcon } from '@/ui/icons';
+import { CoeWork } from '@/ui/CoeWork';
 import { CopyButton, downloadBlob, downloadText } from '@/ui/copy';
 import { cleanSvg, hasMath, loadMath, renderMarkdown } from './markdown';
 import { STUDY_LANGS, StudyBlock } from './Study';
@@ -67,24 +68,23 @@ const Md = memo(function Md({ text, live }: { text: string; live?: boolean }) {
   const fx = ctx?.effects !== false, pics = ctx?.pics, box = useRef<HTMLDivElement>(null);
   useEffect(() => { if (hasMath(text)) void loadMath().then(() => setReady((n) => n + 1)); }, [text]);
   const base = useMemo(() => renderMarkdown(text, fx), [text, ready, fx]);   // eslint-disable-line react-hooks/exhaustive-deps
-  // While the reply is written, three soft dots sit at the end of the last paragraph, like a cursor that writes.
-  const html = useMemo(() => {
-    if (!live) return base;
-    const at = Math.max(base.lastIndexOf('</p>'), base.lastIndexOf('</li>'), base.lastIndexOf('</h1>'), base.lastIndexOf('</h2>'), base.lastIndexOf('</h3>'));
-    const tail = base.slice(at + 4).trim();
-    if (at < 0 || /<pre|<table|<details/.test(tail)) return base;
-    return base.slice(0, at) + '<span class="wblk" aria-hidden="true"><i></i><i></i><i></i></span>' + base.slice(at);
-  }, [base, live]);
-  // New words fade in letter by letter, softly. Each chunk keeps its own clock, so a re-render never restarts it.
-  const seen = useRef(0), chunks = useRef<{ a: number; b: number; t: number; step: number }[]>([]);
+  // Nothing sits at the end of the text while it is written: the only thing that moves besides the new letters is the turning Coe star.
+  const html = base;
+  // New words fade in letter by letter, softly, and only ONE letter at a time: each letter fades inside its own slot and the next one starts when it is done,
+  // so the text is unveiled left to right. A slot gets shorter only when the text arrives faster than it can be unveiled, so the reveal never falls far behind.
+  // Each chunk keeps its own clock, so a re-render never restarts it.
+  const seen = useRef(0), tail = useRef(0), chunks = useRef<{ a: number; b: number; t: number; step: number }[]>([]);
   useLayoutEffect(() => {
     const el = box.current; if (!el) return;
-    if (!live || ctx?.effects === false) { seen.current = 0; chunks.current = []; return; }
+    if (!live || ctx?.effects === false) { seen.current = 0; tail.current = 0; chunks.current = []; return; }
     const total = (el.textContent ?? '').length, now = performance.now();
-    if (total < seen.current) { seen.current = 0; chunks.current = []; }
-    if (total > seen.current) chunks.current.push({ a: seen.current, b: total, t: now, step: Math.min(16, 420 / Math.max(1, total - seen.current)) });
+    if (total < seen.current) { seen.current = 0; tail.current = 0; chunks.current = []; }
+    if (total > seen.current) {
+      const n = total - seen.current, start = Math.max(now, tail.current), step = Math.max(5, Math.min(40, (700 - (start - now)) / n));
+      chunks.current.push({ a: seen.current, b: total, t: start, step }); tail.current = start + n * step;
+    }
     seen.current = total;
-    chunks.current = chunks.current.filter((c) => now - c.t < (c.b - c.a) * c.step + 750);
+    chunks.current = chunks.current.filter((c) => now - c.t < (c.b - c.a) * c.step + 200);
     for (const c of [...chunks.current].reverse()) {
       const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let off = 0, n: Node | null;
       const hits: { node: Text; from: number; to: number; k0: number }[] = [];
@@ -98,7 +98,7 @@ const Md = memo(function Md({ text, live }: { text: string; live?: boolean }) {
         const frag = document.createDocumentFragment(); let k = h.k0;
         for (const ch of Array.from(mid.data)) {
           const sp = document.createElement('span'); sp.className = 'wc'; sp.textContent = ch;
-          sp.style.animationDelay = `${Math.round(k * c.step - (now - c.t))}ms`; k += ch.length; frag.appendChild(sp);
+          sp.style.animationDuration = `${c.step.toFixed(1)}ms`; sp.style.animationDelay = `${Math.round(k * c.step - (now - c.t))}ms`; k += ch.length; frag.appendChild(sp);
         }
         mid.parentNode?.replaceChild(frag, mid);
       }
@@ -259,7 +259,7 @@ export function Preview({ kind, code, closed, title }: { kind: Kind; code: strin
   const pic = kind !== 'html' && closed && !showCode ? (
     <div className="cx-pv-pic">{svg ? (kind === 'svg' ? <img alt="Picture" src={'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)} /> : <div dangerouslySetInnerHTML={{ __html: svg }} />) : err ? <p className="cx-pv-err tx">{err} <button type="button" className="cx-link" onClick={() => setTab('code')}>See the code</button></p> : <p className="tx cx-pv-wait">Drawing…</p>}</div>
   ) : null;
-  const body = showCode ? <pre ref={codeRef} className="cx-pv-code"><code>{code}{!closed && <span className="cx-cursor" aria-hidden />}</code></pre> : frame ?? pic;
+  const body = showCode ? <pre ref={codeRef} className="cx-pv-code"><code>{code}</code></pre> : frame ?? pic;
 
   const head = (
     <div className="cx-pv-top">
@@ -319,7 +319,7 @@ export function ProjectPreview({ files, entry }: { files: Files; entry?: string 
 function ToolSlot({ msg, n, closed, code }: { msg: Msg; n: number; closed: boolean; code: string }) {
   const run = msg.runs?.[n];
   let call: Call | null = null; try { call = JSON.parse(code); } catch { /* not complete yet */ }
-  if (!closed) return <div className="cx-tool working"><div className="cx-tool-h"><span className="cx-spin" aria-hidden /><b className="d">Getting a tool ready</b></div></div>;
+  if (!closed) return <div className="cx-tool working" role="status"><div className="cx-tool-h"><span className="cx-tool-star" aria-hidden><CoeWork phase="app" size={24} /></span><b className="d">Getting a tool ready</b></div></div>;
   if (!call || typeof call.tool !== 'string') return null;
   return <ToolCard msg={msg} call={call} run={run} />;
 }

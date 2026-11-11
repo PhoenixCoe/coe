@@ -1,7 +1,8 @@
 /** "How am I doing?": when to ask, and sending the answer. */
-import { connection, modeOf, type CoeSettings } from './settings';
+import { type CoeSettings } from './settings';
 import { serverPost } from './billing';
 import { refreshStatus } from './account';
+import { COE_VERSION } from './changelog';
 
 export type Rating = 'bad' | 'fine' | 'good';
 interface State { replies: number; lastAsk: number; asked: number; skipUntil: number; answered: number; last?: Rating }
@@ -20,26 +21,26 @@ export function feedbackDue(now = Date.now()): boolean {
 export const feedbackShown = () => { const s = read(); s.lastAsk = Date.now(); s.asked++; s.replies = 0; write(s); };
 export const feedbackLater = () => { const s = read(); s.skipUntil = Date.now() + 42 * 86400_000; s.replies = 0; write(s); };
 export type FeedbackKind = 'idea' | 'problem' | 'other' | 'rating';
-const MAIL = 'contact@pmcstudios.uk';
-/** Opens the person's own email app, addressed to us. The fallback when the server cannot send mail. */
-export function mailtoFeedback(message: string, kind: FeedbackKind = 'other') {
-  location.href = `mailto:${MAIL}?subject=${encodeURIComponent('Coe feedback: ' + kind)}&body=${encodeURIComponent(message)}`;
-}
-/** A rating, and/or a written message. Resolves to whether the server emailed it. */
+/** A rating, and/or a written message. The server emails it to the team in the Coe layout. Resolves to whether it was sent. */
 export async function sendFeedback(settings: CoeSettings, rating?: Rating, message = '', kind: FeedbackKind = rating ? 'rating' : 'other'): Promise<{ emailed: boolean }> {
   if (rating) { const s = read(); s.answered++; s.last = rating; write(s); }
-  if (modeOf(settings) !== 'server' || !connection(settings).ok) return { emailed: false };
-  try { const r = await serverPost<{ emailed?: boolean }>(settings, '/feedback', { rating, message: message.trim() || undefined, kind, page: location.pathname }); void refreshStatus(settings); return { emailed: !!r?.emailed }; }
+  if (!settings.serverUrl.trim()) return { emailed: false };
+  try { const r = await serverPost<{ emailed?: boolean }>(settings, '/feedback', { rating, message: message.trim() || undefined, kind, page: location.pathname, v: COE_VERSION }); void refreshStatus(settings); return { emailed: !!r?.emailed }; }
   catch { return { emailed: false }; }
 }
 
 export type ReportWhy = 'unsafe' | 'private' | 'wrong' | 'other';
-/** Reports a shared chat. Anyone can. Resolves to whether the server emailed it; when it did not, the caller opens the person's own email app. */
+/** Reports a shared chat. Anyone can. The server emails it to the team in the Coe layout. Resolves to whether it was sent. */
 export async function reportShare(settings: CoeSettings, link: string, why: ReportWhy, note = ''): Promise<{ emailed: boolean; limited?: boolean }> {
   if (!settings.serverUrl.trim()) return { emailed: false };
-  try { const r = await serverPost<{ emailed?: boolean }>(settings, '/report', { link, why, note: note.trim() || undefined }); return { emailed: !!r?.emailed }; }
+  try { const r = await serverPost<{ emailed?: boolean }>(settings, '/report', { link, why, note: note.trim() || undefined, v: COE_VERSION }); return { emailed: !!r?.emailed }; }
   catch (e) { return { emailed: false, limited: (e as { status?: number }).status === 429 }; }
 }
-export function mailtoReport(link: string, why: ReportWhy, note = '') {
-  location.href = `mailto:${MAIL}?subject=${encodeURIComponent('Coe report: shared chat (' + why + ')')}&body=${encodeURIComponent(`Reason: ${why}\nLink: ${link}\nNote: ${note.trim() || 'none'}`)}`;
+
+export type ChatLines = { r: 'you' | 'coe'; t: string }[];
+/** Reports the chat that is open (not a shared one). The last few messages go along only when `lines` is given, and the person chooses that. Resolves to whether it was sent. */
+export async function reportChat(settings: CoeSettings, why: ReportWhy, note: string, title: string, lines?: ChatLines): Promise<{ emailed: boolean; limited?: boolean }> {
+  if (!settings.serverUrl.trim()) return { emailed: false };
+  try { const r = await serverPost<{ emailed?: boolean }>(settings, '/report', { why, note: note.trim() || undefined, v: COE_VERSION, chat: { title, msgs: lines } }); return { emailed: !!r?.emailed }; }
+  catch (e) { return { emailed: false, limited: (e as { status?: number }).status === 429 }; }
 }

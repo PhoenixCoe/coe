@@ -120,8 +120,11 @@ export function withAbout(cur: CoeSettings, a: Record<string, unknown>, at: numb
 }
 /** "Meet Coe" (the first-time questions) has been answered or skipped. It travels with the account, so a new device does not ask again. */
 export const MET = 'pmc:coe:met';
+/** Setup is done once per account (the account remembers it, so no other device asks again), and once per device when nobody is signed in.
+ *  The device remembers who finished it: '1' for nobody signed in, or the account's id. */
 export const isMet = () => { try { return !!localStorage.getItem(MET); } catch { return false; } };
-export function markMet() { try { if (!localStorage.getItem(MET)) { localStorage.setItem(MET, '1'); window.dispatchEvent(new Event('pmc:coe-met')); } } catch { /* storage blocked */ } }
+export const metBy = () => { try { return localStorage.getItem(MET) ?? ''; } catch { return ''; } };
+export function markMet(by = '1') { try { const had = localStorage.getItem(MET); if (had === by || (had && by === '1')) return; localStorage.setItem(MET, by); window.dispatchEvent(new Event('pmc:coe-met')); } catch { /* storage blocked */ } }
 export function saveSettings(s: CoeSettings) {
   // When About you changes, remember when, so this site and the Coe Mini sidebar can tell which copy is newer.
   try { const prev = JSON.parse(localStorage.getItem(KEY) || 'null') as Partial<CoeSettings> | null; if (prev && s.profileAt === (prev.profileAt ?? 0) && PROFILE_KEYS.some((k) => (prev[k] ?? DEFAULTS[k]) !== s[k])) s = { ...s, profileAt: Date.now() }; } catch { /* nothing before */ }

@@ -10,7 +10,7 @@ import { memory, setMemory } from './links';
 import { mergeStudy, snapshotStudy, type StudyData } from './study';
 import { mergeStyles, stylesOut } from './personas';
 import { loadAvatar, saveAvatar, validAvatar } from './avatar';
-import { aboutRecord, isMet, loadSettings, markMet, saveSettings, withAbout, type AboutRecord } from './settings';
+import { aboutRecord, loadSettings, markMet, metBy, saveSettings, withAbout, type AboutRecord } from './settings';
 
 const URL_ = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -126,19 +126,23 @@ export async function removeAll() {
 /** The study decks go with the account too, but only once there is something in them. */
 const studyOut = (): StudyData | undefined => { const d = snapshotStudy(); return d.cards.length || d.xp ? d : undefined; };
 /** The About you answers, with the time they were last changed, so every device ends up with the newest. */
-/** The About you answers, with the time they were last changed, so every device ends up with the newest. */
 type About = AboutRecord;
 const aboutOut = (): About | undefined => { const s = loadSettings(); return s.profileAt ? aboutRecord(s) : undefined; };
 export async function pushProfile() {
   const s = session(); if (!s) return;
-  await rest('profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, data: { memory: memory(), study: studyOut(), styles: stylesOut(), about: aboutOut(), avatar: loadAvatar() ?? undefined, met: isMet() ? 1 : undefined }, updated: new Date().toISOString() }) });
+  await rest('profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, data: { memory: memory(), study: studyOut(), styles: stylesOut(), about: aboutOut(), avatar: loadAvatar() ?? undefined, met: accountMet || metBy() === s.uid ? 1 : undefined }, updated: new Date().toISOString() }) });
 }
 /** Has the account's profile been read on this device yet? Until it has, nobody can tell whether setup was already done somewhere else. */
-let seen = false;
+let seen = false, accountMet = false;
 export const profileSeen = () => seen;
+/** Has THIS account finished setup (here or on another device)? Only known once the profile has been read. */
+export const accountDone = () => accountMet;
+/** Setup was just finished while signed in. */
+export function noteAccountMet() { accountMet = true; }
+/** Signed out: the next account to sign in is a different question. */
+export function resetProfileSeen() { seen = false; accountMet = false; }
 async function syncProfile() {
   const rows: { data?: { memory?: unknown; study?: StudyData; styles?: unknown; about?: About; avatar?: unknown; met?: unknown } }[] = await (await rest('profiles?select=data')).json();
-  seen = true; try { window.dispatchEvent(new Event('pmc:coe-profile')); } catch { /* no window */ }
   const theirs = Array.isArray(rows[0]?.data?.memory) ? (rows[0].data!.memory as unknown[]).filter((x): x is string => typeof x === 'string') : [];
   const mine = memory(), merged = setMemory([...theirs, ...mine]);
   const theirStudy = rows[0]?.data?.study;
@@ -151,8 +155,10 @@ async function syncProfile() {
   // About you follows the account: a new device, or the Coe Mini add-on, starts already knowing you. The newer copy wins.
   const ab = rows[0]?.data?.about, cur = loadSettings();
   // Setup done on another device (or answers already saved) means this one does not ask again.
-  const theirMet = !!rows[0]?.data?.met || !!(ab && Number(ab.at) > 0);
-  if (theirMet) markMet();
+  const theirMet = !!rows[0]?.data?.met || !!(ab && Number(ab.at) > 0), uid = session()?.uid ?? '';
+  accountMet = theirMet || (!!uid && metBy() === uid);
+  if (accountMet && uid) markMet(uid);   // this device remembers which account finished setup
+  seen = true; try { window.dispatchEvent(new Event('pmc:coe-profile')); } catch { /* no window */ }   // only now can the page tell whether setup is due
   let aboutChanged = false;
   if (ab && Number(ab.at) > (cur.profileAt || 0)) {
     saveSettings(withAbout(cur, ab as Record<string, unknown>, Number(ab.at)));
@@ -163,7 +169,7 @@ async function syncProfile() {
   let avatarChanged = false;
   if (validAvatar(av) && av.at > (myAv?.at ?? 0)) saveAvatar(av.img, av.at);
   else avatarChanged = !!myAv && JSON.stringify(myAv) !== JSON.stringify(av ?? null);
-  if (avatarChanged || merged.length !== theirs.length || merged.some((m, i) => m !== theirs[i]) || studyChanged || stylesChanged || aboutChanged || (isMet() && !rows[0]?.data?.met)) await pushProfile();
+  if (avatarChanged || merged.length !== theirs.length || merged.some((m, i) => m !== theirs[i]) || studyChanged || stylesChanged || aboutChanged || (accountMet && !rows[0]?.data?.met)) await pushProfile();
 }
 
 /** Brings this device and the account to the same list. Returns how many chats changed on this device. */
@@ -203,6 +209,7 @@ export async function signOut() {
   try { await sync(); } catch { /* offline: leave the chats where they are */ return false; }
   for (const m of await loadIndex()) await deleteConv(m.id);
   try { localStorage.removeItem(SKEY); localStorage.removeItem(SYNCED); } catch { /* ignore */ }
+  resetProfileSeen();
   return true;
 }
 

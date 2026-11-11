@@ -8,7 +8,7 @@ import { Rich, RichContext, type RichCtx } from './Blocks';
 import { loadMarkdown } from './markdown';
 import { readShare, cloudOn, type Shared } from '@/lib/coe/cloud';
 import { loadSettings } from '@/lib/coe/settings';
-import { mailtoReport, reportShare, type ReportWhy } from '@/lib/coe/feedback';
+import { reportShare, type ReportWhy } from '@/lib/coe/feedback';
 import type { Msg } from './store';
 import { useMiniHere } from '@/lib/coe/device';
 
@@ -18,17 +18,16 @@ const WHY: [ReportWhy, string][] = [['unsafe', 'Unsafe or harmful'], ['private',
 /** The Report button and its small form. */
 function Report() {
   const [open, setOpen] = useState(false), [why, setWhy] = useState<ReportWhy>('unsafe'), [note, setNote] = useState('');
-  const [st, setSt] = useState<'idle' | 'sending' | 'sent' | 'mail' | 'limit'>('idle');
+  const [st, setSt] = useState<'idle' | 'sending' | 'sent' | 'failed' | 'limit'>('idle');
   const send = async () => {
     setSt('sending');
     const link = window.location.href;
     const r = await reportShare(loadSettings(), link, why, note);
     if (r.emailed) setSt('sent');
     else if (r.limited) setSt('limit');
-    else { setSt('mail'); mailtoReport(link, why, note); }
+    else setSt('failed');
   };
   if (st === 'sent') return <p className="pn-info tx sp-done" role="status"><span className="pn-i" aria-hidden><UiIcon name="check" size={15} strokeWidth={3.2} /></span><span>Thank you. The report was sent and we will take a look.</span></p>;
-  if (st === 'mail') return <p className="pn-info tx sp-done" role="status"><span className="pn-i" aria-hidden><UiIcon name="mail" size={15} strokeWidth={3.2} /></span><span>Your email app opened with the report ready. Press send there to finish.</span></p>;
   if (st === 'limit') return <p className="pn-info tx sp-done" role="status"><span className="pn-i" aria-hidden><UiIcon name="info" size={15} strokeWidth={3.2} /></span><span>You have sent enough reports for today. Thank you.</span></p>;
   if (!open) return <button type="button" className="btn small sp-rep" aria-expanded={false} onClick={() => setOpen(true)}><UiIcon name="alert" size={16} />Report this chat</button>;
   return (
@@ -38,7 +37,7 @@ function Report() {
         {WHY.map(([v, l]) => <button key={v} type="button" role="radio" aria-checked={why === v} className={`sp-w${why === v ? ' on' : ''}`} onClick={() => setWhy(v)}><span className="sp-wk" aria-hidden>{why === v && <UiIcon name="check" size={13} strokeWidth={3.4} />}</span><span className="d">{l}</span></button>)}
       </div>
       <label className="sp-nl"><span className="d">Anything we should know? (optional)</span><textarea className="cx-in" rows={3} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)} placeholder="A few words are plenty" /></label>
-      <div className="sp-fa"><button type="submit" className="btn gold" disabled={st === 'sending'}>{st === 'sending' ? 'Sending…' : 'Send report'}</button><button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button></div>
+      <div className="sp-fa"><button type="submit" className="btn gold" disabled={st === 'sending'}>{st === 'sending' ? 'Sending…' : 'Send report'}</button><button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>{st === 'failed' && <span className="tx sp-fail" role="status">It did not send. Press Send report to try again.</span>}</div>
     </form>
   );
 }
@@ -74,9 +73,8 @@ export default function SharePage() {
     <main className="pn sp" onClick={onClick}>
       <i className="ht" aria-hidden><i /><i /><i /></i>
       <header className="pn-isl">
-        <a className="isl-b" href="/" aria-label="Open Coe" title="Open Coe"><CoeStar size={26} live={false} /></a>
+        <a className="isl-b isl-t d" href="/" title="Open Coe"><CoeStar size={20} live={false} />Open Coe</a>
         <h2 className="isl-title d">Shared chat</h2>
-        <a className="isl-b isl-t d" href="/"><CoeStar size={20} live={false} />Open Coe</a>
       </header>
       <div className="pn-in sp-in">
         {st.s === 'loading' && <p className="tx sp-note" role="status">Opening the chat…</p>}
