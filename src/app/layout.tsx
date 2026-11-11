@@ -7,7 +7,7 @@ const SITE = 'https://coe.pmcstudios.uk';
 export const metadata: Metadata = {
   metadataBase: new URL(SITE),
   title: { default: 'Coe: chat, study help and code check', template: '%s | Coe' },
-  description: 'Chat, get step-by-step study help, and check code for errors. Add pictures, pick a model, and keep your chats on your device or in your account.',
+  description: 'A study and writing helper from PMC Studios. Chat, get step-by-step help and check your code.',
   openGraph: { siteName: 'Coe', type: 'website' },
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Coe', statusBarStyle: 'black' },

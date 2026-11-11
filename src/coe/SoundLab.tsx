@@ -55,7 +55,7 @@ export function SoundLab({ settings, onClose, onAttach }: { settings: CoeSetting
   return (
     <Modal title="Sound lab" onClose={onClose} wide>
       <div className="snd">
-        <p className="tx">Drop in a recording or a song. Coe measures it right here on your device, and can listen to 30 seconds of it to name the instruments and noises it hears.</p>
+        <p className="tx">Drop in a recording or a song. Coe measures it on your device and can listen to 30 seconds to name what it hears.</p>
         <input ref={pick} type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac,.webm" hidden onChange={(e) => { void open(e.target.files?.[0]); e.target.value = ''; }} />
         <div className="snd-drop" onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); void open(e.dataTransfer.files?.[0]); }}>
           <UiIcon name="wave" size={26} />
@@ -84,7 +84,7 @@ export function SoundLab({ settings, onClose, onAttach }: { settings: CoeSetting
               <b className="d"><UiIcon name="headphones" size={17} />What is in it?</b>
               {rep.seconds > 31 && <Slider label="Listen from" value={from} min={0} max={Math.max(1, Math.floor(rep.seconds - 30))} step={1} onChange={setFrom} format={(n) => `${clock(n)} to ${clock(Math.min(rep.seconds, n + 30))}`} />}
               <button type="button" className="btn small gold" disabled={!!work || !ears} onClick={() => void listen()}><UiIcon name="headset" size={15} />Ask Coe to listen</button>
-              <p className="tx cx-small">{ears ? 'Uses one of your daily sound listens (3 on Free, 60 on Pro). Only the 30 seconds are sent. What it names is a guess from an AI, so treat it as a good hint, not a fact.' : 'This needs Coe\'s server. Open Settings to set it up.'}</p>
+              <p className="tx cx-small">{ears ? 'Uses one of your daily sound listens (3 on Free, 60 on Pro). Only the 30 seconds are sent. What it names is a guess, so treat it as a hint.' : 'This needs Coe\'s server. Open Settings to set it up.'}</p>
               {heard && (
                 <div className="snd-heard">
                   {heard.summary && <p className="tx"><b>{heard.summary}</b></p>}
@@ -99,7 +99,7 @@ export function SoundLab({ settings, onClose, onAttach }: { settings: CoeSetting
 
             <div className="snd-act">
               <b className="d"><UiIcon name="layers" size={17} />Split by pitch range</b>
-              <p className="tx cx-small">Filters the sound into low, middle and high. It helps you hear the bass or the cymbals on their own, but it is not real instrument separation.</p>
+              <p className="tx cx-small">Splits the sound into low, middle and high so you can hear the bass or the cymbals more clearly. It does not separate instruments.</p>
               {!parts.length ? <button type="button" className="btn small" disabled={!!work} onClick={() => void split()}><UiIcon name="wand" size={15} />Split it</button>
                 : <ul className="snd-parts">{parts.map((p) => <li key={p.name}><PmcPlayer src={p.url} title={p.label} peaks={p.peaks} seconds={rep.seconds} save={`${file?.name.replace(/\.[^.]+$/, '') ?? 'sound'}-${p.name}.wav`} /></li>)}</ul>}
             </div>

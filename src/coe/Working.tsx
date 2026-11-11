@@ -4,6 +4,8 @@ import { type Phase } from '@/ui/Mark';
 import { CoeWork } from '@/ui/CoeWork';
 import { useEffect, useState } from 'react';
 import { UiIcon } from '@/ui/icons';
+import { thinkOrder } from '@/lib/coe/thinking';
+import { total, type Timing, type Took } from '@/lib/coe/timing';
 
 type IconName = Parameters<typeof UiIcon>[0]['name'];
 
@@ -13,6 +15,29 @@ function Timer({ since }: { since: number }) {
   const [, tick] = useState(0);
   useEffect(() => { const t = window.setInterval(() => tick((n) => n + 1), 1000); return () => window.clearInterval(t); }, []);
   return <span className="gen-s tx" aria-hidden>{clock(Date.now() - since)}</span>;
+}
+/** Short spans in tenths (2.4s), long ones as 1m 05s. */
+export const dur = (ms: number) => (ms < 10_000 ? `${(Math.max(0, ms) / 1000).toFixed(1)}s` : clock(ms));
+/** The timer while Coe works: how long this reply has taken so far. */
+export function Timers({ timing }: { timing: Timing }) {
+  const [, tick] = useState(0);
+  useEffect(() => { const t = window.setInterval(() => tick((n) => n + 1), 500); return () => window.clearInterval(t); }, []);
+  return (
+    <div className="tm" role="timer" aria-live="off" aria-label="How long Coe has been working">
+      <span className="tm-c tot"><b className="d">Total</b><i>{clock(total(timing))}</i></span>
+    </div>
+  );
+}
+/** After the reply: how long it took. */
+export function TookLine({ took }: { took: Took }) {
+  return <p className="tk tx"><UiIcon name="timer" size={14} /><span>{took.stopped ? 'Stopped after' : 'Took'} {dur(took.total)}</span></p>;
+}
+/** The word shown while Coe is only thinking: a different one about every second (the list is in lib/coe/thinking.ts). */
+export function ThinkWord({ seed }: { seed?: number }) {
+  const [order] = useState(() => thinkOrder(seed ?? Date.now()));
+  const [i, setI] = useState(0);
+  useEffect(() => { const t = window.setInterval(() => setI((n) => (n + 1) % order.length), 1100); return () => window.clearInterval(t); }, [order]);
+  return <span key={i} className="think-w">{order[i]}</span>;
 }
 export const PHASES: Record<Exclude<Phase, 'rest'>, { label: string; icon: IconName }> = {
   idle: { label: 'Ready', icon: 'check' },
@@ -34,20 +59,21 @@ export const phaseOfTool = (tool: string): Phase => (tool === 'js' || tool === '
 export function Working({ phase, label, detail, size = 30 }: { phase: Phase; label?: string; detail?: string; size?: number }) {
   const p = PHASES[phase === 'rest' ? 'idle' : phase];
   return (
-    <div className={`cx-think cx-live ph-${phase}`} role="status" aria-live="polite">
+    <div className={`cx-think cx-live ph-${phase}`} role="status" aria-live={phase === 'think' && !label ? 'off' : 'polite'} aria-label={phase === 'think' && !label ? 'Thinking' : undefined}>
       <span className="cx-live-star"><CoeWork phase={phase} size={size} /></span>
-      <span className="d cx-live-t">{label ?? p.label}</span>{detail && <span className="cx-live-d tx">{detail}</span>}<span className="cx-dots" aria-hidden><i /><i /><i /></span>
+      <span className="d cx-live-t">{label ?? (phase === 'think' ? <ThinkWord /> : p.label)}</span>{detail && <span className="cx-live-d tx">{detail}</span>}<span className="cx-dots" aria-hidden><i /><i /><i /></span>
     </div>
   );
 }
 
 /** The one "Coe is working" element: soft sweeping lines before the first word, then a small shimmering label. Nothing else animates while a reply is made. */
-export function Generating({ phase, label, detail, empty, since }: { phase: Phase; label?: string; detail?: string; empty?: boolean; since?: number }) {
+export function Generating({ phase, label, detail, empty, since, timing }: { phase: Phase; label?: string; detail?: string; empty?: boolean; since?: number; timing?: Timing }) {
   const p = PHASES[phase === 'rest' ? 'idle' : phase];
   return (
-    <div className={`gen${empty ? ' empty' : ''}`} role="status" aria-live="polite">
+    <div className={`gen${empty ? ' empty' : ''}`} role="status" aria-live={phase === 'think' && !label ? 'off' : 'polite'} aria-label={phase === 'think' && !label ? 'Thinking' : undefined}>
       {empty && <div className="gen-bub" aria-hidden><i /><i /><i /></div>}
-      <div className="gen-row"><span className="gen-star" aria-hidden><CoeWork phase={phase} size={20} /></span><span className="gen-t tx">{label ?? p.label}</span>{detail && <span className="gen-d tx">{detail}</span>}{since ? <Timer since={since} /> : null}</div>
+      <div className="gen-row"><span className="gen-star" aria-hidden><CoeWork phase={phase} size={20} /></span><span className="gen-t tx">{label ?? (phase === 'think' ? <ThinkWord seed={since} /> : p.label)}</span>{detail && <span className="gen-d tx">{detail}</span>}{since && !timing ? <Timer since={since} /> : null}</div>
+      {timing && <Timers timing={timing} />}
     </div>
   );
 }

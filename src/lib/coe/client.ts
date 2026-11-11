@@ -1,4 +1,5 @@
 import { connection, CREATIVITY, modeOf, own, type CoeSettings } from './settings';
+import { takePretend } from './ownertest';
 import type { ModelKey } from './models';
 import { token } from './cloud';
 
@@ -6,7 +7,7 @@ export interface Pic { type: string; data: string }   // data is base64, with no
 export interface ChatMsg { role: 'user' | 'assistant'; text: string; images?: Pic[] }
 export interface Reply { text: string; inTokens?: number; outTokens?: number; stopped: boolean; cut: boolean; credits?: { used: number; limit: number; plan: string; tokens?: number; receipt?: string } }
 
-export type ErrorKind = 'setup' | 'refused' | 'limit' | 'credits' | 'plan' | 'signin' | 'network' | 'server' | 'bad';
+export type ErrorKind = 'banned' | 'setup' | 'refused' | 'limit' | 'credits' | 'plan' | 'signin' | 'network' | 'server' | 'bad';
 export class CoeError extends Error { constructor(public kind: ErrorKind, message: string) { super(message); } }
 
 interface Request { model: ModelKey; system?: string; messages: ChatMsg[]; maxTokens?: number; signal?: AbortSignal; redo?: boolean; work?: boolean; step?: boolean; check?: boolean; call?: string }
@@ -86,6 +87,7 @@ async function* lines(res: Response): AsyncGenerator<string> {
 async function explain(res: Response): Promise<CoeError> {
   let message = '', code = '';
   try { const j = await res.json(); message = j?.error?.message ?? j?.message ?? ''; code = j?.error?.code ?? ''; } catch { /* not JSON */ }
+  if (code === 'banned') return new CoeError('banned', message);
   if (res.status === 402 || code === 'credits') return new CoeError('credits', message);
   if (code === 'plan') return new CoeError('plan', message);
   if (res.status === 401 && code === 'signin') return new CoeError('signin', message);
@@ -99,9 +101,9 @@ async function explain(res: Response): Promise<CoeError> {
 export async function stream(s: CoeSettings, r: Request, onText?: (soFar: string) => void): Promise<Reply> {
   const c = connection(s);
   if (!c.ok) throw new CoeError('setup', c.why);
-  const { url, headers } = await target(s); if (r.redo) headers['x-coe-redo'] = '1'; if (r.step) headers['x-coe-step'] = '1'; if (r.check) headers['x-coe-check'] = '1'; if (r.call) headers['x-coe-call'] = r.call;
+  const { url, headers } = await target(s); const pretend = takePretend(); if (pretend && pretend !== 'offline') headers['x-coe-test'] = pretend; if (r.redo) headers['x-coe-redo'] = '1'; if (r.step) headers['x-coe-step'] = '1'; if (r.check) headers['x-coe-check'] = '1'; if (r.call) headers['x-coe-call'] = r.call;
   let res: Response;
-  try { res = await fetch(url, { method: 'POST', headers, body: body(s, r), signal: r.signal }); }
+  try { if (pretend === 'offline') throw new TypeError('Failed to fetch'); res = await fetch(url, { method: 'POST', headers, body: body(s, r), signal: r.signal }); }
   catch (e) {
     if ((e as Error).name === 'AbortError') return { text: '', stopped: true, cut: false };
     throw new CoeError('network', 'Could not reach the server. Check its address in Settings, and that it allows this site.');

@@ -57,6 +57,20 @@ export function onExtRefunds(cb: (items: { id: string; t: number; tokens: number
   return () => window.removeEventListener('message', on);
 }
 
+/** Coe Mini works on the open page (change these words, mark these words, open a tab, search). The website has no page to do that on, so in a chat that came from Coe Mini those blocks read as one plain line instead of code. */
+export function miniActionsAsWords(text: string): string {
+  const cut = (v: unknown, n = 80) => { const t = String(v ?? '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+  return text.replace(/```(coe-edit|coe-highlight|coe-open|coe-search|coe-remember)[ \t]*\n([\s\S]*?)(?:```|$)/g, (_m, kind: string, body: string) => {
+    let j: Record<string, unknown> | null = null; try { const x = JSON.parse(body); if (x && typeof x === 'object') j = x as Record<string, unknown>; } catch { /* cut short */ }
+    if (!j) return '';
+    if (kind === 'coe-edit') return j.find ? `Coe Mini suggested a change on the page: “${cut(j.find)}” to “${cut(j.text)}”.` : `Coe Mini suggested new words for what was selected: “${cut(j.text)}”.`;
+    if (kind === 'coe-highlight') { const n = Array.isArray(j.phrases) ? j.phrases.length : 0; return `Coe Mini marked ${n} ${n === 1 ? 'place' : 'places'} on the page.`; }
+    if (kind === 'coe-open') return j.search ? `Coe Mini offered to search for “${cut(j.search)}”.` : `Coe Mini offered to open ${cut(j.url, 120)}.`;
+    if (kind === 'coe-search') return `Coe Mini searched the web for “${cut(j.q)}”.`;
+    return j.fact ? `Coe Mini saved a note: “${cut(j.fact, 160)}”.` : '';
+  }).replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /** Chats made in the Coe Mini sidebar. They are added to the chat list here, each one once and updated if it grows. */
 export interface ExtChat { id: string; title: string; host: string; url: string; t: number; msgs: { r: 'u' | 'a'; t: string; at?: number }[] }
 export function onExtChats(cb: (items: ExtChat[]) => void): () => void {
@@ -73,6 +87,20 @@ export function onExtChats(cb: (items: ExtChat[]) => void): () => void {
 export function onExtProfile(cb: (me: Record<string, unknown>) => void): () => void {
   const on = (e: MessageEvent) => { const d = e.data; if (e.source === window && d && d.coe === 'from-ext' && d.type === 'profile' && d.me && typeof d.me === 'object') cb(d.me as Record<string, unknown>); };
   window.addEventListener('message', on); tell({ type: 'hello' });
+  return () => window.removeEventListener('message', on);
+}
+
+/** Coe Mini says setup was already done there, so this site does not ask again. */
+export function onExtMet(cb: () => void): () => void {
+  const on = (e: MessageEvent) => { const d = e.data; if (e.source === window && d && d.coe === 'from-ext' && (d.type === 'met' || (d.type === 'profile' && d.me && d.me.met))) cb(); };
+  window.addEventListener('message', on); tell({ type: 'hello' });
+  return () => window.removeEventListener('message', on);
+}
+
+/** The page colour or accent was changed in the sidebar. The newer choice wins. */
+export function onExtLook(cb: (look: Record<string, unknown>) => void): () => void {
+  const on = (e: MessageEvent) => { const d = e.data; if (e.source === window && d && d.coe === 'from-ext' && d.type === 'look' && d.look && typeof d.look === 'object') cb(d.look as Record<string, unknown>); };
+  window.addEventListener('message', on);
   return () => window.removeEventListener('message', on);
 }
 

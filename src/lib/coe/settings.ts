@@ -25,7 +25,7 @@ export interface CoeSettings {
   /** What Coe should know about you: year, subjects, goals. Added to every conversation. */
   about: string;
   /** Who Coe is talking to. Set here, in the first-visit questions, or in the Coe Mini sidebar (the newest answer wins). */
-  ageBand: '' | 'under11' | '11-13' | '14-16' | '17-18' | '19-24' | '25+';
+  ageBand: '' | 'under13' | '13-16' | '17-18' | '19-24' | '25+';
   role: '' | 'student' | 'teacher' | 'parent' | 'working' | 'other';
   yearOrJob: string;
   subjects: string;
@@ -67,12 +67,14 @@ export interface CoeSettings {
   maxWords: number;
   /** Stronger text and borders. */
   contrast: boolean;
+  /** The timer while Coe works, and "Took 14s" after. */
+  timers: boolean;
 }
 
 export const DEFAULTS: CoeSettings = {
   mode: 'server', serverUrl: (process.env.NEXT_PUBLIC_COE_SERVER ?? '').trim().replace(/\/+$/, ''), code: '', provider: 'openai', keys: {}, bases: {}, models: {},
   system: '', about: '', ageBand: '', role: '', yearOrJob: '', subjects: '', profileAt: 0, creativity: 'default', name: '', size: 'normal', enter: 'send',
-  check: 'smart', length: 'balanced', tone: 'friendly', level: 'auto', replyLang: '', effects: true, asks: 'sometimes', motion: 'full', scale: 100, compact: false, easy: false, goal: 10, whileBusy: 'queue', maxWords: 0, contrast: false,
+  check: 'smart', length: 'balanced', tone: 'friendly', level: 'auto', replyLang: '', effects: true, asks: 'sometimes', motion: 'full', scale: 100, compact: false, easy: false, goal: 10, whileBusy: 'queue', maxWords: 0, contrast: false, timers: true,
 };
 export const CREATIVITY: Record<CoeSettings['creativity'], number | undefined> = { default: undefined, precise: 0.2, balanced: 0.7, creative: 1 };
 
@@ -90,13 +92,15 @@ export function loadSettings(): CoeSettings {
       if (s.mode !== 'key') s.mode = 'server';
       // The old two-step text size became a slider.
       if (raw.size === 'large' && raw.scale === undefined) { s.scale = 115; s.size = 'normal'; }
-      s.scale = Math.min(150, Math.max(80, Number(s.scale) || 100));
+      s.scale = Math.min(150, Math.max(75, Number(s.scale) || 100));
       delete (s as any).tips;
       return s;
     }
   } catch { /* storage blocked or damaged */ }
   return { ...DEFAULTS, keys: {}, bases: {}, models: {} };
 }
+/** Age groups saved before the change: under 11 and 11 to 13 are now Under 13, and 14 to 16 is now 13 to 16. */
+export const oldAge = (v: unknown) => (v === 'under11' || v === '11-13' ? 'under13' : v === '14-16' ? '13-16' : v);
 export const PROFILE_KEYS = ['name', 'ageBand', 'role', 'yearOrJob', 'subjects', 'length', 'easy', 'about', 'system', 'tone', 'level', 'replyLang', 'maxWords', 'goal'] as const;
 /** The About you record that travels with the account and to the Coe Mini sidebar. The same fields, with the same meaning, in both. */
 export type AboutRecord = { name?: string; ageBand?: string; role?: string; yearOrJob?: string; subjects?: string; length?: string; easy?: boolean; aboutText?: string; system?: string; tone?: string; level?: string; replyLang?: string; maxWords?: number; goal?: number; at?: number };
@@ -107,13 +111,17 @@ export function withAbout(cur: CoeSettings, a: Record<string, unknown>, at: numb
   const str = (v: unknown, n: number) => String(v ?? '').trim().slice(0, n);
   const num = (v: unknown, ok: number[], fall: number) => (ok.includes(Number(v)) ? Number(v) : fall);
   return {
-    ...cur, name: str(a.name, 30), ageBand: one(a.ageBand, ['', 'under11', '11-13', '14-16', '17-18', '19-24', '25+'] as const, ''), role: one(a.role, ['', 'student', 'teacher', 'parent', 'working', 'other'] as const, ''),
+    ...cur, name: str(a.name, 30), ageBand: one(oldAge(a.ageBand), ['', 'under13', '13-16', '17-18', '19-24', '25+'] as const, ''), role: one(a.role, ['', 'student', 'teacher', 'parent', 'working', 'other'] as const, ''),
     yearOrJob: str(a.yearOrJob, 60), subjects: str(a.subjects, 100), length: one(a.length, ['short', 'balanced', 'detailed'] as const, cur.length), easy: !!a.easy,
     about: a.aboutText === undefined ? cur.about : str(a.aboutText, 700), system: a.system === undefined ? cur.system : str(a.system, 1500),
     tone: one(a.tone, ['friendly', 'neutral', 'formal', 'playful'] as const, cur.tone), level: one(a.level, ['auto', 'simple', 'standard', 'expert'] as const, cur.level), replyLang: a.replyLang === undefined ? cur.replyLang : str(a.replyLang, 30),
     maxWords: num(a.maxWords, [0, 100, 250, 500], cur.maxWords), goal: a.goal === undefined ? cur.goal : Math.max(5, Math.min(60, Math.round(Number(a.goal) / 5) * 5 || cur.goal)), profileAt: at,
   };
 }
+/** "Meet Coe" (the first-time questions) has been answered or skipped. It travels with the account, so a new device does not ask again. */
+export const MET = 'pmc:coe:met';
+export const isMet = () => { try { return !!localStorage.getItem(MET); } catch { return false; } };
+export function markMet() { try { if (!localStorage.getItem(MET)) { localStorage.setItem(MET, '1'); window.dispatchEvent(new Event('pmc:coe-met')); } } catch { /* storage blocked */ } }
 export function saveSettings(s: CoeSettings) {
   // When About you changes, remember when, so this site and the Coe Mini sidebar can tell which copy is newer.
   try { const prev = JSON.parse(localStorage.getItem(KEY) || 'null') as Partial<CoeSettings> | null; if (prev && s.profileAt === (prev.profileAt ?? 0) && PROFILE_KEYS.some((k) => (prev[k] ?? DEFAULTS[k]) !== s[k])) s = { ...s, profileAt: Date.now() }; } catch { /* nothing before */ }

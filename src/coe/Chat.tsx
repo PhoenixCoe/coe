@@ -1,7 +1,8 @@
 'use client';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CoeStar, CoeWordmark, type Phase } from '@/ui/Mark';
-import { PHASES, Generating, phaseOfTool } from './Working';
+import { PHASES, Generating, TookLine, phaseOfTool } from './Working';
+import { newTiming, enter as tmEnter, finish as tmFinish, took as tmTook, type Timing } from '@/lib/coe/timing';
 import { Activity, describeRun, turnSteps } from './Activity';
 import { UiIcon } from '@/ui/icons';
 import { downloadText } from '@/ui/copy';
@@ -9,25 +10,26 @@ import { CoeError, ask as askModel, stream, type ChatMsg } from '@/lib/coe/clien
 import { couldNot, honest } from '@/lib/coe/honest';
 import { addSidebarRefunds, giveBack, type Spent } from '@/lib/coe/refunds';
 import { COE_MODELS, FILE_TEXT, MAX_REPLY, MAX_WORK, QUOTAS, canUse, fmtTok, modelByKey, type ModelKey } from '@/lib/coe/models';
-import { applyCredits, bumpQuota, countReply, counted, creditsNow, limitNow, onStatus, planInfo, planNow, quotaLeft, refreshStatus, status } from '@/lib/coe/account';
-import { explain as describeErr, type ErrAct } from '@/lib/coe/errors';
-import { ErrorBox } from './ErrorBox';
+import { applyCredits, bumpQuota, countReply, counted, creditsNow, limitNow, onStatus, planInfo, planNow, markBanned, quotaLeft, refreshStatus, status } from '@/lib/coe/account';
+import { explain as describeErr, APPEAL_EMAIL, type ErrAct } from '@/lib/coe/errors';
+import { ErrorBox, Notice } from './ErrorBox';
 import { isOwner } from '@/lib/coe/owner';
-import { modeOf, connection, loadSettings, saveSettings, withAbout, type CoeSettings } from '@/lib/coe/settings';
+import { modeOf, connection, loadSettings, saveSettings, withAbout, isMet, markMet, type CoeSettings } from '@/lib/coe/settings';
 import { toImg } from './images';
 import { Dock, Rich, RichContext, dockTarget, followupsOf, wordsOf, type RichCtx } from './Blocks';
 import { KINDS, isReadable, readAny } from './readers';
 import { MEDIA_KINDS, isAudio, isVideo, readAudio, videoFrames } from './media';
-import { STEPS, execute, findTool, memoryPrompt, SHOW_PROMPT, toolsPrompt, type Call, type ChatOps } from '@/lib/coe/tools';
+import { STEPS, execute, findTool, memoryPrompt, SHOW_PROMPT, toolsPrompt, type Call, type ChatOps, type Done } from '@/lib/coe/tools';
 import { memory, onMemory } from '@/lib/coe/links';
-import { onExtChats, onExtHandoff, onExtProfile, onExtRefunds, type ExtChat } from '@/lib/coe/extension';
-import { MeetCoe, MET } from './MeetCoe';
+import { miniActionsAsWords, onExtChats, onExtHandoff, onExtLook, onExtMet, onExtProfile, onExtRefunds, type ExtChat } from '@/lib/coe/extension';
+import { Setup } from './Setup';
 import { APPS_ORIGIN } from '@/lib/coe/pmc';
 import { Workspace } from './Workspace';
 import { hasFiles, type Files } from '@/lib/coe/workspace';
 const Check = lazy(() => import('./Check').then((m) => ({ default: m.Check })));   // the code checker is big, so it is fetched only when opened
 import { SignIn as Account } from './SignIn';
 import { ConnectMini } from './ConnectMini';
+import { useMiniHere } from '@/lib/coe/device';
 import { toneOf } from './Usage';
 import { SelectBar } from './SelectBar';
 import { MathPad } from './MathPad';
@@ -39,7 +41,8 @@ import { SoundLab } from './SoundLab';
 import { runBlock } from './run';
 import { Gallery, piecesOf } from './Gallery';
 import { StudyHub } from './StudyHub';
-import { LEADS, applyAccent, applyDisplay, loadAccent, loadLead, setLead, setSfx, sfx, sfxOn, replyReady, type Lead } from '@/lib/coe/look';
+import { avatarImg, onAvatar } from '@/lib/coe/avatar';
+import { LEADS, applyAccent, applyDisplay, loadAccent, loadLead, setLead, setSfx, sfx, sfxOn, replyReady, takeLookFrom, type Lead } from '@/lib/coe/look';
 import { dueCount, streak, subscribeStudy } from '@/lib/coe/study';
 import { printChat, chatPage } from './export';
 import { PERSONAS, SLASH, loadPersona, loadStyles, personaOf, savePersona, type Persona } from '@/lib/coe/personas';
@@ -47,13 +50,14 @@ import { StyleEditor } from './Styles';
 import { ShareDialog } from './Share';
 import { installCoe, isInstalled } from '@/lib/coe/pwa';
 import { browserListen, browserListens, canListen, listening, loadPrefs, serverVoice, transcribe } from '@/lib/coe/voice';
-import { pushProfile, cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
+import { profileSeen, pushProfile, cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
 import { knowledgeFor } from './knowledge';
-import { BASE_COE, CHECK_SYSTEM, PAGE_STARTS, REDO_NOTE, STARTERS, greeting, picsNote, preferencesPrompt, worthChecking } from './prompts';
+import { COE_VERSION } from '@/lib/coe/changelog';
+import { BASE_COE, CHECK_SYSTEM, PAGE_STARTS, REDO_NOTE, STARTERS, greeting, picsNote, todayLine, preferencesPrompt, worthChecking } from './prompts';
 import { Halftone } from '@/ui/Halftone';
 import { Modal, SettingsPanel, Upgrade, type Tab } from './Panels';
 import { Select } from '@/ui/Controls';
-import { setFavicon } from '@/lib/coe/favicon';
+import { refreshFavicon, setFavicon } from '@/lib/coe/favicon';
 import { redoLeft, redoUsed } from '@/lib/coe/redo';
 import { Clamp } from './Clamp';
 import { filesOf, madeCount } from './Workspace';
@@ -83,6 +87,16 @@ const LATE = '\n\n[This was sent while you were still answering the earlier mess
 const spoken = (m: Msg) => (m.attach?.length ? m.attach.map((a) => `[File: ${a.name}${a.cut ? ' (cut short)' : ''}]\n${a.text}`).join('\n\n') + (m.text ? `\n\n${m.text}` : '') : m.text) + (m.late ? LATE : '');
 
 /** Turns saved messages into what is sent: no failed or empty replies, same-speaker runs joined, oldest dropped past the limit. */
+/** The "double-checked" mark under a reply: only a shield. Press it and it opens to the right to say what the check found. */
+function CheckChip({ kind, fix }: { kind: string; fix?: string }) {
+  const [open, setOpen] = useState(false), fixed = kind !== 'ok', text = fixed ? `Fixed before sending${fix ? `: ${fix}` : ''}` : 'Double-checked';
+  return (
+    <button type="button" className={`cx-act cx-chk${fixed ? ' fixed' : ''}${open ? ' open' : ''}`} aria-expanded={open} aria-label={fixed ? 'Fixed before sending' : 'Double-checked'} title={open ? undefined : text} onClick={() => setOpen((o) => !o)}>
+      <UiIcon name={fixed ? 'wand' : 'shield'} size={18} /><span className="cx-chk-t">{text}</span>
+    </button>
+  );
+}
+
 function context(messages: Msg[], limit: number): { list: ChatMsg[]; trimmed: boolean } {
   const joined: ChatMsg[] = [];
   for (const m of messages) {
@@ -178,12 +192,30 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     };
     window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k);
   }, []);
-  // The on-screen keyboard shrinks the visible screen: follow it, so the box you type in is never hidden and the page never jumps.
+  // The on-screen keyboard shrinks the visible screen: follow it only while the keyboard is really up, so the box you type in is never hidden.
+  // When the keyboard goes away (some phones forget to say so) the app goes back to the full screen, so no empty strip is left underneath.
   useEffect(() => {
-    const vv = window.visualViewport; if (!vv) return;
-    const fit = () => { document.documentElement.style.setProperty('--vvh', `${Math.round(vv.height)}px`); if (vv.offsetTop > 0) window.scrollTo(0, 0); };
-    fit(); vv.addEventListener('resize', fit); vv.addEventListener('scroll', fit);
-    return () => { vv.removeEventListener('resize', fit); vv.removeEventListener('scroll', fit); document.documentElement.style.removeProperty('--vvh'); };
+    const vv = window.visualViewport; const root = document.documentElement;
+    root.classList.add('cx-app');
+    const typing = () => { const a = document.activeElement as HTMLElement | null; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a?.getAttribute?.('contenteditable') === 'true'; };
+    const fit = () => {
+      if (vv && typing() && window.innerHeight - vv.height > 100) root.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+      else root.style.removeProperty('--vvh');
+      if (!vv || !typing() || vv.offsetTop > 0) { if (window.scrollY !== 0) window.scrollTo(0, 0); }
+    };
+    const soon = () => { fit(); setTimeout(fit, 120); setTimeout(fit, 400); setTimeout(fit, 900); };
+    fit();
+    vv?.addEventListener('resize', fit); vv?.addEventListener('scroll', fit);
+    window.addEventListener('resize', soon); window.addEventListener('orientationchange', soon);
+    document.addEventListener('focusin', soon); document.addEventListener('focusout', soon);
+    window.addEventListener('pmc:coe-sent', soon);
+    return () => {
+      vv?.removeEventListener('resize', fit); vv?.removeEventListener('scroll', fit);
+      window.removeEventListener('resize', soon); window.removeEventListener('orientationchange', soon);
+      document.removeEventListener('focusin', soon); document.removeEventListener('focusout', soon);
+      window.removeEventListener('pmc:coe-sent', soon);
+      root.style.removeProperty('--vvh'); root.classList.remove('cx-app');
+    };
   }, []);
   const [q, setQ] = useState('');
   const [menu, setMenu] = useState<{ id: string; x: number; y: number; sure?: boolean } | null>(null);
@@ -195,6 +227,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [picker, setPicker] = useState(false);
   const [panel, setPanel] = useState<null | 'settings'>(() => { try { return new URLSearchParams(location.search).get('settings') !== null ? 'settings' : null; } catch { return null; } });   // ?settings opens Settings, so other tools can point here
   const [tab, setTab] = useState<Tab>('chat');
+  const miniHere = useMiniHere();
   const owner = isOwner();
   useEffect(() => {
     let t: ReturnType<typeof setTimeout> | undefined;
@@ -241,11 +274,12 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [soundOn, setSoundOn] = useState(false);
   const [due, setDue] = useState(0);
   const [phase, setPhase] = useState<Phase>('idle');
+  const timings = useRef(new Map<string, Timing>());
   const [fb, setFb] = useState(false);
   useEffect(() => { try { if (new URLSearchParams(location.search).get('fb') === '1') setFb(true); } catch { /* no address bar */ } }, []);
   const cameraIn = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    const look = () => { setLeadState(loadLead()); setSoundOn(sfxOn()); applyAccent(loadAccent()); }; look();
+    const look = () => { setLeadState(loadLead()); setSoundOn(sfxOn()); applyAccent(loadAccent()); refreshFavicon(); }; look();
     window.addEventListener('pmc:coe-look', look);
     const d = () => setDue(dueCount()); d();
     const off = subscribeStudy(d);
@@ -360,6 +394,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const doSync = useCallback(async () => { try { if (await cloudSync()) await refreshList(); } catch { /* offline: this device keeps its own copy */ } }, [refreshList]);
 
   useEffect(() => { void refreshStatus(settings); }, [me, settings.serverUrl, settings.code]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const [avPic, setAvPic] = useState('');
+  useEffect(() => { setAvPic(avatarImg()); return onAvatar(() => setAvPic(avatarImg())); }, []);
   const plan = planInfo(settings);
   const cr = creditsNow(settings);
   const usedNow = cr ? cr.used : use.today;
@@ -463,7 +499,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     if (docs.length) {
       const pn = planNow(loadSettings()), limit = FILE_TEXT[pn];
       for (const f of docs) {
-        if (pn !== 'pro' && /\.(zip|pptx|xlsx)$/i.test(f.name)) { setUpgrade('Zip folders, PowerPoint and Excel files are part of Pro. PDF, Word and text files work on Free, up to a point.'); continue; }
+        if (pn !== 'pro' && /\.(zip|pptx|xlsx)$/i.test(f.name)) { setUpgrade('Zip, PowerPoint and Excel files need Pro. PDF, Word and text files work on Free, up to a point.'); continue; }
         if (f.size > (pn === 'pro' ? 60 : 8) * 1024 * 1024) { say(`${f.name} is bigger than ${pn === 'pro' ? 60 : 8} MB.`); continue; }
         setReading(f.name);
         try {
@@ -543,7 +579,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     } catch { /* the first words stay as the name */ }
   }, [persist, setConv]);
 
-  const run = useCallback(async (base: Conv, opts: { free?: boolean; wrong?: string; work?: boolean } = {}) => {
+  const run = useCallback(async (base: Conv, opts: { free?: boolean; wrong?: string; work?: boolean; resume?: { id: string; no?: boolean } } = {}) => {
     const s = loadSettings();
     const pn = planNow(s), pl = planInfo(s);
     const c0 = connection(s);
@@ -564,7 +600,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     // What the person typed in the editor, or answered on a card, while Coe was working is kept: the live chat is the truth for documents and permissions.
     const commit = (c: Conv, mine2 = false) => { if (!mine2 && active()) c = { ...c, docs: convRef.current.docs, perm: convRef.current.perm }; work = c; liveWork.current.set(mine, c); if (active()) setConv(c); };
     const here = () => (active() ? convRef.current : work);
-    const phaseA = (p: Phase) => { if (active()) setPhase(p); };
+    const tm = newTiming(); timings.current.set(mine, tm);   // the timers for this reply
+    const phaseA = (p: Phase) => { tmEnter(tm, p); if (active()) setPhase(p); };
     const noteA = (t: string) => { if (active()) setNote(t); };
     let killed = false;   // the person asked Coe to delete this very chat
     // What each call in this reply cost. If the reply goes wrong, all of it is given back at the end.
@@ -580,6 +617,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const ctl = new AbortController(); aborts.current.set(mine, ctl); liveWork.current.set(mine, base); setRunIds((r) => [...r.filter((x) => x !== mine), mine]); setFavicon('busy'); stick.current = true;
     void persist(base);   // the chat is in the list from the first word, so you can leave it and come back
     const cap = opts.work ? STEPS.work : STEPS[pn];
+
+    // What a tool is given to work with. The same for a tool that runs now and one that was waiting for a Yes.
+    const ectx = (runId: string, setRun: (p: Partial<ToolRun>) => void): Parameters<typeof execute>[1] => ({ settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId, temp: !!base.temp, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), docs: () => here().docs ?? [], setDocs: (d: EDoc[]) => commit({ ...work, docs: d, perm: here().perm }, true), attachments: () => work.messages.flatMap((m) => m.attach ?? []), perm: () => here().perm ?? {}, patch: setRun, say, chats: ops });
 
     // One question to the model, and the tool it asks for, if any. Returns true when it should go round again with the tool's answer.
     const turn = async (step: number): Promise<boolean> => {
@@ -600,7 +640,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         preferencesPrompt(s),
         picsNote(imagesOf(work)),
         s.system.trim() && `The person asked for these standing instructions:\n${s.system.trim()}`,
-        `Today is ${now.toDateString()}.`,
+        todayLine(now),
       ].filter(Boolean).join('\n\n');
 
       // The model is cut off the moment it finishes asking for a tool, so nothing it guesses after that is paid for.
@@ -659,7 +699,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         const setRun = (p: Partial<ToolRun>) => commit({ ...work, messages: work.messages.map((m) => (m.id === holder.id ? { ...m, runs: [{ ...(m.runs?.[0] ?? run0), ...p }] } : m)) });
         setRun({}); phaseA(phaseOfTool(call?.tool ?? 'unknown'));
         const res = call
-          ? await execute(call, { settings: s, signal: ctl.signal, plan: pn, convId: base.id, runId: run0.id, temp: !!base.temp, files: () => work.files ?? {}, setFiles: (f: Files) => commit({ ...work, files: f }), images: () => imagesOf(work), docs: () => here().docs ?? [], setDocs: (d: EDoc[]) => commit({ ...work, docs: d, perm: here().perm }, true), attachments: () => work.messages.flatMap((m) => m.attach ?? []), perm: () => here().perm ?? {}, patch: setRun, say, chats: ops })
+          ? await execute(call, ectx(run0.id, setRun))
           : { status: 'error' as const, result: found.error ?? 'That tool block could not be read.', out: undefined, images: undefined };
         setRun({ t1: Date.now(), status: res.status, result: res.result, ...(res.shown ? { shown: res.shown } : {}), ...(res.out ? { out: res.out } : {}) });
         if (res.status === 'error' && !ctl.signal.aborted) lastFail = { run: { tool: run0.tool, args: run0.args }, why: res.shown ?? res.result, gate: !!res.gate };
@@ -677,13 +717,30 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         patch({ text: latest, error: why || describeErr(err.kind, '').text, errKind: err.kind }); sfx.error();
         if ((err.kind === 'network' || err.kind === 'server') && spent.length) failWhy = err.kind === 'network' ? 'The connection dropped before the reply finished' : 'The model stopped with an error';
         if (err.kind === 'credits' && modeOf(s) === 'server' && !counted(s)) { fillToday(limitNow(s)); setUse(usage()); }   // turned away for tokens: this device's count agrees
+        if (err.kind === 'banned') markBanned();
         if (err.kind === 'credits' || err.kind === 'plan' || err.kind === 'signin') void refreshStatus(s);
         return false;
       } finally { ctl.signal.removeEventListener('abort', link); }
     };
 
     try {
-      for (let step = 0; ; step++) { if (!(await turn(step))) break; }
+      // An app that was waiting for a Yes: the answer goes to the same reply. The app opens in the card that asked, and Coe carries on from there. Nothing new appears from the person.
+      let go = true, first = 0;
+      if (opts.resume) {
+        const hm = work.messages.find((m) => m.id === opts.resume!.id), r0 = hm?.runs?.[0];
+        if (hm && r0) {
+          first = 1; lastHolder = hm.id;
+          const setRun = (p: Partial<ToolRun>) => commit({ ...work, messages: work.messages.map((m) => (m.id === hm.id ? { ...m, runs: [{ ...(m.runs?.[0] ?? r0), ...p }] } : m)) });
+          let res: Done;
+          if (opts.resume.no) res = { status: 'ok', result: `The person chose not to let you open ${(r0.out as { title?: string } | undefined)?.title ?? 'that app'}. Do not open any app. Say so in one short sentence and either do the job another way or ask what they would like.`, shown: 'You chose not to open it', out: { kind: 'text', text: 'Not opened. You said no.' } };
+          else { setRun({ status: 'running', t0: Date.now(), t1: undefined, out: undefined, result: undefined, shown: undefined }); phaseA(phaseOfTool(r0.tool)); res = await execute(r0.args as Call, ectx(r0.id, setRun)); }
+          setRun({ t1: Date.now(), status: res.status, result: res.result, shown: res.shown, out: res.out });
+          if (res.status === 'error' && !ctl.signal.aborted) lastFail = { run: { tool: r0.tool, args: r0.args }, why: res.shown ?? res.result, gate: !!res.gate };
+          if (res.status === 'pending' || ctl.signal.aborted) go = false;
+          else commit({ ...work, messages: [...work.messages, { id: uid(), role: 'user', text: `[Result of the ${r0.tool} tool]\n${res.result}`, images: res.images, hidden: true, ts: Date.now() }] });
+        }
+      }
+      if (go) for (let step = first; ; step++) { if (!(await turn(step))) break; }
     } finally {
       // A reply that went wrong is paid back. A tool that failed because of a limit (Pro only, used up) is not "wrong", and a reply the person stopped is theirs.
       if (!failWhy && lastFail && !lastFail.gate) failWhy = `${couldNot(lastFail.run)}: ${lastFail.why}`.slice(0, 160);
@@ -691,6 +748,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         const back = await giveBack(s, spent, failWhy, work.title).catch(() => 0);
         if (back > 0) { work = { ...work, messages: work.messages.map((m) => (m.id === lastHolder ? { ...m, refund: back } : m)) }; sfx.done(); }
       }
+      tmFinish(tm); timings.current.delete(mine);
+      if (lastHolder && tm.segs.length) work = { ...work, messages: work.messages.map((m) => (m.id === lastHolder ? { ...m, took: tmTook(tm, ctl.signal.aborted) } : m)) };
       commit({ ...work, updated: Date.now() });
       aborts.current.delete(mine); liveWork.current.delete(mine); setRunIds((r) => r.filter((x) => x !== mine)); phaseA('idle'); sfx.done(); replyReady();
       const lastM = work.messages[work.messages.length - 1];
@@ -701,22 +760,29 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   }, [persist, say, setConv, web]);
 
   const askRef = useRef<(t: string) => void>(() => {});
+  const redoRef = useRef<(note?: string) => void>(() => {});
   // A checklist that is rewritten later in the same turn shows once, as it stands now. This only changes when a message with a checklist comes or goes.
   const planSig = conv.messages.map((m) => (m.role === 'assistant' ? (m.text.includes('```coe-plan') ? m.id : '') : m.hidden ? '' : '|')).filter(Boolean).join(',');
   const oldPlans = useMemo(() => { const o = new Set<string>(); let prev = ''; for (const t of planSig.split(',')) { if (t === '|') { prev = ''; continue; } if (t) { if (prev) o.add(prev); prev = t; } } return o; }, [planSig]);
   // The question cards: "Open the editor?" and "Open this app?" each have Yes, Always open in this chat, and Don't open. A click answers at once.
-  const decide = useCallback((what: 'editor' | 'app', choice: 'yes' | 'always' | 'never', arg?: string) => {
+  const decide = useCallback((what: 'editor' | 'app', choice: 'yes' | 'always' | 'never', arg?: string, runId?: string) => {
     const pm: Perm = convRef.current.perm ?? {};
     if (what === 'editor') {
       if (choice === 'never') return;
       if (choice === 'always') setPerm({ ...pm, editor: 'always' });
       openEditor(arg); return;
     }
-    if (choice === 'never') { askRef.current('Don’t open it. Carry on another way.'); return; }
-    if (choice === 'always') { setPerm({ ...pm, app: 'always' }); askRef.current('Always open apps in this chat. Go ahead.'); return; }
-    setPerm({ ...pm, ok: Array.from(new Set([...(pm.ok ?? []), arg ?? ''])).filter(Boolean) }); askRef.current('Yes, open it.');
-  }, [setPerm, openEditor]);
-  const richCtx = useMemo<RichCtx>(() => ({ plan: planNow(settings), files: conv.files ?? {}, convId: conv.id, ask: (t: string) => askRef.current(t), pics: imagesOf(conv), effects: settings.effects, oldPlans, docs: conv.docs, perm: conv.perm, edOpen, openDoc: (id: string) => openEditor(id), decide }), [settings, oldPlans, conv.files, conv.docs, conv.perm, edOpen, conv.id, conv.messages.length, status(), openEditor, decide]);   // eslint-disable-line react-hooks/exhaustive-deps
+    // The answer belongs to the message that asked. It is not sent as a new message: the app opens there and Coe carries on in the same reply.
+    const holder = convRef.current.messages.find((m) => m.role === 'assistant' && m.runs?.some((r) => r.id === runId));
+    if (choice === 'never') setPerm({ ...pm, app: 'never' });
+    else if (choice === 'always') setPerm({ ...pm, app: 'always' });
+    else setPerm({ ...pm, ok: Array.from(new Set([...(pm.ok ?? []), arg ?? ''])).filter(Boolean) });
+    if (!holder) { askRef.current(choice === 'never' ? 'Don’t open it. Carry on another way.' : 'Yes, open it.'); return; }   // an older chat whose card cannot be found: fall back to a message
+    const send2 = () => void run(convRef.current, { resume: { id: holder.id, no: choice === 'never' } });
+    if (busy || reading) { askRef.current(choice === 'never' ? 'Don’t open it. Carry on another way.' : 'Yes, open it.'); return; }
+    send2();
+  }, [setPerm, openEditor, busy, reading, run]);
+  const richCtx = useMemo<RichCtx>(() => ({ plan: planNow(settings), files: conv.files ?? {}, convId: conv.id, ask: (t: string) => askRef.current(t), redo: (n?: string) => redoRef.current(n), pics: imagesOf(conv), effects: settings.effects, oldPlans, docs: conv.docs, perm: conv.perm, edOpen, openDoc: (id: string) => openEditor(id), decide }), [settings, oldPlans, conv.files, conv.docs, conv.perm, edOpen, conv.id, conv.messages.length, status(), openEditor, decide]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   const stop = useCallback(() => abort.current?.abort(), []);
 
@@ -737,11 +803,14 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
   // Messages sent while Coe is still replying wait their turn here. None is ever dropped: either it goes next, or it goes now and the one before it is still answered.
   const [queue, setQueue] = useState<Queued[]>([]);
+  const bannedRef = useRef(false);   // a banned account sends nothing, from any button or key
   const send = useCallback(() => {
-    if (reading) return;
+    if (reading || bannedRef.current) return;
     if (!text.trim() && !pics.length && !atts.length) return;
+    if (status().owner && /^\/owner\s*$/i.test(text)) { setText(''); setTab('owner'); setPanel('settings'); return; }   // the owner's own door; for anyone else it is just a message
     const w = work, t = text, pp = pics, aa = atts;
     setText(''); setPics([]); setAtts([]); setWork(false); sfx.send();
+    try { window.dispatchEvent(new Event('pmc:coe-sent')); } catch { /* old browser */ }
     if (!busy) { sendBody(t, { pics: pp, atts: aa, work: w }); return; }
     const item: Queued = { cid: convRef.current.id, id: uid(), text: t.trim(), pics: pp, atts: aa, work: w };
     if (settings.whileBusy === 'interrupt') { setQueue((q) => [{ ...item, late: true }, ...q]); abort.current?.abort(); }
@@ -749,13 +818,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   }, [busy, reading, text, pics, atts, work, sendBody, settings.whileBusy]);
   /** One tap on what to do with a file, a picture or a long paste (the same four helpers as in Coe Mini). Whatever is typed in the box goes along. */
   const quickSend = (what: string) => {
-    if (busy || reading) return;
+    if (busy || reading || bannedRef.current) return;
     const typed = text.trim(), pp = pics, aa = atts;
     setText(''); setPics([]); setAtts([]); sfx.send();
     sendBody(typed ? `${what}\n\n${typed}` : what, { pics: pp, atts: aa });
   };
   useEffect(() => () => setFavicon('idle'), []);
-  askRef.current = (t: string) => { if (busy || reading) setQueue((q) => [...q, { cid: convRef.current.id, id: uid(), text: t, pics: [], atts: [], work: false }]); else sendBody(t); };
+  askRef.current = (t: string) => { if (bannedRef.current) return; if (busy || reading) setQueue((q) => [...q, { cid: convRef.current.id, id: uid(), text: t, pics: [], atts: [], work: false }]); else sendBody(t); };
   const sendQueuedNow = useCallback((id: string) => { setQueue((q) => { const it = q.find((x) => x.id === id); return it ? [{ ...it, late: true }, ...q.filter((x) => x.id !== id)] : q; }); abort.current?.abort(); }, []);
   const dropQueued = useCallback((id: string) => setQueue((q) => q.filter((x) => x.id !== id)), []);
   useEffect(() => {
@@ -769,11 +838,13 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
   // ---------------------------------------------------------------- voice typing: speak, and it types
   const [dict, setDict] = useState<'off' | 'rec' | 'work'>('off');
+  const [mic, setMic] = useState<null | 'blocked' | 'none'>(null);   // a notice when the microphone cannot be used
   const dictRef = useRef<{ stop: () => void } | null>(null);
   const addText = (t: string) => { if (t.trim()) setText((x) => (x && !/\s$/.test(x) ? x + ' ' : x) + t.trim()); };
   const toggleDict = async () => {
     if (dict === 'rec') { dictRef.current?.stop(); return; }
     if (dict === 'work') return;
+    setMic(null);
     try {
       if (serverVoice(settings) && canListen() && !loadPrefs().browser) {
         setDict('rec'); const l = listening({ manual: true, waitMs: 120000, maxMs: 180000 }); dictRef.current = l;
@@ -783,7 +854,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         setDict('rec'); const b = browserListen(loadPrefs().lang); dictRef.current = b; addText(await b.result); dictRef.current = null;
       } else say('This browser cannot listen. Try Chrome, Edge or Safari.');
     } catch (e) {
-      const m = (e as Error).message || 'Voice did not work.'; say(/Permission|denied|NotAllowed/i.test(m) ? 'The microphone is blocked. Allow it in the address bar and try again.' : m);
+      const m = (e as Error).message || 'Voice did not work.', k = (e as { mic?: string }).mic;
+      if (k === 'none') setMic('none'); else if (k === 'blocked' || /Permission|denied|NotAllowed/i.test(m)) setMic('blocked'); else say(m);
       if ((e as { code?: string }).code === 'plan' && browserListens()) say(m + ' You can turn on your browser\'s own voice in Settings > Voice typing.');
     } finally { setDict('off'); }
   };
@@ -793,6 +865,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     if (a === 'retry') retry();
     else if (a === 'settings') openSetup();
     else if (a === 'plans') window.location.href = '/plans/';
+    else if (a === 'appeal') window.location.href = 'mailto:' + APPEAL_EMAIL;
     else setAcct(true);
   };
   const retry = useCallback(() => {
@@ -847,7 +920,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         if (have && have.updated >= t) continue;
         const rows = c.msgs.filter((m) => m && typeof m.t === 'string' && m.t.trim()).slice(-60);
         if (!rows.length) continue;
-        const msgs: Msg[] = rows.map((m, i) => ({ id: id + '-' + i, role: m.r === 'u' ? 'user' : 'assistant', text: String(m.t).slice(0, 6000), ts: Number(m.at) || t - (rows.length - i) * 1000 }));
+        const msgs: Msg[] = rows.map((m, i) => ({ id: id + '-' + i, role: m.r === 'u' ? 'user' : 'assistant', text: miniActionsAsWords(String(m.t).slice(0, 6000)) || 'Coe Mini worked on the page.', ts: Number(m.at) || t - (rows.length - i) * 1000 }));
         await persistRef.current({ id, title: ('Mini: ' + String(c.title || 'Chat')).slice(0, 60), created: have?.created ?? msgs[0].ts, updated: t, model: 'core', named: true, pinned: have?.pinned, messages: msgs });
       }
     })();
@@ -857,12 +930,27 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const cur = loadSettings(), at = Number(me.at) || 0; if (at <= (cur.profileAt || 0)) return;
     setSettings(withAbout(cur, me, at));
   }), [setSettings]);
+  // The page colour or accent was changed in Coe Mini: the newer choice wins.
+  useEffect(() => onExtLook((l) => takeLookFrom(l)), []);
+  useEffect(() => onExtMet(() => markMet()), []);   // setup was done in Coe Mini
   // The very first time: a few short, optional questions about you.
+  // Setup is asked once per person, not once per device: the account remembers it, and Coe Mini hears about it too.
   const [meet, setMeet] = useState(false);
   useEffect(() => {
     if (fromMini.current) return;
-    try { if (localStorage.getItem(MET)) return; if (loadSettings().name) { localStorage.setItem(MET, '1'); return; } } catch { return; }
-    const t = window.setTimeout(() => setMeet(true), 1400); return () => window.clearTimeout(t);
+    let t = 0;
+    const decide = () => {
+      window.clearTimeout(t);
+      if (isMet()) return;
+      if (loadSettings().name) { markMet(); return; }
+      // Signed in: the account may already know the answers. Wait until it has been asked (offline, nothing is shown).
+      if (cloudOn && session() && !profileSeen()) return;
+      t = window.setTimeout(() => { if (!isMet() && !loadSettings().name) setMeet(true); }, 1400);
+    };
+    const done = () => { window.clearTimeout(t); setMeet(false); };
+    decide();
+    window.addEventListener('pmc:coe-profile', decide); window.addEventListener('pmc:coe-met', done);
+    return () => { window.clearTimeout(t); window.removeEventListener('pmc:coe-profile', decide); window.removeEventListener('pmc:coe-met', done); };
   }, []);   // what the Chrome sidebar gave back is listed in Settings > Usage > Refunds
 
   const open = useCallback(async (id: string) => {
@@ -942,15 +1030,16 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const next = { ...convRef.current, model: k }; setConv(next); void persist(next);
   };
 
-  const redo = useCallback(() => {
+  const redo = useCallback((note?: string) => {
     if (busy) return;
     const c = convRef.current; const msgs = cutToUser(c.messages);
     if (!msgs.length) return;
     const prev = c.messages.slice(msgs.length).filter((m) => m.role === 'assistant').map((m) => wordsOf(m.text));
     // A few free redos a day, then it counts like any other message, so nobody's allowance (or Coe's bill) can be drained by pressing it.
     const free = redoLeft(planNow(loadSettings())) > 0; if (free) redoUsed();
-    const next = { ...c, messages: msgs }; setConv(next); void run(next, { free, wrong: prev.join('\n\n'), work: !!c.messages[msgs.length]?.work });
+    const next = { ...c, messages: msgs }; setConv(next); void run(next, { free, wrong: prev.join('\n\n') + (typeof note === 'string' && note ? '\n\n' + note : ''), work: !!c.messages[msgs.length]?.work });
   }, [busy, run, setConv]);
+  redoRef.current = redo;
 
   // ---------------------------------------------------------------- keys
   useEffect(() => {
@@ -1000,9 +1089,10 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
   // ---------------------------------------------------------------- data
   const insertText = (s2: string) => { const el = box.current; const a = el?.selectionStart ?? text.length, b = el?.selectionEnd ?? text.length; setText(text.slice(0, a) + s2 + text.slice(b)); requestAnimationFrame(() => { el?.focus(); const p = a + s2.length; el?.setSelectionRange(p, p); }); };
-  const slash = useMemo(() => { const m = /^\/(\w*)$/.exec(text); return m ? SLASH.filter((c) => c.cmd.startsWith(m[1].toLowerCase())).slice(0, 8) : []; }, [text]);
+  const slash = useMemo(() => { const m = /^\/(\w*)$/.exec(text); return m ? [...SLASH, ...(status().owner ? [{ cmd: 'owner', title: 'Owner tools', text: '/owner', go: 'owner' as const }] : [])].filter((c) => c.cmd.startsWith(m[1].toLowerCase())).slice(0, 8) : []; }, [text]);
   useEffect(() => { setSlashAt(0); }, [slash.length]);
   const useSlash = (c: (typeof SLASH)[number]) => {
+    if (c.go === 'owner') { setText(''); setTab('owner'); setPanel('settings'); return; }
     if (c.go === 'maths') { setText(''); setMathOpen(true); return; }
     if (c.go === 'code') { setText(''); setTool(true); return; }
     setText(c.text); requestAnimationFrame(() => { const el = box.current; el?.focus(); el?.setSelectionRange(c.text.length, c.text.length); });
@@ -1088,9 +1178,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     return g;
   }, [conv.messages]);
   const lastUser = [...conv.messages].reverse().find((m) => m.role === 'user' && !m.hidden && !m.compact)?.id;
-  const full = !keyOn && left <= 0;
   const lastVis = [...conv.messages].reverse().find((x) => !x.hidden);
   const lastErr = lastVis && lastVis.role === 'assistant' && lastVis.error && !busy ? lastVis : null;
+  const banned = !keyOn && (!!status().banned || lastErr?.errKind === 'banned');   // the server turned this account away: nothing more can be asked
+  bannedRef.current = banned;
+  const full = !keyOn && (left <= 0 || banned);
   const outBox = (full && !busy) || lastErr?.errKind === 'credits';   // "out of tokens" is said once, in one place
   const hasInput = text.trim().length > 0 || pics.length > 0 || atts.length > 0;
   const canSend = !reading && !full && hasInput;
@@ -1127,7 +1219,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
 
       {/* ------------------------------------------------ history */}
       <aside className="cx-side" aria-label="Conversations" aria-hidden={!side} {...(!side ? { inert: true } : {})}>
-        <div className="cx-brand"><CoeWordmark height={30} spin /></div>
+        <div className="cx-brand"><CoeWordmark height={30} spin /><i className="beta" title={`Version ${COE_VERSION}`}>Beta</i></div>
         <div className="cx-side-top">
           <button type="button" className="btn gold cx-new" onClick={fresh}><UiIcon name="plus" size={18} />New chat</button>
           <label className="cx-find"><UiIcon name="search" size={16} /><span className="sr">Search conversations</span>
@@ -1171,7 +1263,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         <div className="cx-side-foot">
           <div className="cx-me-row">
             <button type="button" className="cx-me" title={me ? 'Your account' : 'Sign in'} onClick={() => { if (me) { setTab('account'); setPanel('settings'); } else setAcct(true); }}>
-              <span className="cx-av d" aria-hidden>{me ? me.slice(0, 1).toUpperCase() : <UiIcon name="user" size={18} />}</span>
+              <span className="cx-av d" aria-hidden>{avPic ? <img src={avPic} alt="" /> : me ? me.slice(0, 1).toUpperCase() : <UiIcon name="user" size={18} />}</span>
               <span className="cx-me-t"><b className="d">{me ? me.split('@')[0] : 'Sign in'}</b><small className="tx">{keyOn ? 'No daily limit' : `${fmtTok(Math.max(0, perDay - usedNow))} left today`}</small></span>
             </button>
             <button type="button" className="cx-fb" title="Settings" aria-label="Settings" onClick={() => { setTab('look'); setPanel('settings'); }}><UiIcon name="gear" size={20} /></button>
@@ -1299,19 +1391,20 @@ export function Chat({ initialList, initialConv }: ChatProps) {
                         {x && <div className="cx-cchips">{x.items.map((it) => <button key={it.id} type="button" className={`cx-cchip${cpOpen && cpSel === it.id ? ' on' : ''}`} title="Open this code on the side" onClick={() => openCode(it.id)}><UiIcon name="code" size={16} /><b className="d">{it.file ?? LANG_NAME[it.lang] ?? 'Code'}</b><span className="tx">{it.code.split('\n').length} lines</span></button>)}</div>}
                       </>; })()
                       : (pt.text ? <Clamp live={live && pt === m}><Rich text={pt.text} msg={pt} live={live && pt === m} /></Clamp>: null)}
-                    {pt.error && !(lastOne && pt === m) && !(outBox && pt.errKind === 'credits') && <ErrorBox small own={keyOn} kind={pt.errKind} text={pt.error} canRetry={false} onAct={errAct} />}
+                    {pt.error && !(lastOne && pt === m) && !(outBox && pt.errKind === 'credits') && !(banned && pt.errKind === 'banned') && <ErrorBox small own={keyOn} kind={pt.errKind} text={pt.error} canRetry={false} onAct={errAct} />}
                     </div>
                     ))}
-                    {m.role === 'assistant' && m.checked && !live && <p className={`cx-checked tx ${m.checked}`}><UiIcon name={m.checked === 'ok' ? 'shield' : 'wand'} size={14} />{m.checked === 'ok' ? 'Double-checked' : <>Fixed before sending: {m.fix}</>}</p>}
                     {m.role === 'assistant' && !m.error && <Dock messages={conv.messages} convId={conv.id} live={live} from={idxs[0]} to={i} />}
-                    {live && !m.error && <Generating since={conv.messages[idxs[0]]?.ts} phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} empty={!parts.some((x) => x.text)} />}
+                    {live && !m.error && <Generating since={conv.messages[idxs[0]]?.ts} phase={shownPhase} label={liveRun?.now} detail={liveRun?.detail} empty={!parts.some((x) => x.text)} timing={settings.timers ? timings.current.get(conv.id) : undefined} />}
                     {m.role === 'assistant' && turnEnd && !m.error && !(dk && dk.end >= turnFrom(i) && dk.end <= i) && <Activity steps={turnSteps(conv.messages, i)} live={live} phaseNote={PHASES[shownPhase === 'rest' ? 'idle' : shownPhase].label} />}
+                    {settings.timers && !live && m.role === 'assistant' && turnEnd && !m.error && (() => { const tk = [...parts].reverse().find((x) => x.took)?.took; return tk ? <TookLine took={tk} /> : null; })()}
                     {m.role === 'assistant' && turnEnd && parts.some((x) => x.refund) && <p className="cx-refund tx"><UiIcon name="refresh" size={14} /><span>{fmtTok(parts.reduce((n, x) => n + (x.refund ?? 0), 0))} tokens given back.</span><button type="button" className="cx-link" onClick={() => { setTab('usage'); setPanel('settings'); }}>See refunds</button></p>}
                     {m.role === 'assistant' && (m.stopped || m.cut) && !m.error && <p className="cx-flag tx">{m.stopped ? 'You stopped this reply.' : 'This reply reached its length limit. Say “continue” to carry on.'}</p>}
                     {!live && (
                       <div className="cx-acts">
                         {m.role === 'assistant' && agg.text && <button type="button" className="cx-act" title="Copy" aria-label="Copy" onClick={() => copyMsg(agg)}><UiIcon name="copy" size={14} />Copy</button>}
-                        {m.role === 'assistant' && !m.error && lastOne && !busy && worthRedo(agg.text) && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className="cx-act" onClick={redo} aria-label="Try again" title={left > 0 ? `Not right? Try again, free. ${left} free ${left === 1 ? 'try' : 'tries'} left today.` : 'Try again. Today\'s free tries are used, so this counts like a normal message.'}><UiIcon name="refresh" size={14} /></button>; })()}
+                        {m.role === 'assistant' && m.checked && <CheckChip kind={m.checked} fix={m.fix} />}
+                        {m.role === 'assistant' && !m.error && lastOne && !busy && worthRedo(agg.text) && (() => { const left = redoLeft(planNow(settings)); return <button type="button" className="cx-act" onClick={() => redo()} aria-label="Try again" title={left > 0 ? `Not right? Try again, free. ${left} free ${left === 1 ? 'try' : 'tries'} left today.` : 'Try again. Today\'s free tries are used, so this counts like a normal message.'}><UiIcon name="refresh" size={14} /></button>; })()}
                         {m.role === 'assistant' && agg.text && !m.error && (
                           <details className="cx-more" onToggle={(e) => { if ((e.currentTarget as HTMLDetailsElement).open) { const d = e.currentTarget as HTMLDetailsElement; const off = (ev: Event) => { if (!d.contains(ev.target as Node)) { d.open = false; document.removeEventListener('pointerdown', off, true); } }; document.addEventListener('pointerdown', off, true); } }}>
                             <summary className="cx-act" title="More" aria-label="More for this answer"><UiIcon name="menu" size={14} />More</summary>
@@ -1347,12 +1440,15 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         <footer className="cx-compose">
           {away && <button type="button" className="cx-jump btn small" onClick={() => { stick.current = true; toBottom(true); setAway(false); }}><UiIcon name="down" size={15} />Latest</button>}
           {remoteLive && !busy && <p className="cx-flag tx" role="status">Coe is replying to this chat on another device. It shows here as it is written.</p>}
-          {conv.temp && <p className="cx-flag tx cx-temp" role="status"><UiIcon name="timer" size={14} />Private chat (temporary). It is not saved, and Coe does not read or add to your notes. It goes when you leave it.</p>}
+          {conv.temp && <p className="cx-flag tx cx-temp" role="status"><UiIcon name="timer" size={14} />Private chat. Nothing is saved and Coe leaves your notes alone. It disappears when you leave.</p>}
           {note && <p className="cx-flag tx">{note}</p>}
-          {outBox
+          {banned
+            ? <ErrorBox small own={keyOn} kind="banned" text="" canRetry={false} onAct={errAct} />
+            : outBox
             ? <ErrorBox small own={keyOn} kind="credits" text={lastErr?.errKind === 'credits' ? lastErr.error ?? '' : ''} canRetry={false} onAct={errAct} />
             : lastErr ? <ErrorBox small own={keyOn} kind={lastErr.errKind} text={lastErr.error ?? ''} canRetry onAct={errAct} /> : null}
-          {fb && !busy && !empty && <Feedback onRate={(r) => void sendFeedback(loadSettings(), r)} onMessage={async (r, t) => (await sendFeedback(loadSettings(), undefined, `[${r}] ${t}`, 'problem')).emailed} onLater={() => { feedbackLater(); setFb(false); }} onDone={() => setFb(false)} />}
+          {mic && <Notice small title={mic === 'none' ? 'No microphone found' : 'Microphone is blocked'} text={mic === 'none' ? 'Plug in or turn on a microphone, then press Try again.' : 'Coe can’t hear you. Allow the microphone with the icon in the address bar (on a phone, in your browser’s site settings), then press Try again.'} act="Try again" onAct={() => void toggleDict()} />}
+          {fb && !busy && !empty && !banned && <Feedback onRate={(r) => void sendFeedback(loadSettings(), r)} onMessage={async (r, t) => (await sendFeedback(loadSettings(), undefined, `[${r}] ${t}`, 'problem')).emailed} onLater={() => { feedbackLater(); setFb(false); }} onDone={() => setFb(false)} />}
           {queue.length > 0 && (
             <ul className="cx-queue" aria-label="Messages waiting to be sent">
               {queue.map((q) => (
@@ -1389,7 +1485,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               </ul>
             )}
             {mathOpen && <MathPad onInsert={(t) => { insertText(t); setMathOpen(false); }} onClose={() => { setMathOpen(false); box.current?.focus(); }} />}
-            <textarea ref={box} className="cx-ta tx" rows={1} value={text} placeholder={work ? 'Describe the big job. Coe will plan it and work through it' : empty ? 'Ask Coe anything, or add a picture or a file' : 'Write a reply'} aria-label="Message" onChange={(e) => setText(e.target.value)} onKeyDown={onKey} onPaste={onPaste} />
+            <textarea ref={box} className="cx-ta tx" rows={1} value={text} placeholder={banned ? 'This account cannot send messages' : work ? 'Describe the big job. Coe will plan it and work through it' : empty ? 'Ask Coe anything, or add a picture or a file' : 'Write a reply'} aria-label="Message" onChange={(e) => setText(e.target.value)} onKeyDown={onKey} onPaste={onPaste} />
             <div className="cx-bar">
               <div className="cx-plus">
                 <button type="button" className={`tb tb-plus${plusOpen ? ' on' : ''}`} aria-label="Add or open" aria-haspopup="menu" aria-expanded={plusOpen} title="Add a file, switch on Deep Work or web search, pick a style" onClick={() => setPlusOpen((o) => !o)}><UiIcon name="plus" size={20} /></button>
@@ -1429,7 +1525,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               {(!busy || hasInput) && <button type="button" className={`cx-send${busy ? ' later' : ''}`} aria-label={busy ? (settings.whileBusy === 'interrupt' ? 'Send now' : 'Send next') : 'Send'} title={busy ? (settings.whileBusy === 'interrupt' ? 'Send now: Coe stops this reply, keeps it, and answers both' : 'Send next: it goes after this reply') : 'Send'} disabled={!canSend} onClick={send}><UiIcon name="send" size={20} /></button>}
             </div>
           </div>
-          <p className="cx-fine tx">{settings.enter === 'send' ? 'Enter sends, Shift+Enter adds a line.' : 'Ctrl+Enter sends.'} {assistant} can be wrong. Check anything important.</p>
+          <p className="cx-fine tx">{settings.enter === 'send' ? 'Enter sends, Shift+Enter adds a line.' : 'Ctrl+Enter sends.'} {assistant} can be wrong. Check anything important. <span className="cx-by">© {new Date().getFullYear()} PMC Studios · <a href="/privacy/">Privacy</a> · <a href="/about/">About</a></span></p>
         </footer>
 
         {infoFor && (() => { const m = conv.messages.find((x) => x.id === infoFor); return m ? <AnswerInfo msg={m} onClose={() => setInfoFor(null)} /> : null; })()}
@@ -1443,7 +1539,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         {pageFor && (
           <Modal title={pageFor.title} onClose={() => setPageFor(null)}>
             <form className="cx-form" onSubmit={(e) => { e.preventDefault(); if (!pageText.trim() || busy || reading) return; const p = pageFor; setPageFor(null); sfx.send(); sendBody(`${p.prompt}\n\n${pageText.trim()}`, { pics: [], atts: [] }); }}>
-              <p className="tx">Coe cannot see your other tabs. Paste the words of the page here, or close this, add a file with + and press the button again. Coe Mini reads the open page for you.</p>
+              <p className="tx">Coe can’t see your other tabs. Paste the page text here, or add a file with +.{miniHere ? ' Coe Mini reads the open page for you.' : ''}</p>
               <textarea className="cx-in tall" rows={8} autoFocus value={pageText} maxLength={60000} placeholder="Paste the page here" aria-label="The page" onChange={(e) => setPageText(e.target.value)} />
               <div className="cx-actions"><button type="submit" className="btn gold" disabled={!pageText.trim()}>{pageFor.title}</button></div>
             </form>
@@ -1467,7 +1563,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
               <span className="cx-grow" />
               <button type="button" className="btn small cd-x" aria-label="Close Code check" onClick={() => setTool(false)}><UiIcon name="close" size={18} />Close</button>
             </header>
-            <p className="cd-explain tx">Paste or type some code and Coe finds the mistakes and shows how to fix them. Nothing is sent anywhere until you ask Coe. Press <b>Back to chat</b> (or Esc, or your phone's Back button) when you are done. Your code is kept.</p>
+            <p className="cd-explain tx">Paste some code and Coe finds the mistakes and shows how to fix them. Nothing is sent until you ask. Press <b>Back to chat</b> (or Esc) when you are done. Your code is kept.</p>
             <Suspense fallback={<p className="tx" role="status">Opening Code check…</p>}><Check key={checkKey} settings={settings} onUsed={() => setUse(usage())} onSettings={() => { setTool(false); openSetup(); }} onUpgrade={setUpgrade} say={say} /></Suspense>
             <div className="cd-foot"><button type="button" className="btn gold" onClick={() => setTool(false)}><UiIcon name="left" size={18} />Back to chat</button></div>
           </div>
@@ -1510,8 +1606,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       {pairCode && !acct && !!me && <ConnectMini code={pairCode} email={me} onClose={() => setPairCode('')} onSwitch={() => setAcct(true)} />}
       {acct && <Account onClose={() => setAcct(false)} onChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} />}
       {upgrade && <Upgrade note={upgrade} onClose={() => setUpgrade('')} />}
-      {meet && !panel && !acct && !upgrade && <MeetCoe s={settings} save={(p) => setSettings({ ...loadSettings(), ...p })} onClose={() => setMeet(false)} />}
-      {panel === 'settings' && <SettingsPanel owner={owner} settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} used={usedNow} limit={perDay} onSignIn={() => setAcct(true)} onAccountChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
+      {meet && !panel && !acct && !upgrade && <Setup s={settings} save={(p) => setSettings({ ...loadSettings(), ...p })} onClose={() => { setMeet(false); if (session()) void pushProfile().catch(() => {}); }} />}
+      {panel === 'settings' && <SettingsPanel owner={owner} onClearFiles={() => { const next = { ...convRef.current, files: {} }; setConv(next); void persist(next); }} settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} used={usedNow} limit={perDay} onSignIn={() => setAcct(true)} onAccountChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
       {peek && <AttPeek a={peek} onClose={() => setPeek(null)} />}
       {big && <Modal title={big.name} onClose={() => setBig(null)} wide><img className="cx-big" src={dataUrl(big)} alt={big.name} /></Modal>}
     </div>

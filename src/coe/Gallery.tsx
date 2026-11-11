@@ -43,7 +43,7 @@ export function Gallery({ conv, onGo, onClose }: { conv: Conv; onGo: (msg: strin
   return (
     <Modal title="Made in this chat" onClose={onClose} wide>
       {!pieces.length ? (
-        <div className="gal-none"><p className="tx">Nothing has been made in this chat yet. Ask for a page, a game, a diagram, a graph, a quiz or a picture and it will be collected here.</p></div>
+        <div className="gal-none"><p className="tx">Nothing made in this chat yet. Pages, games, diagrams, graphs, quizzes and pictures you ask for show up here.</p></div>
       ) : (
         <ul className="gal">
           {pieces.map((p, i) => (

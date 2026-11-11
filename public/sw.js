@@ -1,6 +1,6 @@
 /* Coe service worker. It lets the app open without a connection: your chats and study cards already live on this device.
    Pages are fetched fresh whenever you are online, so a new version is never held back. */
-const V = 'coe-4';
+const V = 'coe-5';   // a new name clears every saved copy from older versions the next time Coe opens
 const WAIT = 4500;   // on a weak connection, a saved copy is better than a page that never opens
 const MAX = 220;
 
@@ -29,7 +29,9 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (u.pathname.startsWith('/_next/static/') || u.pathname.startsWith('/fonts/')) {   // these file names change whenever the content does
-    e.respondWith(caches.match(r).then((m) => m || fetch(r).then((res) => { e.waitUntil(keep(r, res.clone())); return res; })));
+    // A file that stalls on a weak connection fails after a while instead of hanging forever, so the app can try it again.
+    const get = () => new Promise((ok, no) => { const t = setTimeout(() => no(new Error('slow')), 25000); fetch(r).then((res) => { clearTimeout(t); e.waitUntil(keep(r, res.clone())); ok(res); }, (err) => { clearTimeout(t); no(err); }); });
+    e.respondWith(caches.match(r).then((m) => m || get()));
     return;
   }
   e.respondWith(fetch(r).then((res) => { e.waitUntil(keep(r, res.clone())); return res; }).catch(async () => (await caches.match(r)) || Response.error()));

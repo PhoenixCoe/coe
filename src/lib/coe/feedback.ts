@@ -12,13 +12,13 @@ function write(s: State) { try { localStorage.setItem(KEY, JSON.stringify(s)); }
 
 /** A reply finished. */
 export const noteReply = () => { const s = read(); s.replies++; write(s); };
-/** The first time after a handful of replies, then now and again: at most once a day, and never right after "Not now". */
+/** Rarely: the first time after plenty of replies, then only now and again. At most once every two weeks, and after "Not now" not for six weeks. */
 export function feedbackDue(now = Date.now()): boolean {
   const s = read();
-  return s.replies >= (s.asked === 0 ? 4 : 10) && now - s.lastAsk > 20 * 3600_000 && now >= s.skipUntil;
+  return s.replies >= (s.asked === 0 ? 20 : 60) && now - s.lastAsk > 14 * 86400_000 && now >= s.skipUntil;
 }
 export const feedbackShown = () => { const s = read(); s.lastAsk = Date.now(); s.asked++; s.replies = 0; write(s); };
-export const feedbackLater = () => { const s = read(); s.skipUntil = Date.now() + 3 * 86400_000; s.replies = 0; write(s); };
+export const feedbackLater = () => { const s = read(); s.skipUntil = Date.now() + 42 * 86400_000; s.replies = 0; write(s); };
 export type FeedbackKind = 'idea' | 'problem' | 'other' | 'rating';
 const MAIL = 'contact@pmcstudios.uk';
 /** Opens the person's own email app, addressed to us. The fallback when the server cannot send mail. */
@@ -31,4 +31,15 @@ export async function sendFeedback(settings: CoeSettings, rating?: Rating, messa
   if (modeOf(settings) !== 'server' || !connection(settings).ok) return { emailed: false };
   try { const r = await serverPost<{ emailed?: boolean }>(settings, '/feedback', { rating, message: message.trim() || undefined, kind, page: location.pathname }); void refreshStatus(settings); return { emailed: !!r?.emailed }; }
   catch { return { emailed: false }; }
+}
+
+export type ReportWhy = 'unsafe' | 'private' | 'wrong' | 'other';
+/** Reports a shared chat. Anyone can. Resolves to whether the server emailed it; when it did not, the caller opens the person's own email app. */
+export async function reportShare(settings: CoeSettings, link: string, why: ReportWhy, note = ''): Promise<{ emailed: boolean; limited?: boolean }> {
+  if (!settings.serverUrl.trim()) return { emailed: false };
+  try { const r = await serverPost<{ emailed?: boolean }>(settings, '/report', { link, why, note: note.trim() || undefined }); return { emailed: !!r?.emailed }; }
+  catch (e) { return { emailed: false, limited: (e as { status?: number }).status === 429 }; }
+}
+export function mailtoReport(link: string, why: ReportWhy, note = '') {
+  location.href = `mailto:${MAIL}?subject=${encodeURIComponent('Coe report: shared chat (' + why + ')')}&body=${encodeURIComponent(`Reason: ${why}\nLink: ${link}\nNote: ${note.trim() || 'none'}`)}`;
 }

@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { UiIcon } from '@/ui/icons';
 import { Modal } from './Panels';
 import { connectMini, forgetPair, onExtConnected } from '@/lib/coe/extension';
 
@@ -33,8 +34,8 @@ export function ConnectMini({ code, email, onClose, onSwitch }: { code: string; 
         {step === 'wait' && <p className="lead tx" role="status">Connecting</p>}
         {step === 'done' && (
           <>
-            <span className="cm-tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 12.5l5 5L20 6.5" /></svg></span>
-            <p className="lead tx">Coe Mini and Coe are connected. Your answers about you, your settings and your Coe Mini chats now show in both. You can turn this off any time in Settings.</p>
+            <span className="cm-tick" aria-hidden="true"><UiIcon name="check" size={18} strokeWidth={3} /></span>
+            <p className="lead tx">Coe Mini and Coe are connected. Your About you answers, settings and Mini chats now show in both. You can turn this off in Settings.</p>
             <div className="cm-act"><button type="button" className="btn primary" onClick={onClose}>OK</button></div>
           </>
         )}

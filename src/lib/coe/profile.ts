@@ -2,7 +2,7 @@
 import type { CoeSettings } from './settings';
 
 export const AGE_OPTIONS: { value: CoeSettings['ageBand']; label: string }[] = [
-  { value: '', label: 'Rather not say' }, { value: 'under11', label: 'Under 11' }, { value: '11-13', label: '11 to 13' }, { value: '14-16', label: '14 to 16' },
+  { value: '', label: 'Rather not say' }, { value: 'under13', label: 'Under 13' }, { value: '13-16', label: '13 to 16' },
   { value: '17-18', label: '17 to 18' }, { value: '19-24', label: '19 to 24' }, { value: '25+', label: '25 or over' },
 ];
 export const ROLE_OPTIONS: { value: CoeSettings['role']; label: string }[] = [

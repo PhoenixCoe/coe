@@ -69,7 +69,7 @@ export function mergeStyles(other: unknown): boolean {
 }
 
 /** Typing "/" in the box offers these. Each one fills the box with a starting message. */
-export interface Slash { cmd: string; title: string; text: string; go?: 'maths' | 'voice' | 'code' }
+export interface Slash { cmd: string; title: string; text: string; go?: 'maths' | 'voice' | 'code' | 'owner' }
 export const SLASH: Slash[] = [
   { cmd: 'quiz', title: 'Quiz me', text: 'Make me a quiz on this (a quiz block, 6 questions, with the reason for each answer): ' },
   { cmd: 'flashcards', title: 'Make flash cards', text: 'Make flash cards (a flashcards block, about 12 cards) on: ' },

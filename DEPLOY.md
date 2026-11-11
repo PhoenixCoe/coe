@@ -114,6 +114,11 @@ Supabase > SQL Editor > paste all of `supabase/setup.sql` again and run. It only
 - `CHECK_FREE` (10), `CHECK_PRO` (60): free "double-check my answer" passes a day.
 - `APPS_FREE` (5): PMC App runs a day on Free.
 - `REQUIRE_SIGNIN`: set to `1` so only signed-in people can chat.
+- `OWNER_EMAILS`: your email (commas between several). It shows the owner tools in Settings. Checked on the server from the signed-in account.
+- `BANNED`: emails to ban (commas, spaces or new lines). A banned person can sign in and see why, but cannot ask for or make anything.
+- `REPORT_TO`: where "Report this chat" goes. If empty it uses `FEEDBACK_TO`, then contact@pmcstudios.uk. Needs `RESEND_API_KEY`.
+- `FEEDBACK_BONUS` (50000, highest 100000): extra tokens, once a day, for answering "How am I doing?" or sending a message.
+- `EXTENSION_IDS`: the store IDs of Coe Mini, comma separated (Chrome and Edge each give their own). Needed once a store has approved it. Leave `REQUIRE_SIGNIN` off while the stores review it.
 - `ACCESS_CODE` (Secret): people need this word to use the server.
 
 ## How it works

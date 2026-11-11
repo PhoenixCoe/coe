@@ -101,7 +101,7 @@ const R: Row[] = [
   ['world', 'timer', 'Shows what it is doing', 'A live line says what Coe is up to, and a list shows every step and command afterwards.', 'free', true],
   ['world', 'sparkle', 'Job symbols', 'Coe\'s star turns into a pencil, magnifier, scanner and more for the job it is doing.', 'free', true],
   // ---- feel
-  ['feel', 'theme', 'Four colour looks', 'Cream, Ink, Gold and Green.', 'free'],
+  ['feel', 'theme', 'Four colour looks', 'Cream, Ink, Gold and your theme colour.', 'free'],
   ['feel', 'text', 'Text size slider', 'Any size from small to very large.', 'free'],
   ['feel', 'play', 'Motion control', 'Full, calm or off for every animation.', 'free'],
   ['feel', 'panel', 'Spacing and high contrast', 'Fit more on screen, give everything more room, or turn up the contrast.', 'free'],
@@ -109,7 +109,7 @@ const R: Row[] = [
   ['feel', 'keyboard', 'Keyboard shortcuts', 'Everything common has one, and Ctrl+/ lists them.', 'free'],
   ['feel', 'install', 'Install as an app', 'Add Coe to your home screen or desktop.', 'free'],
   ['feel', 'sparkle', 'A tab that tells you when it is done', 'The tab icon shows three moving dots while Coe works and a tick when finished.', 'free', true],
-  ['feel', 'alert', 'Errors in plain words', 'Red, orange and yellow notes that say what happened and give the button that fixes it.', 'free'],
+  ['feel', 'alert', 'Errors in plain words', 'Red and orange boxes for problems and grey boxes for notices, each saying what happened and giving the button that fixes it.', 'free'],
   ['feel', 'access', 'High contrast', 'Stronger text and borders for easier reading.', 'free'],
   ['feel', 'access', 'Easy to use', 'Big targets, clear focus and labels for screen readers throughout.', 'free'],
   ['feel', 'menu', 'Made for phones', 'A tidy drawer, small controls that still fit, and nothing hidden.', 'free'],

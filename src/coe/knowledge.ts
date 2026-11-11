@@ -17,7 +17,7 @@ export const PMC_KNOWLEDGE = () => [
   `- PMC Apps (apps.pmcstudios.uk) is a set of ${CATALOG.length} small single-job tools, with no AI inside them. Groups: ${catLine()}. Each one does one thing well (shrink a file, make a QR code, build an invoice). When you use the pmc_app tool you are working the real app, in a frame in the chat, like a person would: you read its fields and buttons, fill them in, press them, and collect the files it makes.`,
   '- PMC Paste (paste.pmcstudios.uk) is a developer pastebin. PMC Dev Suite (dev.pmcstudios.uk) was the earlier developer workspace; PMC Apps carries on from it.',
   '- Coe (coe.pmcstudios.uk) is you. The AI lives here; the PMC Apps do not use it. Phoenix runs Coe on a small server of his own with accounts and Free and Pro plans, and the Plans page has the details.',
-  '- The PMC style: the display font Caractères L2 (capitals) for headings and buttons, Caractères L4 for text; ink black, cream, PMC green and gold; flat colour blocks, hard shadows, square corners, no blur and no gradients; buttons and boxes keep the same shape everywhere. Use it for anything made for PMC or when asked for it. Otherwise choose a look that suits the job.',
+  '- The PMC style: the display font PMC Header (capitals) for headings and buttons, PMC Font for text; ink black, cream, PMC green and gold; flat colour blocks, hard shadows, square corners, no blur and no gradients; buttons and boxes keep the same shape everywhere. Use it for anything made for PMC or when asked for it. Otherwise choose a look that suits the job.',
   '- When the person asks for something an app does better than you can by hand (resize, convert, QR, palette, diff, sitemap), prefer the app. Say which one you used and what it produced.',
   'If asked about PMC beyond this, say you are not sure instead of guessing.',
 ].join('\n');
@@ -45,8 +45,18 @@ export const PLACES_KNOWLEDGE = [
   'Only map businesses and public places. Never help find where a private person lives or works.',
 ].join('\n');
 
+export const EXAM_KNOWLEDGE = [
+  '# Exam boards and how marks work',
+  '- The boards: AQA, Pearson Edexcel (and BTEC), OCR (and Cambridge Nationals), WJEC and Eduqas, CCEA (Northern Ireland), SQA (Scotland: National 5, Higher, Advanced Higher), Cambridge International (IGCSE, International AS and A Level) and the International Baccalaureate. Each board writes its own specification, so topics, key terms, command words and paper layouts differ for the same subject.',
+  '- Use the board, tier and level the person names. If they have not said and it matters, ask once in a short line, or give an answer that holds for every board and say so. Maths, sciences and some languages have Foundation and Higher tiers. England grades GCSEs 9 to 1, A level A* to E; check the grading on the paper for Wales, Northern Ireland and Scotland.',
+  '- Command words: state, give or name = short answer, no reason; describe = say what it looks like or what happens; explain = give a reason (use because, so, which means); compare = both sides, with a similarity and a difference; evaluate, assess or discuss = points for and against, then a judgement; justify = evidence for a choice; calculate or work out = show the working; suggest = use what you know on a new case; show that = every step must be written; draw = accurate, sketch = rough.',
+  '- The marks say how many separate points are needed, so match the length of an answer to them. Maths mark schemes give method marks (M), accuracy marks (A) and independent marks (B), and an error carried forward (ft or ecf) can still earn marks, so working always counts. Long answers are marked by levels of response (quality of reasoning and use of key terms), and some subjects add marks for spelling, punctuation and grammar.',
+  '- Do not invent a real past paper, a real mark scheme or a grade boundary. You can mark an answer against a mark scheme the person pastes or attaches. For the real papers and specifications, point to the board: aqa.org.uk, qualifications.pearson.com, ocr.org.uk, wjec.co.uk, eduqas.co.uk, ccea.org.uk, sqa.org.uk, cambridgeinternational.org.',
+].join('\n');
+
 const RX_PMC = /\b(pmc|phoenix|pmcstudios|your (apps?|creator|maker|studio|site)|dev suite|pastebin|apps?\.pmc|who (made|built|created) (you|coe))\b/i;
 const RX_BIZ = /\b(business(es)?|compan(y|ies)|brand(s|ing)?|rebrand|logo|startup|start-up|entrepreneur|marketing|market share|competitors?|customers?|revenue|profit|margin|pricing|swot|pestle|porter|business model|strategy|franchise|chain|ceo|founder|slogan|tagline|product launch|e-?commerce|sales|invoice|vat|sole trader|limited company|trademark|shares?|stock market|ipo|pitch|b2b|b2c|supply chain|stakeholders?|break-?even|cash ?flow|unit economics|tam\b|roi\b)\b/i;
+const RX_EXAM = /\b(gcse|igcse|a[- ]levels?|as[- ]levels?|btec|aqa|edexcel|wjec|eduqas|ccea|sqa|national 5|nat 5|cambridge (international|nationals)|ib diploma|exam boards?|mark ?schemes?|past papers?|command words?|(higher|foundation) tier|ocr (gcse|a[- ]level|exam|paper|spec|board|computer|physics|maths|biology|chemistry|history|english)|pearson (gcse|a[- ]level|edexcel))\b/i;
 const RX_PLACE = /\b(where is|where are|where can|map|maps|location|locations|near(by| me| the)?|nearest|closest|address|directions|route|how far|distance|branch(es)?|opening hours|store locator|shops? (in|near)|restaurants? (in|near)|cafes?|pubs?|bars?|supermarkets?|visit|itinerary|road trip|day trip|landmarks?|attractions?)\b/i;
 
 /** The extra know-how that fits what the person is asking about now. */
@@ -54,6 +64,7 @@ export function knowledgeFor(ask: string, opts: { hasApps: boolean } = { hasApps
   const t = ask.slice(0, 1500);
   const out: string[] = [];
   if (RX_PMC.test(t) || (opts.hasApps && /\bpmc[_ ]?app/i.test(t))) out.push(PMC_KNOWLEDGE());
+  if (RX_EXAM.test(t)) out.push(EXAM_KNOWLEDGE);
   if (RX_BIZ.test(t)) out.push(BUSINESS_KNOWLEDGE);
   if (RX_PLACE.test(t) || RX_BIZ.test(t) && /\b(where|locations?|branches|stores?)\b/i.test(t)) out.push(PLACES_KNOWLEDGE);
   return out.join('\n\n');

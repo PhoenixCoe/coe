@@ -4,12 +4,15 @@ export const LEADS: { id: Lead; name: string; blurb: string; page: string; edge:
   { id: 'cream', name: 'Cream', blurb: 'The classic', page: '#FBF6EC', edge: '#171717' },
   { id: 'ink', name: 'Ink', blurb: 'Dark', page: '#171717', edge: '#F2E4CE' },
   { id: 'gold', name: 'Gold', blurb: 'Warm', page: '#B49A57', edge: '#171717' },
-  { id: 'green', name: 'Green', blurb: 'PMC green', page: '#1A4934', edge: '#F2E4CE' },
+  { id: 'green', name: 'Theme', blurb: '', page: '#1A4934', edge: '#F2E4CE' },   // the page takes the accent colour, so it is not always green
 ];
-const LEAD = 'pmc:coe:lead', SFX = 'pmc:coe:sfx', PING = 'pmc:coe:ping';
+const LEAD = 'pmc:coe:lead', SFX = 'pmc:coe:sfx', PING = 'pmc:coe:ping', LOOKAT = 'pmc:coe:look-at';
+/** When the page colour or accent was last changed on this device. Coe Mini compares it, so the newest choice wins in both. */
+const stampLook = (at?: number) => { try { localStorage.setItem(LOOKAT, String(at ?? Date.now())); } catch { /* storage blocked */ } };
 export function loadLead(): Lead { try { const v = localStorage.getItem(LEAD); return LEADS.some((l) => l.id === v) ? (v as Lead) : 'cream'; } catch { return 'cream'; } }
-export function setLead(l: Lead) {
+export function setLead(l: Lead, at?: number) {
   try { localStorage.setItem(LEAD, l); } catch { /* storage blocked */ }
+  stampLook(at);
   document.documentElement.dataset.lead = l;
   try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ }
 }
@@ -59,8 +62,8 @@ export function applyAccent(h: string) {
     const m = document.querySelector('meta[name="theme-color"]'); if (m && !m.getAttribute('data-keep')) m.setAttribute('content', fitAccent(h));
   } catch { /* no document */ }
 }
-export function setAccent(h: string) {
-  const c = fitAccent(h);
+export function setAccent(h: string, at?: number) {
+  const c = fitAccent(h); stampLook(at);
   try { if (c === DEFAULT_ACCENT) localStorage.removeItem(ACC); else localStorage.setItem(ACC, c); } catch { /* storage blocked */ }
   applyAccent(c);
   try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ }
@@ -118,8 +121,20 @@ export const sfx = {
 /** Puts the display settings on the page. Called whenever they change. */
 export function applyDisplay(d: { scale: number; motion: 'full' | 'calm' | 'off'; compact: boolean; easy: boolean; contrast?: boolean }) {
   const h = document.documentElement;
-  h.style.fontSize = `${Math.round(13.5 * Math.min(150, Math.max(80, d.scale || 100))) / 100}px`;
+  h.style.fontSize = `${Math.round(13.5 * Math.min(150, Math.max(75, d.scale || 100))) / 100}px`;
   if (d.motion === 'full') delete h.dataset.motion; else h.dataset.motion = d.motion;
   if (d.compact && !d.easy) h.dataset.density = 'compact'; else if (d.easy) h.dataset.density = 'easy'; else delete h.dataset.density;
   if (d.contrast) h.dataset.contrast = 'high'; else delete h.dataset.contrast;
+}
+
+/** The look Coe Mini should match: both choices, and when they were made. */
+export function lookNow() { let at = 0; try { at = Number(localStorage.getItem(LOOKAT)) || 0; } catch { /* storage blocked */ } return { lead: loadLead(), accent: loadAccent(), at }; }
+/** Coe Mini has a newer look: take it. */
+export function takeLookFrom(look: { lead?: unknown; accent?: unknown; at?: unknown }) {
+  const at = Number(look.at) || 0, now = lookNow();
+  if (at <= now.at) return;
+  const lead = LEADS.find((l) => l.id === look.lead)?.id, acc = typeof look.accent === 'string' && /^#[0-9a-f]{6}$/i.test(look.accent) ? look.accent : '';
+  if (lead && lead !== now.lead) setLead(lead, at);
+  if (acc && fitAccent(acc) !== now.accent) setAccent(acc, at);
+  stampLook(at);
 }

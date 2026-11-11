@@ -59,7 +59,18 @@ w.addEventListener('unhandledrejection',function(ev){
  }catch(e){}
 });
 w.addEventListener('offline',function(){if(up())show('You are offline','Your phone has no connection right now. Turn Wi-Fi or mobile data back on, then press Try again.','')});
+// The loading screen asks for this bar instead of drawing buttons of its own, so there is only ever one set of buttons.
+w.__coeStuck=function(title,text,why){show(title,text,why||last)};
 var ms=Number(w.__coeBootMs)||12000;
+// Still on the loading screen after a good while with no error at all: the files are stuck (an old saved copy, or a connection that stalled).
+// Clear the saved files and start again by itself, once in five minutes, so nobody has to press anything.
+setTimeout(function(){
+ try{if(!up())return;
+  var t=0;try{t=Number(sessionStorage.getItem('pmc:coe:rec')||0)}catch(e){}
+  var offline=false;try{offline=navigator.onLine===false}catch(e){}
+  if(!offline&&(!t||Date.now()-t>300000))wipe()
+ }catch(e){}
+},Math.round(ms*1.6));
 setTimeout(function(){if(up())show('Coe is taking a while','This is slower than usual, so your connection may be weak. It is still trying. You can wait, press Try again, or Fix and reload.',last)},ms);
 setTimeout(function(){if(up()&&shown)show('Coe is still not open','Something is holding it up. Press Fix and reload to clear the old saved files and start fresh.',last)},ms*2.5);
 var seenErr=0;

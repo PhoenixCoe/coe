@@ -32,6 +32,8 @@ export interface Msg {
   /** Coe looked it over before finishing: it was fine, or it found and fixed a mistake (and what it was). */
   checked?: 'ok' | 'fixed';
   fix?: string;
+  /** How long the reply took and where the time went (the timers). */
+  took?: import('@/lib/coe/timing').Took;
   /** Sent while Coe was still answering the message before it. */
   late?: boolean;
   /** A summary standing in for the older messages of a long chat. */

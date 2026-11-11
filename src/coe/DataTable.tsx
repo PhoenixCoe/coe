@@ -66,7 +66,7 @@ export const DataBlock = memo(function DataBlock({ code, closed, ask }: { code: 
         <table className="dt">
           <thead><tr>{t.columns.map((c, k) => (
             <th key={k} aria-sort={sort?.c === k ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}>
-              <button type="button" onClick={() => click(k)} className={sort?.c === k ? 'on' : ''}>{c}<i aria-hidden>{sort?.c === k ? (sort.dir === 1 ? '▲' : '▼') : ''}</i></button></th>
+              <button type="button" onClick={() => click(k)} className={sort?.c === k ? 'on' : ''}>{c}<i aria-hidden>{sort?.c === k && <UiIcon name={sort.dir === 1 ? 'up' : 'down'} size={13} strokeWidth={3} />}</i></button></th>
           ))}</tr></thead>
           <tbody>{shown.map((r, n) => <tr key={n}>{t.columns.map((_, k) => <td key={k} className={numeric[k] ? 'n' : ''}>{r[k] == null ? '' : String(r[k])}</td>)}</tr>)}</tbody>
           {totals && (

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Halftone } from '@/ui/Halftone';
 import { CoeWordmark } from '@/ui/Mark';
+import { PmcMark } from '@/ui/PmcMark';
 import { UiIcon } from '@/ui/icons';
 import { cloudOn, sendCode, takeAuthError, verifyCode } from '@/lib/coe/cloud';
 import { useBackClose } from './back';
@@ -38,7 +39,7 @@ export function SignIn({ onClose, onChange }: { onClose: () => void; onChange: (
     <div className="si" role="dialog" aria-modal="true" aria-labelledby="si-title">
       <Halftone className="si-dots" />
       <button type="button" className="si-x cx-ib" aria-label="Close" title="Close" onClick={onClose}><UiIcon name="close" size={22} /></button>
-      <header className="si-top"><CoeWordmark height={44} /></header>
+      <header className="si-top"><CoeWordmark height={44} /><i className="beta">Beta</i></header>
       <main className="si-main">
         <section className="si-box">
           <div className="si-side"><Halftone className="si-side-dots" /><h1 id="si-title" className="d">{step === 'code' ? 'Check your email' : 'Sign in'}</h1></div>
@@ -91,7 +92,7 @@ export function SignIn({ onClose, onChange }: { onClose: () => void; onChange: (
           </div>
         </section>
       </main>
-      <footer className="si-foot"><span className="tx">© {new Date().getFullYear()} PMC Studios</span><nav className="d" aria-label="More"><a href="https://pmcstudios.uk">PMC Studios</a><a href="/plans/">Plans</a></nav></footer>
+      <footer className="si-foot"><span className="si-copy"><PmcMark height={22} /><span className="tx">© {new Date().getFullYear()} PMC Studios</span></span><nav className="d" aria-label="More"><a href="https://pmcstudios.uk">PMC Studios</a><a href="/plans/">Plans</a><a href="/privacy/">Privacy</a><a href="/about/">About</a></nav></footer>
     </div>
   );
 }

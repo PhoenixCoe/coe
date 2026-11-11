@@ -1,8 +1,8 @@
 FONTS FOR PMC APPS
 
 Use the same font files as the PMC Studios site. Copy these two from that site's fonts folder into this one:
-  CaracteresL2.woff2  (and/or CaracteresL2.ttf)   display text, buttons, labels
-  CaracteresL4.woff2  (and/or CaracteresL4.ttf)   body text
+  PMCHeader.woff2  (and/or PMCHeader.ttf)   PMC Header: display text, buttons, labels
+  PMCFont.woff2  (and/or PMCFont.ttf)   PMC Font: body text
 If a font is installed on the visitor's computer it is used first (the CSS asks for it by name), then these files.
 
 Until they are here the site uses the same fallbacks as PMC Studios:

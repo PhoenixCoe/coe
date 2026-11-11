@@ -3,7 +3,7 @@ import { token } from './cloud';
 import type { CoeSettings } from './settings';
 
 /** What the server says about the signed-in person: their plan and how many credits are left today. */
-export interface Me { billing: boolean; canBuy?: boolean; given?: boolean; signedIn: boolean; plan: PlanKey; used: number; limit: number; email?: string; renews?: string; quotas?: Record<string, { used: number; limit: number }>; week?: { day: string; used: number }[]; refunds?: { day: string; used: number }[] }
+export interface Me { owner?: boolean; billing: boolean; canBuy?: boolean; given?: boolean; signedIn: boolean; plan: PlanKey; used: number; limit: number; email?: string; renews?: string; quotas?: Record<string, { used: number; limit: number }>; week?: { day: string; used: number }[]; refunds?: { day: string; used: number }[]; bonus?: number; fbBonus?: number; fbDone?: boolean; banned?: boolean }
 
 const base = (s: CoeSettings) => s.serverUrl.trim().replace(/\/+$/, '');
 async function call<T>(s: CoeSettings, path: string, init: RequestInit = {}): Promise<T> {
@@ -21,3 +21,6 @@ export const openPortal = (s: CoeSettings) => call<{ url: string }>(s, '/portal'
 export const deleteAccount = (s: CoeSettings) => call<{ deleted: boolean }>(s, '/account/delete', { method: 'POST', body: '{}' });
 /** For the tools: a search, a picture, a PMC App run. */
 export const serverPost = <T>(s: CoeSettings, path: string, body: unknown) => call<T>(s, path, { method: 'POST', body: JSON.stringify(body) });
+
+/** Owner tools. The server answers only for an email listed in OWNER_EMAILS. For anyone else it says "Not found". */
+export const ownerCmd = <T = Record<string, unknown>>(s: CoeSettings, cmd: 'refill' | 'status' | 'debug') => call<T>(s, '/owner', { method: 'POST', body: JSON.stringify({ cmd }) });

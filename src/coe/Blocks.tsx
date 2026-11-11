@@ -8,6 +8,7 @@ import { STUDY_LANGS, StudyBlock } from './Study';
 import { SlidesBlock } from './Slides';
 import { DataBlock } from './DataTable';
 import { AskCard } from './AskCard';
+import { QuestionsBlock } from './Questions';
 import { MapBlock } from './MapBlock';
 import { dataUrl, type Img, type Msg, type Perm, type ToolOut, type ToolRun } from './store';
 import { KINDS, type EDoc } from '@/lib/coe/editors';
@@ -17,12 +18,12 @@ import { entryOf, hasFiles, inlinePage, type Files } from '@/lib/coe/workspace';
 import type { PlanKey } from '@/lib/coe/models';
 
 // ---------------------------------------------------------------- what the blocks need from the chat
-export interface RichCtx { shared?: boolean; /** Pictures in this chat, oldest first: ![](pic:1) shows the first. */ pics?: Img[]; /** Text effects on or off. */ effects?: boolean; plan: PlanKey; files: Files; convId: string; ask?: (text: string) => void; /** Messages whose checklist was replaced by a newer one in the same turn. */ oldPlans?: Set<string>; /** The documents in the editor, what the person allowed, and how to open one or answer a question about opening. */ docs?: EDoc[]; perm?: Perm; openDoc?: (id: string) => void; /** The editor is on screen right now. */ edOpen?: boolean; decide?: (what: 'editor' | 'app', choice: 'yes' | 'always' | 'never', arg?: string) => void }
+export interface RichCtx { shared?: boolean; /** Pictures in this chat, oldest first: ![](pic:1) shows the first. */ pics?: Img[]; /** Text effects on or off. */ effects?: boolean; plan: PlanKey; files: Files; convId: string; ask?: (text: string) => void; /** Redo the last answer for free (a few a day), with a note about what was wrong. */ redo?: (note?: string) => void; /** Messages whose checklist was replaced by a newer one in the same turn. */ oldPlans?: Set<string>; /** The documents in the editor, what the person allowed, and how to open one or answer a question about opening. */ docs?: EDoc[]; perm?: Perm; openDoc?: (id: string) => void; /** The editor is on screen right now. */ edOpen?: boolean; decide?: (what: 'editor' | 'app', choice: 'yes' | 'always' | 'never', arg?: string, runId?: string) => void }
 export const RichContext = createContext<RichCtx | null>(null);
 
 // ---------------------------------------------------------------- splitting a reply into words and special blocks
 export type Seg = { t: 'md'; text: string } | { t: 'fold'; title: string; text: string; closed: boolean } | { t: 'block'; lang: string; code: string; closed: boolean; n: number };
-const SPECIAL = new Set(['html', 'htm', 'svg', 'mermaid', 'coe-tool', 'coe-plan', 'followups', 'slides', 'data', 'map', 'ask', ...STUDY_LANGS]);
+const SPECIAL = new Set(['html', 'htm', 'svg', 'mermaid', 'coe-tool', 'coe-plan', 'followups', 'slides', 'data', 'map', 'ask', 'questions', ...STUDY_LANGS]);
 
 export function splitBlocks(text: string): Seg[] {
   const lines = text.split('\n'), segs: Seg[] = [], count: Record<string, number> = {};
@@ -66,7 +67,7 @@ const Md = memo(function Md({ text, live }: { text: string; live?: boolean }) {
   const fx = ctx?.effects !== false, pics = ctx?.pics, box = useRef<HTMLDivElement>(null);
   useEffect(() => { if (hasMath(text)) void loadMath().then(() => setReady((n) => n + 1)); }, [text]);
   const base = useMemo(() => renderMarkdown(text, fx), [text, ready, fx]);   // eslint-disable-line react-hooks/exhaustive-deps
-  // While the reply is written, three square blocks sit at the end of the last paragraph, like a cursor that writes.
+  // While the reply is written, three soft dots sit at the end of the last paragraph, like a cursor that writes.
   const html = useMemo(() => {
     if (!live) return base;
     const at = Math.max(base.lastIndexOf('</p>'), base.lastIndexOf('</li>'), base.lastIndexOf('</h1>'), base.lastIndexOf('</h2>'), base.lastIndexOf('</h3>'));
@@ -74,28 +75,32 @@ const Md = memo(function Md({ text, live }: { text: string; live?: boolean }) {
     if (at < 0 || /<pre|<table|<details/.test(tail)) return base;
     return base.slice(0, at) + '<span class="wblk" aria-hidden="true"><i></i><i></i><i></i></span>' + base.slice(at);
   }, [base, live]);
-  // New words arrive as a green block that drops away to show the word. Each chunk keeps its own clock, so a re-render never restarts it.
-  const seen = useRef(0), chunks = useRef<{ a: number; b: number; t: number }[]>([]);
+  // New words fade in letter by letter, softly. Each chunk keeps its own clock, so a re-render never restarts it.
+  const seen = useRef(0), chunks = useRef<{ a: number; b: number; t: number; step: number }[]>([]);
   useLayoutEffect(() => {
     const el = box.current; if (!el) return;
     if (!live || ctx?.effects === false) { seen.current = 0; chunks.current = []; return; }
     const total = (el.textContent ?? '').length, now = performance.now();
     if (total < seen.current) { seen.current = 0; chunks.current = []; }
-    if (total > seen.current) chunks.current.push({ a: seen.current, b: total, t: now });
+    if (total > seen.current) chunks.current.push({ a: seen.current, b: total, t: now, step: Math.min(16, 420 / Math.max(1, total - seen.current)) });
     seen.current = total;
-    chunks.current = chunks.current.filter((c) => now - c.t < 650);
+    chunks.current = chunks.current.filter((c) => now - c.t < (c.b - c.a) * c.step + 750);
     for (const c of [...chunks.current].reverse()) {
       const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let off = 0, n: Node | null;
-      const hits: { node: Text; from: number; to: number }[] = [];
+      const hits: { node: Text; from: number; to: number; k0: number }[] = [];
       while ((n = w.nextNode())) {
         const t = n as Text, len = t.data.length, a = Math.max(c.a - off, 0), b = Math.min(c.b - off, len);
-        if (a < b && !t.parentElement?.closest('pre, .katex, .wblk')) hits.push({ node: t, from: a, to: b });
+        if (a < b && !t.parentElement?.closest('pre, .katex, .wblk')) hits.push({ node: t, from: a, to: b, k0: off + a - c.a });
         off += len; if (off >= c.b) break;
       }
       for (const h of hits.reverse()) {
         let mid = h.node; if (h.from > 0) mid = mid.splitText(h.from); if (h.to - h.from < mid.data.length) mid.splitText(h.to - h.from);
-        const sp = document.createElement('span'); sp.className = 'wf'; sp.style.animationDelay = `-${Math.round(now - c.t)}ms`;
-        mid.parentNode?.insertBefore(sp, mid); sp.appendChild(mid);
+        const frag = document.createDocumentFragment(); let k = h.k0;
+        for (const ch of Array.from(mid.data)) {
+          const sp = document.createElement('span'); sp.className = 'wc'; sp.textContent = ch;
+          sp.style.animationDelay = `${Math.round(k * c.step - (now - c.t))}ms`; k += ch.length; frag.appendChild(sp);
+        }
+        mid.parentNode?.replaceChild(frag, mid);
       }
     }
   }, [html, live]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -139,6 +144,7 @@ export const Rich = memo(function Rich({ text, msg, live }: { text: string; msg?
         if (s.lang === 'data') return <DataBlock key={i} code={s.code} closed={s.closed && !live} ask={ctx?.ask} />;
         if (s.lang === 'map') return <MapBlock key={i} code={s.code} closed={s.closed && !live} />;
         if (s.lang === 'ask') return <AskCard key={i} code={s.code} closed={s.closed && !live} id={`${msg?.id ?? 'x'}:${s.n}`} send={ctx?.ask} />;
+        if (s.lang === 'questions') return <QuestionsBlock key={i} code={s.code} closed={s.closed && !live} id={`${msg?.id ?? 'x'}:${s.n}`} ask={ctx?.ask} redo={ctx?.redo} />;
         if (s.lang === 'coe-plan') return s.closed && i === lastPlan && !(msg && ctx?.oldPlans?.has(msg.id)) ? <PlanCard key={i} code={s.code} /> : null;
         if (s.lang === 'coe-tool') return msg ? <ToolSlot key={i} msg={msg} n={s.n} closed={s.closed} code={s.code} /> : null;
         return null;
@@ -409,7 +415,7 @@ function DocCard({ out, ctx }: { out: Extract<ToolOut, { kind: 'doc' }>; ctx: Ri
 
 function PermitCard({ run, ctx }: { run: ToolRun; ctx: RichCtx | null }) {
   const o = run.out as Extract<ToolOut, { kind: 'permit' }>;
-  return <Choice id={`app:${run.id}`} icon="apps" title={`Open ${o.title}?`} text={`Coe wants to open ${o.title} here in the chat to do this. You can say no.`} yes="Yes, open it" onPick={(c) => ctx?.decide?.('app', c, o.slug)} />;
+  return <Choice id={`app:${run.id}`} icon="apps" title={`Open ${o.title}?`} text={`Coe wants to open ${o.title} here in the chat to do this. You can say no.`} yes="Yes, open it" onPick={(c) => ctx?.decide?.('app', c, o.slug, run.id)} />;
 }
 
 function Files({ items }: { items: Extract<ToolOut, { kind: 'files' }>['items'] }) {
@@ -508,7 +514,9 @@ export function dockTarget(messages: Msg[]): { run: ToolRun; end: number; app: b
 function AppResult({ run, title, slug, extra }: { run: ToolRun; title: string; slug: string; extra: { name: string; type: string; size: number; data: string }[] }) {
   const items = extra;
   const pics = items.filter((f) => f.type.startsWith('image/')), others = items.filter((f) => !f.type.startsWith('image/'));
-  const said = String((run.status === 'error' ? run.shown : undefined) ?? run.result ?? '').replace(/\s+/g, ' ').trim();
+  // What the person reads is a plain sentence. What the app told Coe ("Shown by the app: [div] Loading...") is for Coe, not for the screen.
+  const worked = !!(run.args.fill || (Array.isArray(run.args.click) && run.args.click.length) || run.args.call || run.args.state);
+  const said = run.status === 'error' ? String(run.shown ?? '').replace(/\s+/g, ' ').trim() || `Coe could not use ${title}.` : worked ? `Coe worked in ${title}. Press Open app to see it.` : `${title} is ready. Press Open app to use it.`;
   const dl = (f: { name: string; type: string; data: string }) => { const bin = atob(f.data); const u = new Uint8Array(bin.length); for (let k = 0; k < bin.length; k++) u[k] = bin.charCodeAt(k); downloadBlob(f.name, new Blob([u], { type: f.type })); };
   return (
     <div className="cx-res">

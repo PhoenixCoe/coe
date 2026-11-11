@@ -76,6 +76,7 @@ const UI: Record<string, string> = {
   bolt: 'M13 3L5 13h6l-1 8 8-10h-6l1-8z',
   alert: 'M12 4l9 16H3zM12 10v5M12 17.5h.1',
   info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 11v5M12 8h.1',
+  tip: 'M12 10.500v7.500M12 6h.1',
   card: 'M3 6h18v12H3zM3 10.5h18M6.5 15h4',
   sigma: 'M18 5H6.5l6 7-6 7H18',
   mic: 'M12 3.5a3 3 0 0 0-3 3V12a3 3 0 0 0 6 0V6.5a3 3 0 0 0-3-3zM6 11.5a6 6 0 0 0 12 0M12 17.5V21M9 21h6',

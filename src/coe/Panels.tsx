@@ -11,10 +11,12 @@ import { canOwnKey, onStatus, status } from '@/lib/coe/account';
 import { connection, modeOf, own, type CoeSettings } from '@/lib/coe/settings';
 import { You } from './You';
 import { Select } from '@/ui/Controls';
-import { AboutTab, ChatTab, ChromeTab, LearnTab, LookTab } from './SettingsTabs';
+import { AboutTab, ChatTab, ChromeTab, LearnTab, LookTab, MiniNotHere } from './SettingsTabs';
+import { useMiniHere } from '@/lib/coe/device';
 import { VoiceFields } from './VoiceFields';
 import { AccountTab } from './Account';
 import { UsageTab } from './UsageTab';
+import { OwnerTab } from './OwnerTab';
 
 /** A window over the chat: a dark veil, a boxed card, Escape to close. */
 export function Modal({ title, onClose, children, wide, flush }: { title: string; onClose: () => void; children: React.ReactNode; wide?: boolean; flush?: boolean }) {
@@ -48,24 +50,28 @@ export function Upgrade({ note, onClose }: { note: string; onClose: () => void }
 }
 
 // ---------------------------------------------------------------- settings
-export type Tab = 'account' | 'usage' | 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'ext' | 'about';
+export type Tab = 'owner' | 'account' | 'usage' | 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'ext' | 'about';
 type TabDef = { id: Tab; name: string; icon: Parameters<typeof UiIcon>[0]['name'] };
 const GROUPS: { name: string; tabs: TabDef[] }[] = [
   { name: 'You', tabs: [{ id: 'account', name: 'Account', icon: 'user' }, { id: 'usage', name: 'Usage', icon: 'chart' }, { id: 'you', name: 'Memory', icon: 'sparkle' }] },
   { name: 'Coe', tabs: [{ id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice typing', icon: 'mic' }, { id: 'look', name: 'Look', icon: 'theme' }] },
   { name: 'More', tabs: [{ id: 'ext', name: 'Coe Mini', icon: 'globe' }, { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'about', name: 'About', icon: 'info' }] },
 ];
-export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCount, used, limit, onSignIn, onAccountChange, onExport, onImport, onDeleteAll, onClose }: {
-  owner: boolean; settings: CoeSettings; set: (s: CoeSettings) => void; tab: Tab; setTab: (t: Tab) => void; convCount: number;
+export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, setTab, convCount, used, limit, onSignIn, onAccountChange, onExport, onImport, onDeleteAll, onClose }: {
+  owner: boolean; onClearFiles: () => void; settings: CoeSettings; set: (s: CoeSettings) => void; tab: Tab; setTab: (t: Tab) => void; convCount: number;
   used: number; limit: number; onSignIn: () => void; onAccountChange: (signedIn: boolean) => void;
   onExport: () => void; onImport: (f: File) => void; onDeleteAll: () => void; onClose: () => void;
 }) {
-  const tab: Tab = owner || tabIn !== 'connect' ? tabIn : 'ai';
+  const [srvOwner, setSrvOwner] = useState(!!status().owner);
+  useEffect(() => onStatus(() => setSrvOwner(!!status().owner)), []);
+  const tab: Tab = (owner || tabIn !== 'connect') && (srvOwner || tabIn !== 'owner') ? tabIn : 'ai';
+  const ownerTabs: TabDef[] = [...(owner ? [{ id: 'connect' as Tab, name: 'Server', icon: 'cloud' as const }] : []), ...(srvOwner ? [{ id: 'owner' as Tab, name: 'Tools', icon: 'bolt' as const }] : [])];
   const up = (patch: Partial<CoeSettings>) => set({ ...settings, ...patch });
   const [test, setTest] = useState<{ state: 'idle' | 'busy' | 'ok' | 'bad'; text: string }>({ state: 'idle', text: '' });
   const [sure, setSure] = useState(false);
   const [show, setShow] = useState(false);
   const file = useRef<HTMLInputElement>(null);
+  const miniHere = useMiniHere();
   const [, bump] = useState(0);
   useEffect(() => onStatus(() => bump((n) => n + 1)), []);
   const pro = canOwnKey();
@@ -88,16 +94,17 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
     <Modal title="Settings" onClose={onClose} wide flush>
       <div className="set-wrap">
       <nav className="set-nav" role="tablist" aria-label="Settings" aria-orientation="vertical">
-        {[...GROUPS, ...(owner ? [{ name: 'Owner', tabs: [{ id: 'connect' as Tab, name: 'Server', icon: 'cloud' as const }] }] : [])].map((g) => (
+        {[...GROUPS, ...(ownerTabs.length ? [{ name: 'Owner', tabs: ownerTabs }] : [])].map((g) => (
           <div key={g.name} className="set-grp" role="presentation"><span className="set-gn d" aria-hidden>{g.name}</span>
             {g.tabs.map((t) => (
-              <button key={t.id} type="button" role="tab" id={`set-t-${t.id}`} aria-selected={tab === t.id} aria-controls="set-panel" title={t.name} className="set-tab" onClick={() => setTab(t.id)}><UiIcon name={t.icon} size={18} /><span>{t.name}</span></button>
+              <button key={t.id} type="button" role="tab" id={`set-t-${t.id}`} aria-selected={tab === t.id} aria-controls="set-panel" title={t.id === 'ext' && !miniHere ? 'Coe Mini (not on phones or tablets)' : t.name} className={`set-tab${t.id === 'ext' && !miniHere ? ' off' : ''}`} onClick={() => setTab(t.id)}><UiIcon name={t.icon} size={18} /><span>{t.name}</span></button>
             ))}
           </div>
         ))}
       </nav>
       <div id="set-panel" role="tabpanel" aria-labelledby={`set-t-${tab}`} className="set-body">
-      <h3 className="set-h d">{[...GROUPS.flatMap((g) => g.tabs), { id: 'connect', name: 'Server' }].find((t) => t.id === tab)?.name}</h3>
+      <h3 className="set-h d">{[...GROUPS.flatMap((g) => g.tabs), { id: 'connect', name: 'Server' }, { id: 'owner', name: 'Owner tools' }].find((t) => t.id === tab)?.name}</h3>
+      {tab === 'owner' && <OwnerTab settings={settings} onClearFiles={onClearFiles} />}
       {tab === 'account' && <AccountTab onSignIn={onSignIn} onChange={onAccountChange} />}
       {tab === 'usage' && <UsageTab usedLocal={used} limitLocal={limit} />}
 
@@ -122,7 +129,7 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
           {!pro ? (
             <div className="cx-lock">
               <b className="d">Your own key is part of Pro.</b>
-              <p className="tx">Everyone can chat with Coe&apos;s AI for free, with no key. On Pro you can also plug in your own key from OpenAI, Anthropic, Google and more, and pick the models behind Coe Swift, Core and Deep.</p>
+              <p className="tx">Everyone can chat for free, no key needed. On Pro you can add your own key (OpenAI, Anthropic, Google and more) and pick the models behind Swift, Core and Deep.</p>
               <div className="cx-actions">
                 <a className="btn gold" href="/plans/">See plans</a>
                 {st.billing && !st.signedIn && <span className="tx cx-small">Already Pro? Sign in first.</span>}
@@ -164,7 +171,7 @@ export function SettingsPanel({ owner, settings, set, tab: tabIn, setTab, convCo
       {tab === 'chat' && <ChatTab s={settings} up={up} />}
       {tab === 'learn' && <LearnTab s={settings} up={up} />}
       {tab === 'voice' && <VoiceFields />}
-      {tab === 'ext' && <ChromeTab />}
+      {tab === 'ext' && (miniHere ? <ChromeTab /> : <MiniNotHere />)}
       {tab === 'about' && <AboutTab />}
 
       {tab === 'you' && <You pro={pro || st.plan === 'pro'} signedIn={st.signedIn} />}

@@ -4,7 +4,7 @@ import { allowOwnKey, modeOf, type CoeSettings } from './settings';
 import { countMessage } from '@/coe/store';
 
 /** What the server last said about this person. Without an account it stays on Free. */
-export interface Status { billing: boolean; signedIn: boolean; canBuy: boolean; plan: PlanKey; given?: boolean; used: number; limit: number; email?: string; renews?: string; quotas?: Record<string, { used: number; limit: number }>; week?: { day: string; used: number }[]; refunds?: { day: string; used: number }[] }
+export interface Status { owner?: boolean; billing: boolean; signedIn: boolean; canBuy: boolean; plan: PlanKey; given?: boolean; used: number; limit: number; email?: string; renews?: string; quotas?: Record<string, { used: number; limit: number }>; week?: { day: string; used: number }[]; refunds?: { day: string; used: number }[]; bonus?: number; fbBonus?: number; fbDone?: boolean; banned?: boolean }
 const FREE: Status = { billing: false, signedIn: false, canBuy: false, plan: 'free', used: 0, limit: PLANS[0].perDay };
 let cur: Status = FREE;
 const tell = () => { allowOwnKey(cur.billing && cur.signedIn && cur.plan === 'pro'); try { window.dispatchEvent(new Event('pmc:coe-status')); } catch { /* no window */ } };
@@ -44,10 +44,12 @@ export function countOther(s: CoeSettings, tokens: number): void {
 
 export async function refreshStatus(s: CoeSettings): Promise<Status> {
   const me = await getMe(s);
-  cur = me ? { billing: me.billing, signedIn: me.signedIn, canBuy: !!me.canBuy, plan: me.plan, given: me.given, used: me.used, limit: me.limit, email: me.email, renews: me.renews, quotas: me.quotas, week: me.week, refunds: me.refunds } : FREE;
+  cur = me ? { owner: !!me.owner, billing: me.billing, signedIn: me.signedIn, canBuy: !!me.canBuy, plan: me.plan, given: me.given, used: me.used, limit: me.limit, email: me.email, renews: me.renews, quotas: me.quotas, week: me.week, refunds: me.refunds, bonus: me.bonus, fbBonus: me.fbBonus, fbDone: me.fbDone, banned: me.banned } : FREE;
   tell(); return cur;
 }
 export function applyCredits(c: { used: number; limit: number; plan: string }) { cur = { ...cur, used: c.used, limit: c.limit, plan: c.plan === 'pro' ? 'pro' : 'free' }; tell(); }
+/** The server said this account is banned (on a turned-away request), so the screen locks straight away. */
+export function markBanned() { cur = { ...cur, banned: true }; tell(); }
 export function forgetStatus() { cur = FREE; tell(); }
 export const onStatus = (fn: () => void) => { window.addEventListener('pmc:coe-status', fn); return () => window.removeEventListener('pmc:coe-status', fn); };
 

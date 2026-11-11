@@ -1,8 +1,11 @@
 'use client';
 /** The look, chat, learn and about tabs of Settings. Every option here is wired to something real. */
+import { COE_DATE, COE_VERSION, NEWEST } from '@/lib/coe/changelog';
+import { SiteFooter } from '@/ui/SiteFooter';
 import { useEffect, useState } from 'react';
 import { Row, Select, Slider, Switch } from '@/ui/Controls';
 import { UiIcon } from '@/ui/icons';
+import { PmcPicker } from '@/ui/PmcPicker';
 import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, setLead, setSfx, setTheme, sfxOn, pingOn, setPing, type Lead } from '@/lib/coe/look';
 import { DEFAULTS, type CoeSettings } from '@/lib/coe/settings';
 import { FEATURES, FEATURE_GROUPS, type FeaturePlan } from '@/lib/coe/features';
@@ -10,13 +13,15 @@ import { loadSettings } from '@/lib/coe/settings';
 import { EXT_FILE, EXT_FILE_FIREFOX, connectMini, disconnectMini, onExtConnected, useExtension } from '@/lib/coe/extension';
 import { session } from '@/lib/coe/cloud';
 import { AGE_OPTIONS, ROLE_OPTIONS, levelWords } from '@/lib/coe/profile';
+import { GoodRisk } from './GoodRisk';
+import { Notice } from './ErrorBox';
 import { mailtoFeedback, sendFeedback, type FeedbackKind } from '@/lib/coe/feedback';
 
 type Up = (patch: Partial<CoeSettings>) => void;
 type Icon = Parameters<typeof UiIcon>[0]['name'];
 
 export function LookTab({ s, up }: { s: CoeSettings; up: Up }) {
-  const [lead, setL] = useState<Lead>('cream'), [snd, setSnd] = useState(false), [ping, setPingState] = useState(true), [acc, setAcc] = useState('#337957'), [hexIn, setHexIn] = useState('');
+  const [lead, setL] = useState<Lead>('cream'), [snd, setSnd] = useState(false), [ping, setPingState] = useState(true), [acc, setAcc] = useState('#337957'), [pk, setPk] = useState(false);
   useEffect(() => { const f = () => { setL(loadLead()); setSnd(sfxOn()); setPingState(pingOn()); setAcc(loadAccent()); }; f(); window.addEventListener('pmc:coe-look', f); return () => window.removeEventListener('pmc:coe-look', f); }, []);
   return (
     <div className="set-list">
@@ -32,17 +37,17 @@ export function LookTab({ s, up }: { s: CoeSettings; up: Up }) {
       <div className="cx-fr"><span className="label">Accent colour <i className="tx th-sub">replaces the green everywhere</i></span>
         <div className="ac-row" role="group" aria-label="Accent colour">
           {ACCENTS.map((a) => <button key={a.id} type="button" className={`ac-dot${acc.toLowerCase() === a.hex.toLowerCase() ? ' on' : ''}`} style={{ background: a.hex }} aria-label={a.name} aria-pressed={acc.toLowerCase() === a.hex.toLowerCase()} title={a.name} onClick={() => setAccent(a.hex)}>{acc.toLowerCase() === a.hex.toLowerCase() && <UiIcon name="check" size={16} />}</button>)}
-          <label className="ac-own" title="Pick any colour"><input type="color" value={acc} aria-label="Pick any colour" onChange={(e) => setAccent(e.target.value)} /><span className="tx">Any colour</span></label>
+          <button type="button" className={`ac-own${pk ? ' on' : ''}`} aria-expanded={pk} aria-controls="ac-pk" title="Pick any colour" onClick={() => setPk((v) => !v)}><span className="ac-sw" style={{ background: acc }} aria-hidden /><span className="tx">Any colour</span></button>
+          <button type="button" className="btn small" onClick={() => setAccent('#337957')}><UiIcon name="refresh" size={15} />Back to green</button>
         </div>
-        <div className="ac-hex"><input className="cx-in" type="text" aria-label="Colour code" placeholder="#337957" maxLength={7} value={hexIn} onChange={(e) => { setHexIn(e.target.value); if (/^#[0-9a-f]{6}$/i.test(e.target.value)) setAccent(e.target.value); }} />
-          <button type="button" className="btn small" onClick={() => { setAccent('#337957'); setHexIn(''); }}><UiIcon name="refresh" size={15} />Back to green</button></div>
+        {pk && <div id="ac-pk" className="ac-pk"><PmcPicker value={acc} onChange={(h) => setAccent(h)} /></div>}
         <p className="tx th-sub">Too-light colours are darkened a little so the white words on buttons stay easy to read.</p></div>
-      <Row label="Page colour" icon="theme" hint="Light, dark, gold or green page.">
+      <Row label="Page colour" icon="theme" hint="Light, dark, gold or your theme colour.">
         <Select label="Colour" value={lead} onChange={(v) => setLead(v)} options={LEADS.map((l) => ({ value: l.id, label: l.name, hint: l.blurb }))} />
       </Row>
       <Row label="Text size" icon="text" wide>
-        <Slider hideLabel label="Text size" value={s.scale} min={80} max={150} step={5} onChange={(scale) => up({ scale })} format={(n) => `${n}%`}
-          marks={[{ value: 80, label: 'Small' }, { value: 100, label: 'Normal' }, { value: 125, label: 'Large' }, { value: 150, label: 'Huge' }]} />
+        <Slider hideLabel label="Text size" value={s.scale} min={75} max={150} step={5} onChange={(scale) => up({ scale })} format={(n) => `${n}%`}
+          marks={[{ value: 75, label: 'Small' }, { value: 100, label: 'Normal' }, { value: 125, label: 'Large' }, { value: 150, label: 'Huge' }]} />
       </Row>
       <Row label="Animations" icon="play" hint="Slow or stop the movement across Coe.">
         <Select label="Animations" value={s.motion} onChange={(motion) => up({ motion })} options={[
@@ -68,7 +73,7 @@ export function ChatTab({ s, up }: { s: CoeSettings; up: Up }) {
     <div className="set-list">
       <div className="cx-fr"><label className="label" htmlFor="cx-name">What should Coe call you?</label>
         <input id="cx-name" className="cx-in" type="text" maxLength={30} value={s.name} placeholder="Your first name" autoComplete="off" onChange={(e) => up({ name: e.target.value })} /></div>
-      <Row label="Your age group" icon="user" hint="So Coe picks the right words. You can skip it.">
+      <Row label="Your age group" icon="user" hint="Only used to pick the right words. Never sold or used for ads. You can skip it.">
         <Select label="Your age group" value={s.ageBand} onChange={(ageBand) => up({ ageBand })} options={AGE_OPTIONS} />
       </Row>
       <Row label="What best fits you" icon="user" hint="Student, teacher, working, or something else.">
@@ -99,6 +104,7 @@ export function ChatTab({ s, up }: { s: CoeSettings; up: Up }) {
       <Row label="While Coe is busy" icon="list" hint="What a new message does if Coe is still answering.">
         <Select label="Sending while Coe is busy" value={s.whileBusy} onChange={(whileBusy) => up({ whileBusy })} options={[{ value: 'queue', label: 'Wait in line', hint: 'It is sent when Coe finishes' }, { value: 'interrupt', label: 'Interrupt', hint: 'Coe stops and reads it now' }]} />
       </Row>
+      <Switch icon="timer" label="Timer" hint="Shows how long Coe has been working, and how long a reply took." on={s.timers} onChange={(timers) => up({ timers })} />
       <Switch icon="text" label="Headings and emphasis" hint="Big headings, centred text and animated words, but only for long writing like essays and plans." on={s.effects} onChange={(effects) => up({ effects })} />
     </div>
   );
@@ -139,12 +145,28 @@ function FeedbackForm() {
 }
 
 const PLAN_LABEL: Record<FeaturePlan, string> = { free: 'Free', pro: 'Pro', both: 'Free + Pro' };
+/** The version, what is new in it, and what it was like before. */
+function Version() {
+  const [more, setMore] = useState(false);
+  const mine = NEWEST.items.filter((c) => c.where !== 'mini');
+  return (
+    <section className="ab-ver" aria-label="Version">
+      <div className="ab-ver-t"><b className="d ab-ver-n">{COE_VERSION}</b><i className="beta">Beta</i><span className="tx cx-small">{COE_DATE}. The number reads year, day, month.</span></div>
+      <b className="d">New in this version</b>
+      <ul className="ab-ver-l">{mine.map((c) => <li key={c.text} className="tx">{c.text}</li>)}</ul>
+      <button type="button" className="cx-link" aria-expanded={more} onClick={() => setMore(!more)}>{more ? 'Hide' : 'What it was like before'}</button>
+      {more && <ul className="ab-ver-l old">{NEWEST.before.map((t) => <li key={t} className="tx">{t}</li>)}</ul>}
+    </section>
+  );
+}
+
 export function AboutTab() {
   const [open, setOpen] = useState<string | null>(null), [q, setQ] = useState('');
   const find = q.trim().toLowerCase();
   const shown = FEATURES.filter((f) => !find || (f.title + ' ' + f.text).toLowerCase().includes(find));
   return (
     <div className="ab">
+      <Version />
       <div className="ab-top">
         <b className="d ab-n">{FEATURES.length}</b>
         <div><b className="d">Things Coe can do</b><p className="tx">Every one of these works today. <span className="ab-tag free">Free</span> is for everyone, <span className="ab-tag pro">Pro</span> needs a plan, and <span className="ab-tag both">Free + Pro</span> has a taste on Free and much more on Pro.</p></div>
@@ -176,7 +198,7 @@ export function AboutTab() {
         );
       })}
       <FeedbackForm />
-      <p className="tx cx-small">Coe is made by PMC Studios. It can be wrong, so check anything important.</p>
+      <SiteFooter className="sf-in" />
     </div>
   );
 }
@@ -188,7 +210,7 @@ export function ChromeTab() {
   const me = session()?.email ?? '';
   useEffect(() => { if (!pairBusy) return; const off = onExtConnected((yes, why) => { setPairBusy(false); setPairMsg(yes ? '' : why === 'account' ? 'Coe Mini is signed in as someone else. Sign in to both with the same account.' : why === 'signin' ? 'Sign in to Coe Mini first.' : 'That code is not the one Coe Mini is showing.'); if (yes) setPairIn(''); }); const t = window.setTimeout(() => { setPairBusy(false); setPairMsg('Coe Mini did not answer. Open it, press Connect with Coe in its Settings, and try again.'); }, 9000); return () => { off(); window.clearTimeout(t); }; }, [pairBusy]);
   const [which, setWhich] = useState<'chrome' | 'firefox'>(() => (typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent) ? 'firefox' : 'chrome'));
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false), [askOff, setAskOff] = useState(false);
   const on = state === 'on';
   const addr = which === 'firefox' ? 'about:debugging#/runtime/this-firefox' : 'chrome://extensions';
   const copy = async () => { try { await navigator.clipboard.writeText(addr); setCopied(true); setTimeout(() => setCopied(false), 1600); } catch { /* blocked */ } };
@@ -197,7 +219,7 @@ export function ChromeTab() {
       <div className={`ex-top${on ? ' on' : ''}`}>
         <span className="ex-dot" aria-hidden />
         <div><b className="d">{on ? 'Coe Mini is on' : state === 'checking' ? 'Looking for Coe Mini' : 'Coe Mini'}</b>
-          <p className="tx">{on ? `Version ${version}${browser === 'firefox' ? ' in Firefox' : ''}. ${linked ? 'Connected: About you, these settings and its chats are shared with Coe.' : 'Not connected: Coe and Coe Mini stay separate. They still use the same account when you sign in to both.'}` : 'Coe in a side panel next to any page. It finds the questions on a page and helps with each one, explains, checks your work, looks at your screen and can search for you.'}</p></div>
+          <p className="tx">{on ? `Version ${version}${browser === 'firefox' ? ' in Firefox' : ''}. ${linked ? 'Connected: About you, these settings and its chats are shared with Coe.' : 'Not connected: Coe and Coe Mini stay separate. They still use the same account when you sign in to both.'}` : 'Coe in a side panel next to any page. It finds the questions, explains, checks your work and looks at your screen.'}</p></div>
       </div>
       {!on && (
         <>
@@ -212,8 +234,8 @@ export function ChromeTab() {
               <li><span className="d">2</span><p className="tx">Open your browser&rsquo;s extensions page: <b>chrome://extensions</b> (Edge: <b>edge://extensions</b>, Brave: <b>brave://extensions</b>, Opera: <b>opera://extensions</b>, Vivaldi: <b>vivaldi://extensions</b>). <button type="button" className="ex-copy" onClick={copy}>{copied ? 'Copied' : 'Copy chrome://extensions'}</button></p></li>
               <li><span className="d">3</span><p className="tx">Turn on <b>Developer mode</b>.</p></li>
               <li><span className="d">4</span><p className="tx">Click <b>Load unpacked</b> and choose the <b>coe-mini</b> folder.</p></li>
-              <li><span className="d">5</span><p className="tx">Click the puzzle piece and <b>pin</b> Coe Mini. One click opens the side panel. If your browser has no side panel, it opens as a small window on the right.</p></li>
-              <li><span className="d">6</span><p className="tx">Open Coe Mini and press <b>Sign in or sign up</b>. Use the same account as on this page. Coe Mini already knows you, so there is nothing else to set up.</p></li>
+              <li><span className="d">5</span><p className="tx">Click the puzzle piece and <b>pin</b> One click opens the side panel. If your browser has none, it opens as a small window.</p></li>
+              <li><span className="d">6</span><p className="tx">Open Coe Mini and press <b>Sign in or sign up</b>. Use the same account as on this page. Nothing else to set up.</p></li>
             </ol>
           ) : (
             <ol className="ex-steps">
@@ -247,11 +269,31 @@ export function ChromeTab() {
             <Select label="Speed" value={prefs.speed} onChange={(speed) => change({ speed })} options={[{ value: 'swift', label: 'Swift', hint: 'Fastest' }, { value: 'core', label: 'Core', hint: 'Everyday' }, { value: 'deep', label: 'Deep', hint: 'Careful, slower' }]} />
           </Row>
           <Switch on={prefs.askTabs !== 'allow'} onChange={(v) => change({ askTabs: v ? 'ask' : 'allow' })} label="Ask before opening a new tab" hint="On: Coe asks each time. Off: it opens the tab behind the one you are on." icon="globe" />
-          <Switch on={prefs.askChg !== 'allow'} onChange={(v) => change({ askChg: v ? 'ask' : 'allow' })} label="Ask before putting text in a page" hint="On: you press a button each time. Off: Coe does it and shows Undo." icon="edit" />
-          <p className="tx cx-small">On homework and quiz sites (Sparx, Seneca, GoCode, Blooket, Kahoot, forms and the like) Coe Mini explains, hints and checks your answer. It never types for you, whatever these say. It reads a page only when you send a message or press a button. It uses your About you answers from the Chat tab and your Coe tokens.</p>
+          <Switch on={prefs.askChg !== 'allow'} onChange={(v) => { if (v) change({ askChg: 'ask' }); else setAskOff(true); }} label="Ask before Coe uses the cursor" hint="On: Coe asks before it types, clicks or does a job on a page. Off: it goes ahead and you can still press Stop." icon="edit" />
+          <p className="tx cx-small">On homework and quiz sites (Sparx, Seneca, GoCode, Blooket, Kahoot, school forms) Coe Mini explains, hints and checks your answer, and never types for you, whatever you pick here. It reads a page only when you send a message or press a button. It uses your About you answers and your Coe tokens.</p>
         </>
       )}
       {!on && state === 'off' && <p className="tx cx-small">Already added it? Reload this page once.</p>}
+      {askOff && <GoodRisk title="Turn off asking?" lead="Coe will type, click and do jobs on pages as soon as you ask. It will not stop to check with you." good={['Quicker. No box to press each time.', 'You still see every step, and Stop or Esc ends it at once.', 'It never types passwords or card details, and never works on school sites.']} risks={['Coe can click the wrong thing, and it may not be undoable.', 'Publishing, sending, deleting and paying will go ahead without a second check.']} yes="Yes, turn it on" onYes={() => { setAskOff(false); change({ askChg: 'allow' }); }} onNo={() => setAskOff(false)} />}
+    </div>
+  );
+}
+
+/** Coe Mini on a phone or a tablet: a notice at the top, and the settings below it greyed out. Those devices cannot add browser extensions. */
+export function MiniNotHere() {
+  return (
+    <div className="ex-box">
+      <Notice title="Not on phones or tablets" text="Coe Mini is only for computers (Chrome, Edge and Firefox). Phones and tablets cannot add browser extensions." />
+      <div className="mini-off" inert aria-hidden="true">
+        <Row label="What it reads" icon="panel" hint="Only when you ask. The whole page, or just what is on screen.">
+          <Select label="What it reads" value="page" onChange={() => {}} disabled options={[{ value: 'page', label: 'The whole page' }, { value: 'screen', label: 'Only what is on screen' }]} />
+        </Row>
+        <Row label="Speed" icon="bolt" hint="Quick answers or careful ones.">
+          <Select label="Speed" value="core" onChange={() => {}} disabled options={[{ value: 'swift', label: 'Swift' }, { value: 'core', label: 'Core' }, { value: 'deep', label: 'Deep' }]} />
+        </Row>
+        <Switch on disabled onChange={() => {}} label="Ask before opening a new tab" hint="On: Coe asks each time. Off: it opens the tab behind the one you are on." icon="globe" />
+        <Switch on disabled onChange={() => {}} label="Ask before Coe uses the cursor" hint="On: Coe asks before it types, clicks or does a job on a page. Off: it goes ahead and you can still press Stop." icon="edit" />
+      </div>
     </div>
   );
 }

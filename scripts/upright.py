@@ -51,5 +51,5 @@ def run(src, dst, family, full, shift=None, verbose=True, blend=0.0):
 
 if __name__=='__main__':
     b=float(sys.argv[1]) if len(sys.argv)>1 else 0.6
-    run('/home/claude/coe/public/fonts/CaracteresL4.woff2','/tmp/w/font/CaracteresL4Upright.woff2','Caracteres L4 Upright','Caracteres L4 Upright',blend=b)
+    run('/home/claude/coe/public/fonts/PMCFont.woff2','/tmp/w/font/PMCFontUpright.woff2','PMC Font Upright','PMC Font Upright',blend=b)
     run('/home/claude/coe/public/fonts/PMCSymbolsL4.woff2','/tmp/w/font/PMCSymbolsL4Upright.woff2','PMC Symbols L4 Upright','PMC Symbols L4 Upright',blend=b)

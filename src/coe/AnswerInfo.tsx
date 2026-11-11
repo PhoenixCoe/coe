@@ -32,7 +32,7 @@ export function AnswerInfo({ msg, onClose }: { msg: Msg; onClose: () => void }) 
         <section aria-label="How it was made">
           <h3 className="d ainfo-h"><UiIcon name="info" size={18} />How it was made</h3>
           <dl className="ainfo-dl">{rows.map(([k, v]) => <div key={k}><dt className="d">{k}</dt><dd className="tx">{v}</dd></div>)}</dl>
-          <p className="tx ainfo-n">Tokens are the small pieces of text Coe reads and writes. Your daily allowance is counted in tokens.</p>
+          <p className="tx ainfo-n">Tokens are small pieces of text. Your daily amount is counted in them.</p>
         </section>
       </div>
     </Modal>

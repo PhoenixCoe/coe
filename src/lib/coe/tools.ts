@@ -202,6 +202,8 @@ async function toolApp(c: Call, x: Ctx): Promise<Done> {
   if (!f) return fail('The app window could not be opened. PMC Apps may be unreachable from here.');
   if (!reuse) { /* the card registers itself under the run id; also under the app key so later steps find it */ }
   await Promise.race([f.ready, new Promise((r) => setTimeout(r, 15000))]);
+  // "Ready" can come while the app is still showing its loading screen. Wait (a few seconds at most) until it has something to work with, so Coe never reads the splash.
+  if (!reuse) for (let i = 0; i < 12 && !x.signal.aborted; i++) { const r0 = await f.read(); if (r0.ok && (r0.fields?.length ?? 0) + (r0.buttons?.length ?? 0) > 0) break; await new Promise((r) => setTimeout(r, 500)); }
 
   const files: AppFile[] = [];
   const off = f.onFile((file) => { files.push(file); x.patch({ out: { kind: 'files', items: files.filter((q) => q.size <= 8_000_000).map((q) => ({ name: q.name, type: q.mime, size: q.size, data: q.data })) } }); });

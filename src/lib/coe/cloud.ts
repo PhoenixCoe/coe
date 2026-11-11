@@ -3,12 +3,14 @@
  * keeps chats on the device. With them, signing in saves chats to the person's own account and syncs them.
  * The URL and the anon key are meant to be public. What protects the data is the row rule in the database (see DEPLOY.md).
  */
+import { COE_VERSION } from './changelog';
 import type { Conv } from '@/coe/store';
 import { deleteConv, loadConv, loadIndex, saveConv } from '@/coe/store';
 import { memory, setMemory } from './links';
 import { mergeStudy, snapshotStudy, type StudyData } from './study';
 import { mergeStyles, stylesOut } from './personas';
-import { aboutRecord, loadSettings, saveSettings, withAbout, type AboutRecord } from './settings';
+import { loadAvatar, saveAvatar, validAvatar } from './avatar';
+import { aboutRecord, isMet, loadSettings, markMet, saveSettings, withAbout, type AboutRecord } from './settings';
 
 const URL_ = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
 const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
@@ -129,10 +131,14 @@ type About = AboutRecord;
 const aboutOut = (): About | undefined => { const s = loadSettings(); return s.profileAt ? aboutRecord(s) : undefined; };
 export async function pushProfile() {
   const s = session(); if (!s) return;
-  await rest('profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, data: { memory: memory(), study: studyOut(), styles: stylesOut(), about: aboutOut() }, updated: new Date().toISOString() }) });
+  await rest('profiles?on_conflict=user_id', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ user_id: s.uid, data: { memory: memory(), study: studyOut(), styles: stylesOut(), about: aboutOut(), avatar: loadAvatar() ?? undefined, met: isMet() ? 1 : undefined }, updated: new Date().toISOString() }) });
 }
+/** Has the account's profile been read on this device yet? Until it has, nobody can tell whether setup was already done somewhere else. */
+let seen = false;
+export const profileSeen = () => seen;
 async function syncProfile() {
-  const rows: { data?: { memory?: unknown; study?: StudyData; styles?: unknown; about?: About } }[] = await (await rest('profiles?select=data')).json();
+  const rows: { data?: { memory?: unknown; study?: StudyData; styles?: unknown; about?: About; avatar?: unknown; met?: unknown } }[] = await (await rest('profiles?select=data')).json();
+  seen = true; try { window.dispatchEvent(new Event('pmc:coe-profile')); } catch { /* no window */ }
   const theirs = Array.isArray(rows[0]?.data?.memory) ? (rows[0].data!.memory as unknown[]).filter((x): x is string => typeof x === 'string') : [];
   const mine = memory(), merged = setMemory([...theirs, ...mine]);
   const theirStudy = rows[0]?.data?.study;
@@ -144,12 +150,20 @@ async function syncProfile() {
   const stylesChanged = !!styNow && JSON.stringify(styNow) !== JSON.stringify(rows[0]?.data?.styles ?? null);
   // About you follows the account: a new device, or the Coe Mini add-on, starts already knowing you. The newer copy wins.
   const ab = rows[0]?.data?.about, cur = loadSettings();
+  // Setup done on another device (or answers already saved) means this one does not ask again.
+  const theirMet = !!rows[0]?.data?.met || !!(ab && Number(ab.at) > 0);
+  if (theirMet) markMet();
   let aboutChanged = false;
   if (ab && Number(ab.at) > (cur.profileAt || 0)) {
     saveSettings(withAbout(cur, ab as Record<string, unknown>, Number(ab.at)));
     aboutChanged = false;
   } else { const mine = aboutOut(); aboutChanged = !!mine && JSON.stringify(mine) !== JSON.stringify(ab ?? null); }
-  if (merged.length !== theirs.length || merged.some((m, i) => m !== theirs[i]) || studyChanged || stylesChanged || aboutChanged) await pushProfile();
+  // The profile picture follows the account too. The newer one wins; taking it away counts as a change.
+  const av = rows[0]?.data?.avatar, myAv = loadAvatar();
+  let avatarChanged = false;
+  if (validAvatar(av) && av.at > (myAv?.at ?? 0)) saveAvatar(av.img, av.at);
+  else avatarChanged = !!myAv && JSON.stringify(myAv) !== JSON.stringify(av ?? null);
+  if (avatarChanged || merged.length !== theirs.length || merged.some((m, i) => m !== theirs[i]) || studyChanged || stylesChanged || aboutChanged || (isMet() && !rows[0]?.data?.met)) await pushProfile();
 }
 
 /** Brings this device and the account to the same list. Returns how many chats changed on this device. */
@@ -195,7 +209,7 @@ export async function signOut() {
 
 // ---------------------------------------------------------------- sharing a chat as a read-only link
 /** What a shared page holds: words only. No pictures, files or tool results, and nothing about the person. */
-export interface Shared { title: string; ts: number; messages: { role: 'user' | 'assistant'; text: string }[] }
+export interface Shared { title: string; ts: number; from?: 'coe' | 'mini'; v?: string; messages: { role: 'user' | 'assistant'; text: string }[] }
 const SHARES = 'pmc:coe:shares';
 const MAX_SHARE = 400_000;
 const shareMap = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(SHARES) || '{}'); } catch { return {}; } };
@@ -203,8 +217,8 @@ const setShareMap = (m: Record<string, string>) => { try { localStorage.setItem(
 export const sharedId = (convId: string): string => shareMap()[convId] ?? '';
 const newShareId = () => { const a = new Uint8Array(16); crypto.getRandomValues(a); const c = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; return Array.from(a, (x) => c[x % c.length]).join(''); };
 const forShare = (c: Conv): Shared => ({
-  title: c.title.slice(0, 120), ts: Date.now(),
-  messages: c.messages.filter((m) => !m.hidden && m.text.trim() && !m.error).map((m) => ({ role: m.role, text: m.text.replace(/```coe-(?:tool|plan)[\s\S]*?```/g, '').trim().slice(0, 60_000) })).filter((m) => m.text),
+  title: c.title.slice(0, 120), ts: Date.now(), from: 'coe', v: COE_VERSION,
+  messages: c.messages.filter((m) => !m.hidden && m.text.trim() && !m.error).map((m) => ({ role: m.role, text: m.text.replace(/```coe-(?:tool|plan|remember)[\s\S]*?```/g, '').trim().slice(0, 60_000) })).filter((m) => m.text),
 });
 /** Makes (or refreshes) the link for a chat. Returns the id that goes after the # in the address. */
 export async function shareChat(c: Conv): Promise<string> {
@@ -228,5 +242,5 @@ export async function readShare(id: string): Promise<Shared | null> {
   if (!r.ok) throw await fail(r);
   const j = await r.json();
   if (!j || !Array.isArray(j.messages)) return null;
-  return { title: String(j.title ?? 'A chat with Coe').slice(0, 120), ts: Number(j.ts) || 0, messages: j.messages.filter((m: { role?: string; text?: unknown }) => (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string').slice(0, 400).map((m: { role: 'user' | 'assistant'; text: string }) => ({ role: m.role, text: m.text })) };
+  return { title: String(j.title ?? 'A chat with Coe').slice(0, 120), ts: Number(j.ts) || 0, from: j.from === 'mini' ? 'mini' : j.from === 'coe' ? 'coe' : undefined, v: /^[0-9.]{1,12}$/.test(String(j.v ?? '')) ? String(j.v) : undefined, messages: j.messages.filter((m: { role?: string; text?: unknown }) => (m.role === 'user' || m.role === 'assistant') && typeof m.text === 'string').slice(0, 400).map((m: { role: 'user' | 'assistant'; text: string }) => ({ role: m.role, text: m.text })) };
 }
