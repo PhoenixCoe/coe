@@ -7,7 +7,7 @@ import { UiIcon } from '@/ui/icons';
 import { ask, type CoeError } from '@/lib/coe/client';
 import { COE_MODELS } from '@/lib/coe/models';
 import { PROVIDERS, providerById } from '@/lib/coe/providers';
-import { canOwnKey, onStatus, status } from '@/lib/coe/account';
+import { canOwnKey, onStatus, refreshStatus, status } from '@/lib/coe/account';
 import { connection, modeOf, own, type CoeSettings } from '@/lib/coe/settings';
 import { You } from './You';
 import { Select } from '@/ui/Controls';
@@ -64,6 +64,7 @@ export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, 
 }) {
   const [srvOwner, setSrvOwner] = useState(!!status().owner);
   useEffect(() => onStatus(() => setSrvOwner(!!status().owner)), []);
+  useEffect(() => { void refreshStatus(settings); }, []);   // eslint-disable-line react-hooks/exhaustive-deps   // so the owner tools show as soon as the server knows you
   const tab: Tab = (owner || tabIn !== 'connect') && (srvOwner || tabIn !== 'owner') ? tabIn : 'ai';
   const ownerTabs: TabDef[] = [...(owner ? [{ id: 'connect' as Tab, name: 'Server', icon: 'cloud' as const }] : []), ...(srvOwner ? [{ id: 'owner' as Tab, name: 'Tools', icon: 'bolt' as const }] : [])];
   const up = (patch: Partial<CoeSettings>) => set({ ...settings, ...patch });

@@ -804,10 +804,16 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // Messages sent while Coe is still replying wait their turn here. None is ever dropped: either it goes next, or it goes now and the one before it is still answered.
   const [queue, setQueue] = useState<Queued[]>([]);
   const bannedRef = useRef(false);   // a banned account sends nothing, from any button or key
+  /** /owner: opens the owner tools for the owner account. For anyone else it only says so; it is never sent to the AI. */
+  const ownerDoor = useCallback(async () => {
+    const s = status().owner ? status() : await refreshStatus(settings);
+    if (s.owner) { setTab('owner'); setPanel('settings'); return; }
+    say(s.signedIn ? `This account (${s.email || 'signed in'}) does not have the owner tools.` : 'Sign in first. The owner tools open only for the owner account.');
+  }, [settings, say]);
   const send = useCallback(() => {
     if (reading || bannedRef.current) return;
     if (!text.trim() && !pics.length && !atts.length) return;
-    if (status().owner && /^\/owner\s*$/i.test(text)) { setText(''); setTab('owner'); setPanel('settings'); return; }   // the owner's own door; for anyone else it is just a message
+    if (/^\/owner\s*$/i.test(text.trim())) { setText(''); void ownerDoor(); return; }   // the owner's own door; for anyone else it only says there is nothing here
     const w = work, t = text, pp = pics, aa = atts;
     setText(''); setPics([]); setAtts([]); setWork(false); sfx.send();
     try { window.dispatchEvent(new Event('pmc:coe-sent')); } catch { /* old browser */ }
@@ -815,7 +821,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     const item: Queued = { cid: convRef.current.id, id: uid(), text: t.trim(), pics: pp, atts: aa, work: w };
     if (settings.whileBusy === 'interrupt') { setQueue((q) => [{ ...item, late: true }, ...q]); abort.current?.abort(); }
     else setQueue((q) => [...q, item]);
-  }, [busy, reading, text, pics, atts, work, sendBody, settings.whileBusy]);
+  }, [busy, reading, text, pics, atts, work, sendBody, settings.whileBusy, ownerDoor]);
   /** One tap on what to do with a file, a picture or a long paste (the same four helpers as in Coe Mini). Whatever is typed in the box goes along. */
   const quickSend = (what: string) => {
     if (busy || reading || bannedRef.current) return;
@@ -1548,7 +1554,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         {keysOpen && (
           <Modal title="Keyboard shortcuts" onClose={() => setKeysOpen(false)}>
             <dl className="keys">
-              {[['Ctrl+K', 'Commands: find anything Coe can do'], ['Ctrl+Shift+O', 'New chat'], ['Ctrl+/', 'This list'], ['Enter', settings.enter === 'send' ? 'Send' : 'New line'], ['Shift+Enter', settings.enter === 'send' ? 'New line' : 'Send with Ctrl'], ['Esc', 'Stop a reply, or close a window'], ['/', 'At the start of a message: commands like /quiz and /cards'], ['Space', 'In Study: show the answer'], ['1 2 3 4', 'In Study: Again, Hard, Good, Easy']].map(([k, v]) => <div key={k}><dt><kbd>{k}</kbd></dt><dd className="tx">{v}</dd></div>)}
+              {[['Ctrl+K', 'Commands: find anything Coe can do'], ['Ctrl+Shift+O', 'New chat'], ['Ctrl+/', 'This list'], ['Enter', settings.enter === 'send' ? 'Send' : 'New line'], ['Shift+Enter', settings.enter === 'send' ? 'New line' : 'Send with Ctrl'], ['Esc', 'Stop a reply, or close a window'], ['/', 'At the start of a message: commands like /quiz and /flashcards'], ['Space', 'In Study: show the answer'], ['1 2 3 4', 'In Study: Again, Hard, Good, Easy']].map(([k, v]) => <div key={k}><dt><kbd>{k}</kbd></dt><dd className="tx">{v}</dd></div>)}
             </dl>
           </Modal>
         )}
