@@ -53,13 +53,13 @@ export function Upgrade({ note, onClose }: { note: string; onClose: () => void }
 export type Tab = 'owner' | 'account' | 'usage' | 'connect' | 'ai' | 'chat' | 'look' | 'learn' | 'voice' | 'you' | 'data' | 'ext' | 'feedback' | 'about';
 type TabDef = { id: Tab; name: string; icon: Parameters<typeof UiIcon>[0]['name'] };
 const GROUPS: { name: string; tabs: TabDef[] }[] = [
-  { name: 'You', tabs: [{ id: 'account', name: 'Account', icon: 'user' }, { id: 'usage', name: 'Usage', icon: 'chart' }, { id: 'you', name: 'Memory', icon: 'sparkle' }] },
+  { name: 'You', tabs: [{ id: 'account', name: 'Profile', icon: 'user' }, { id: 'usage', name: 'Usage', icon: 'chart' }, { id: 'you', name: 'Memory', icon: 'sparkle' }] },
   { name: 'Coe', tabs: [{ id: 'chat', name: 'Chat', icon: 'chat' }, { id: 'learn', name: 'Learn', icon: 'graduate' }, { id: 'voice', name: 'Voice typing', icon: 'mic' }, { id: 'look', name: 'Look', icon: 'theme' }] },
   { name: 'More', tabs: [{ id: 'ext', name: 'Coe Mini', icon: 'globe' }, { id: 'ai', name: 'Your AI', icon: 'bolt' }, { id: 'data', name: 'Data', icon: 'backup' }, { id: 'feedback', name: 'Feedback', icon: 'mail' }, { id: 'about', name: 'About', icon: 'info' }] },
 ];
-export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, setTab, convCount, used, limit, onSignIn, onAccountChange, onExport, onImport, onDeleteAll, onClose }: {
+export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, setTab, convCount, used, limit, onSignIn, onAccountChange, onSetup, onExport, onImport, onDeleteAll, onClose }: {
   owner: boolean; onClearFiles: () => void; settings: CoeSettings; set: (s: CoeSettings) => void; tab: Tab; setTab: (t: Tab) => void; convCount: number;
-  used: number; limit: number; onSignIn: () => void; onAccountChange: (signedIn: boolean) => void;
+  used: number; limit: number; onSignIn: () => void; onAccountChange: (signedIn: boolean) => void; onSetup: () => void;
   onExport: () => void; onImport: (f: File) => void; onDeleteAll: () => void; onClose: () => void;
 }) {
   const [srvOwner, setSrvOwner] = useState(!!status().owner);
@@ -108,7 +108,7 @@ export function SettingsPanel({ owner, onClearFiles, settings, set, tab: tabIn, 
       <div id="set-panel" role="tabpanel" aria-labelledby={`set-t-${tab}`} className="set-body">
       <h3 className="set-h d">{[...GROUPS.flatMap((g) => g.tabs), { id: 'connect', name: 'Server' }, { id: 'owner', name: 'Owner tools' }].find((t) => t.id === tab)?.name}</h3>
       {tab === 'owner' && <OwnerTab settings={settings} onClearFiles={onClearFiles} />}
-      {tab === 'account' && <AccountTab onSignIn={onSignIn} onChange={onAccountChange} />}
+      {tab === 'account' && <AccountTab onChange={onAccountChange} onSetup={onSetup} />}
       {tab === 'usage' && <UsageTab usedLocal={used} limitLocal={limit} />}
 
       {tab === 'connect' && (

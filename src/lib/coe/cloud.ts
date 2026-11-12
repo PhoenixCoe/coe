@@ -80,7 +80,7 @@ export function accountsLive(): Promise<boolean> {
   });
 }
 /** Goes to the PMC Account page. A one-time value is made here and kept in this tab; the way back is only accepted if it brings the same value. */
-export function startAccountSignIn(where: '' | 'create' | 'reset' = '', hint = ''): void {
+export function startAccountSignIn(where: '' | 'create' | 'reset' | 'signin' = '', hint = ''): void {
   const a = new Uint8Array(24); crypto.getRandomValues(a);
   const st = b64u(a);
   try { sessionStorage.setItem(ASTATE, JSON.stringify({ st, at: Date.now() })); } catch { throw new Error('This browser is blocking the storage Coe needs to sign you in safely. Turn off private mode or allow site data, then try again.'); }

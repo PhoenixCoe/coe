@@ -30,23 +30,26 @@ function ProfilePic({ letter, signedIn }: { letter: string; signedIn: boolean })
   );
 }
 
-/** Settings > Account: your plan, sign in or out. How much is left today is in Settings > Usage. */
-export function AccountTab({ onSignIn, onChange }: { onSignIn: () => void; onChange: (signedIn: boolean) => void }) {
+/** Settings > Profile: your picture, your plan, and deleting the account. Who you are, signing in and signing out are in the account menu (the picture button).
+ *  How much is left today is in Settings > Usage. */
+export function AccountTab({ onChange, onSetup }: { onChange: (signedIn: boolean) => void; onSetup: () => void }) {
   const me = session(), st = status();
   const [, bump] = useState(0); const [busy, setBusy] = useState(false); const [err, setErr] = useState(''); const [sure, setSure] = useState(false);
   useEffect(() => onStatus(() => bump((n) => n + 1)), []);
   const go = async (f: () => Promise<void>) => { setBusy(true); setErr(''); try { await f(); } catch (e) { setErr((e as Error).message || 'Something went wrong.'); } finally { setBusy(false); } };
   return (
     <div className="acc">
-      <section className="acc-card"><h3 className="d">Your account</h3>
-        {me ? (
+      <section className="acc-card"><h3 className="d">Setup</h3>
+        <p className="tx cx-small">The first-time questions, with Coe asking. Do them now if you skipped them, or go through them again to change your answers.</p>
+        <div className="cx-actions"><button type="button" className="btn gold" onClick={onSetup}>Enter setup</button></div>
+      </section>
+      <section className="acc-card">
+        <ProfilePic letter={me ? me.email.slice(0, 1).toUpperCase() : '?'} signedIn={!!me} />
+        {me && (
           <>
-            <ProfilePic letter={me.email.slice(0, 1).toUpperCase()} signedIn />
-            <div className="acc-who"><div><b className="d">{me.email}</b><span className={`cx-badge ${st.plan}`}>{st.plan === 'pro' ? 'Pro' : 'Free'}{st.given ? ' (given)' : ''}</span></div></div>
+            <div className="acc-plan"><b className="d">Plan</b><span className={`cx-badge ${st.plan}`}>{st.plan === 'pro' ? 'Pro' : 'Free'}{st.given ? ' (given)' : ''}</span><a className="btn small" href="/plans/">Plans</a></div>
             {st.renews && st.plan === 'pro' && <p className="tx cx-small">Pro renews {new Date(st.renews).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}.</p>}
             {err && <div className="cx-err" role="alert"><p>{err}</p></div>}
-            <div className="cx-actions"><a className="btn" href="/plans/">Plans</a>
-              <button type="button" className="btn" disabled={busy} onClick={() => go(async () => { if (await signOut()) { forgetStatus(); onChange(false); } else setErr('Could not save your chats first. Check your connection and try again.'); })}>{busy ? 'Working' : 'Sign out'}</button></div>
             <details className="acc-danger"><summary className="d">Delete my account</summary>
               <p className="tx cx-small">Deletes your account, saved chats, notes and usage from Coe&apos;s server. It cannot be undone. If you pay for Pro, cancel it first on the Plans page.</p>
               {!sure ? <div className="cx-actions"><button type="button" className="btn" onClick={() => setSure(true)}>Delete my account</button></div>
@@ -54,12 +57,6 @@ export function AccountTab({ onSignIn, onChange }: { onSignIn: () => void; onCha
                   <button type="button" className="btn danger" disabled={busy} onClick={() => go(async () => { await deleteAccount(loadSettings()); await signOut().catch(() => false); forgetStatus(); setSure(false); onChange(false); })}>Yes, delete</button>
                   <button type="button" className="btn" onClick={() => setSure(false)}>No</button></div>}
             </details>
-          </>
-        ) : (
-          <>
-            <ProfilePic letter="?" signedIn={false} />
-            <p className="tx">Your chats stay on this device. Sign in to keep them on every device and get a bigger daily amount.</p>
-            <div className="cx-actions"><button type="button" className="btn gold" onClick={onSignIn}>Sign in</button></div>
           </>
         )}
       </section>

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { SiteFooter } from '@/ui/SiteFooter';
 import { COE_VERSION } from '@/lib/coe/changelog';
 
-export const metadata: Metadata = { title: 'About and credits', description: 'Who makes Coe, what it is built with, and who owns what.' };
+export const metadata: Metadata = { title: 'About and Credits', description: 'Who makes Coe, what it is built with, and who owns what.' };
 
 const ROWS: [string, string][] = [
   ['What Coe is', 'Coe is a study and writing helper. Coe Mini is the same helper in the sidebar of Chrome, Edge and Firefox on a computer. It is not on phones or iPads, which cannot add browser extensions. Both are made by PMC Studios.'],

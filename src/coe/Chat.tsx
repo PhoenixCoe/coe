@@ -140,7 +140,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [hello] = useState(() => Math.random());
   const convRef = useRef(conv);
   // The tab title: the chat you are on, then " - Coe"; just "Coe" when no chat is open.
-  useEffect(() => { const t = conv.messages.length ? (conv.temp ? 'Private chat' : String(conv.title || '').trim()) : ''; setPageTitle(t ? `${t} - Coe` : 'Coe'); }, [conv.id, conv.title, conv.temp, conv.messages.length]);
+  useEffect(() => { const t = conv.messages.length ? (conv.temp ? 'Private chat' : String(conv.title || '').trim()) : ''; setPageTitle(t ? `${t} - PMC Coe` : 'PMC Coe'); }, [conv.id, conv.title, conv.temp, conv.messages.length]);
   const [use, setUse] = useState(() => usage());
   const [text, setText] = useState('');
   const [pics, setPics] = useState<Img[]>([]);
@@ -423,6 +423,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     others: window.PmcAccount?.others(me ?? '') ?? [],
     manage: `${ACCOUNTS}/`, privacy: `${ACCOUNTS}/privacy/`,
     onSettings: () => { setTab('look'); setPanel('settings'); },
+    onPicture: () => { setTab('you'); setPanel('settings'); },
     onSignIn: () => setAcct(true),
     onAddAccount: () => { void leave(() => toPmc()); },
     onSwitch: (a) => { if (me) void leave(() => toPmc(a.email)); else toPmc(a.email); },
@@ -967,6 +968,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       const pc = /^#connect=([A-Z2-9]{6})$/.exec(location.hash);
       if (pc) { fromMini.current = true; history.replaceState(null, '', location.pathname + location.search); startLink(pc[1]); setPanel(null); if (!session()) setAcct(true); }
       else if (location.hash === '#signin') { fromMini.current = true; history.replaceState(null, '', location.pathname + location.search); if (!session()) setAcct(true); }
+      else if (location.hash === '#you') { history.replaceState(null, '', location.pathname + location.search); setTab('you'); setPanel('settings'); }   // the pencil on the picture in Coe Mini's account menu
     };
     readHash(); window.addEventListener('hashchange', readHash);
     const offHand = onExtHandoff((t, chat) => { const id = chat ? 'x' + chat.slice(0, 40) : ''; void (async () => { const here = id && ((await loadConv(id)) || liveWork.current.has(id)); setIncoming({ text: t, chat: here ? id : '' }); })(); });   // Coe Mini sent something: it waits for a yes (see Incoming)
@@ -1247,7 +1249,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const linking = !!link && link.id === conv.id && !!me && !acct;
   const linkSeen = useRef(false);
   useEffect(() => { if (!link) { linkSeen.current = false; return; } if (conv.id === link.id) linkSeen.current = true; else if (linkSeen.current) setLink(null); }, [conv.id, link]);   // opening or starting another chat leaves the linking chat
-  useEffect(() => { if (linking) setPageTitle('Coe linking code - Coe'); }, [linking]);
+  useEffect(() => { if (linking) setPageTitle('Linking Code - PMC Coe'); }, [linking]);
   const dk = useMemo(() => dockTarget(conv.messages), [conv.messages]);
   const turnFrom = (i: number) => { let j = i; while (j > 0 && !(conv.messages[j - 1].role === 'user' && !conv.messages[j - 1].hidden)) j--; return j; };
   const groups = useMemo(() => {
@@ -1699,7 +1701,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
       {acct && <Account onClose={() => setAcct(false)} onChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} />}
       {upgrade && <Upgrade note={upgrade} onClose={() => setUpgrade('')} />}
       {meet && !panel && !acct && !upgrade && <Setup s={settings} save={(p) => setSettings({ ...loadSettings(), ...p })} onClose={() => { setMeet(false); if (session()) void pushProfile().catch(() => {}); }} />}
-      {panel === 'settings' && <SettingsPanel owner={owner} onClearFiles={() => { const next = { ...convRef.current, files: {} }; setConv(next); void persist(next); }} settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} used={usedNow} limit={perDay} onSignIn={() => setAcct(true)} onAccountChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
+      {panel === 'settings' && <SettingsPanel owner={owner} onClearFiles={() => { const next = { ...convRef.current, files: {} }; setConv(next); void persist(next); }} settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} used={usedNow} limit={perDay} onSignIn={() => setAcct(true)} onSetup={() => { setPanel(null); setMeet(true); }} onAccountChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
       {peek && <AttPeek a={peek} onClose={() => setPeek(null)} />}
       {big && <Modal title={big.name} onClose={() => setBig(null)} wide><img className="cx-big" src={dataUrl(big)} alt={big.name} /></Modal>}
     </div>

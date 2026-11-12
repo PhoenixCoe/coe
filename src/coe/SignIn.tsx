@@ -38,7 +38,7 @@ export function SignIn({ onClose, onChange }: { onClose: () => void; onChange: (
 
   const showForm = other || saved.length === 0;
   const go = async (f: () => Promise<void>) => { setBusy(true); setErr(''); try { await f(); } catch (e) { setErr((e as Error).message || 'That did not work. Try again.'); } finally { setBusy(false); } };
-  const toPmc = (where: '' | 'create' = '') => go(async () => { startAccountSignIn(where); await new Promise((r) => setTimeout(r, 4000)); });
+  const toPmc = (where: '' | 'create' | 'signin' = 'signin') => go(async () => { startAccountSignIn(where); await new Promise((r) => setTimeout(r, 4000)); });
   const send = (to: string) => go(async () => { await sendCode(to.trim()); setEmail(to.trim()); setCode(''); setStep('code'); setWait(30); });
   const forget = (a: string) => { const n = saved.filter((x) => x !== a); write(n); setSaved(n); };
 

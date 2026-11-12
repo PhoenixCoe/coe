@@ -26,16 +26,26 @@
     + '.pb-btn:hover,.pb-btn[aria-expanded="true"]{background:var(--pb-hover-bg,#171717);color:var(--pb-hover-fg,#F2E4CE)}'
     + '.pb-btn:focus-visible{outline:4px solid #337957;outline-offset:3px}'
     + '.pb-dots{display:grid;grid-template-columns:repeat(3,6px);gap:3px}.pb-dots i{width:6px;height:6px;background:currentColor;display:block}'
-    + '.pb-pop{position:fixed;z-index:2147483000;width:min(384px,calc(100vw - 16px));background:#F2E4CE;color:#171717;border:3px solid #171717;box-shadow:8px 8px 0 #1A4934;padding:14px 10px 12px;font-family:var(--d,"PMC Header","Shoulders","Arial Narrow",Impact,sans-serif);text-transform:uppercase;font-weight:400;font-synthesis:none;-webkit-font-smoothing:antialiased;line-height:1;animation:pbup .16s cubic-bezier(.16,1,.3,1) backwards}'
+    + '.pb-pop{position:fixed;z-index:2147483000;width:min(372px,calc(100vw - 16px));max-height:calc(100vh - 16px);max-height:calc(100dvh - 16px);overflow:auto;overscroll-behavior:contain;box-sizing:border-box;background:#F2E4CE;color:#171717;border:3px solid #171717;box-shadow:8px 8px 0 #1A4934;padding:10px;font-family:var(--d,"PMC Header","Shoulders","Arial Narrow",Impact,sans-serif);text-transform:uppercase;font-weight:400;font-synthesis:none;-webkit-font-smoothing:antialiased;line-height:1;animation:pbup .18s cubic-bezier(.16,1,.3,1) backwards}'
     + '.pb-pop[hidden]{display:none}'
-    + '.pb-g{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 4px;list-style:none;margin:0;padding:0}'
-    + '.pb-t{display:grid;justify-items:center;gap:10px;padding:12px 2px 12px;color:#171717;text-decoration:none;border:3px solid transparent;text-align:center;font-size:1.2rem;letter-spacing:.03em;line-height:1}'
+    + '.pb-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 8px;padding-left:4px}'
+    + '.pb-ttl{font-size:1.45rem;letter-spacing:.03em}'
+    + '.pb-close{display:grid;place-items:center;flex:none;width:34px;height:34px;margin:0;padding:0;background:transparent;color:#171717;border:3px solid #171717;border-radius:0;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .1s,color .1s}'
+    + '.pb-close:hover,.pb-close:focus-visible{background:#171717;color:#F2E4CE;outline:none}'
+    + '.pb-close:focus-visible{box-shadow:0 0 0 3px #337957}'
+    + '.pb-card{background:#FBF6EC;border:3px solid #171717;padding:12px 6px 8px}'
+    + '.pb-g{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;list-style:none;margin:0;padding:0}'
+    + '.pb-t{position:relative;display:grid;justify-items:center;align-content:start;gap:10px;padding:10px 2px 12px;color:#171717;text-decoration:none;border:3px solid transparent;text-align:center;font-size:1.25rem;letter-spacing:.03em;line-height:1;transition:background .1s,transform .12s cubic-bezier(.16,1,.3,1)}'
     + '.pb-t:hover,.pb-t:focus-visible{background:#D5E8DC;border-color:#171717;outline:none}'
+    + '.pb-t:hover .pb-i,.pb-t:focus-visible .pb-i{transform:translate(-2px,-2px);box-shadow:6px 6px 0 #1A4934}'
+    + '.pb-t:active .pb-i{transform:translate(2px,2px);box-shadow:2px 2px 0 #1A4934}'
     + '.pb-t[aria-current="true"]{background:#171717;color:#F2E4CE}'
-    + '.pb-i{display:grid;place-items:center;width:80px;height:80px;border:3px solid #171717;box-shadow:4px 4px 0 #1A4934}'
+    + '.pb-i{display:grid;place-items:center;width:76px;height:76px;border:3px solid #171717;box-shadow:4px 4px 0 #1A4934;transition:transform .12s cubic-bezier(.16,1,.3,1),box-shadow .12s cubic-bezier(.16,1,.3,1)}'
     + '.pb-t[aria-current="true"] .pb-i{border-color:#F2E4CE;box-shadow:4px 4px 0 #337957}'
-    + '@keyframes pbup{from{opacity:0;transform:translateY(8px)}}'
-    + '@media (prefers-reduced-motion:reduce){.pb-pop{animation:none}}';
+    + '.pb-here{display:block;margin-top:-4px;font-size:.78rem;letter-spacing:.06em;color:#6FB894}'
+    + '@keyframes pbup{from{opacity:0;transform:translateY(8px) scale(.98)}}'
+    + '@media (max-width:480px){.pb-pop{left:8px!important;right:8px!important;top:auto!important;bottom:8px!important;width:auto}}'
+    + '@media (prefers-reduced-motion:reduce){.pb-pop{animation:none}.pb-t,.pb-i{transition:none}}';
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   var CSS_ALL = CSS + SITES.map(function (s) { return '.pb-s-' + s.id + '{background:' + s.bg + ';color:' + s.fg + '}'; }).join('');
   function css() { if (document.getElementById('pmc-by-css') || document.querySelector('link[data-pmc-menus]')) return; var s = document.createElement('style'); s.id = 'pmc-by-css'; s.textContent = CSS_ALL; document.head.appendChild(s); }
@@ -68,9 +78,10 @@
     var pop = document.createElement('div'); pop.className = 'pb-pop'; pop.hidden = true; pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'More by PMC');
     var list = SITES.map(function (s) {
       var here = s.host && s.host === host;
-      return '<li><a class="pb-t" href="' + esc(s.url) + '"' + TGT + (here ? ' aria-current="true"' : '') + '><span class="pb-i pb-s-' + s.id + '">' + ICON[s.icon] + '</span><span>' + esc(s.name) + '</span>' + '</a></li>';
+      return '<li><a class="pb-t" href="' + esc(s.url) + '"' + TGT + (here ? ' aria-current="true"' : '') + '><span class="pb-i pb-s-' + s.id + '">' + ICON[s.icon] + '</span><span>' + esc(s.name) + '</span>' + (here ? '<small class="pb-here">You are here</small>' : '') + '</a></li>';
     }).join('');
-    pop.innerHTML = '<ul class="pb-g">' + list + '</ul>';
+    pop.innerHTML = '<div class="pb-top"><b class="pb-ttl">More by PMC</b><button type="button" class="pb-close" aria-label="Close" title="Close"><svg viewBox="0 0 24 24" width="18" height="18" ' + S + ' aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button></div><div class="pb-card"><ul class="pb-g">' + list + '</ul></div>';
+    pop.querySelector('.pb-close').addEventListener('click', function () { close(true); });
     document.body.appendChild(pop);
     var o = { btn: btn, pop: pop };
     o.onDown = function (e) { if (!pop.contains(e.target) && !btn.contains(e.target)) close(false); };

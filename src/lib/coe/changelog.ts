@@ -4,7 +4,7 @@
  *  Coe Mini uses the same number and the same list. Browsers only allow numbers in an extension's version, so Coe Mini's manifest says 2026.11.12.6
  *  (year, month, day, and the letter counted as a number, which always goes up) and shows the name above as its version name.
  *  Coe is also told this list (see prompts.ts), so it can answer "what is new?" and "what can you do now?". Add the newest version at the top. */
-export const COE_VERSION = 'b-2026.12.11.f';
+export const COE_VERSION = 'b-2026.12.11.g';
 export const COE_DATE = '12 November 2026';
 export const COE_BETA = true;
 
@@ -29,6 +29,25 @@ export interface Release { v: string; date: string; items: Change[]; before: str
 export const RELEASES: Release[] = [
   {
     v: COE_VERSION, date: COE_DATE,
+    items: [
+      { where: 'both', text: 'Setup starts with a Sign in with PMC box on its first screen: pick an account already used on this device, sign in, make a PMC Account, or carry on as a guest. Then it goes on to the same full-screen questions as before.' },
+      { where: 'both', text: 'Do this later leaves setup at once, and Enter setup in Settings, under Profile, brings it back any time.' },
+      { where: 'both', text: 'Settings\u2019 account tab is now Profile and only holds what you need there: your picture, your plan, Enter setup and Delete my account. Sign out lives in the account menu.' },
+      { where: 'both', text: 'When the account menu opens, the rest of the screen dims and a soft halftone dot glow comes out from behind the menu. It fades in and out with the menu.' },
+      { where: 'both', text: 'Tab titles follow one rule on every PMC site: the home page is PMC Coe, and every other page is Page name - PMC Coe. In a chat it is the chat\u2019s name first.' },
+      { where: 'both', text: 'The account menu and the By PMC apps menu look like Google\u2019s: a green card with your picture, name and email, your accounts under it, a red Sign out, Manage your PMC Account and Settings. The pencil on your picture opens your picture settings. By PMC is a grid of big tiles that says You are here on the one you are on.' },
+      { where: 'web', text: 'Your PMC Account page is simpler: a menu down the side (Your account, Password, Devices, Data and privacy, For developers). Your account shows your picture, name and email, a button to change them in Coe, and the apps and sites you use, PMC or not. Nothing is on it just to fill space. A device remembers the accounts it used, so Sign in lists them.' },
+      { where: 'mini', text: 'Coe Mini only reads the page you are on when your message is about it (this, the page, my answer, question 4, Look at the screen and the buttons under the chat). A general question like what does camisa mean never touches the site. If it turns out to need the page, Coe reads it then. Right after a page answer, a short follow-up keeps the page.' },
+      { where: 'web', text: 'The PMC Account page remembers the accounts used on a device (email, first name and a small picture, never a password or key). With one saved, Sign in lists it to pick and has Use another account; with none saved it opens on Create account.' },
+    ],
+    before: [
+      'Setup went straight to the questions and did not ask about your account.',
+      'Settings had a long account tab with Sign out and your email on it.',
+      'The page behind the account menu stayed bright.',
+    ],
+  },
+  {
+    v: 'b-2026.12.11.f', date: COE_DATE,
     items: [
       { where: 'both', text: 'The account menu. Press your picture and a menu opens, like Google\u2019s: your name and email, Manage your account, Settings, the other accounts used on this device, Add another account and Sign out.' },
       { where: 'both', text: 'A By PMC button, next to your picture, opens a grid of every PMC site: Studios, Tools, Coe, Coe Mini and Account. The Account page has the same two buttons in its header.' },

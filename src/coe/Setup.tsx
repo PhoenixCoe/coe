@@ -2,9 +2,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { UiIcon } from '@/ui/icons';
 import { CoeStar } from '@/ui/Mark';
+import { PmcMark } from '@/ui/PmcMark';
+import { loadPmc, type PmcOther } from '@/lib/coe/pmcmenu';
 import { AGE_OPTIONS, ROLE_OPTIONS, levelWords } from '@/lib/coe/profile';
 import { deviceScale, markMet, type CoeSettings } from '@/lib/coe/settings';
-import { cloudOn, noteAccountMet, session } from '@/lib/coe/cloud';
+import { cloudOn, noteAccountMet, session, startAccountSignIn } from '@/lib/coe/cloud';
 import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, setTheme } from '@/lib/coe/look';
 
 type Step = 'hi' | 'name' | 'age' | 'role' | 'about' | 'look' | 'feel' | 'style' | 'done';
@@ -35,7 +37,7 @@ const ThemeCard = ({ t, on, pick, first }: { t: (typeof THEMES)[number]; on: boo
   );
 };
 
-/** The first time Coe opens: a short run of full screens, one question each. Every question can be skipped, and the answers follow the account to other devices and to Coe Mini. */
+/** The first time Coe opens: a short run of full screens, one question each. With nobody signed in, the first screen is the account (sign in, create a PMC Account, or carry on as a guest). Every question can be skipped, and the answers follow the account to other devices and to Coe Mini. */
 export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Partial<CoeSettings>) => void; onClose: () => void }) {
   const [i, setI] = useState(0), [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [name, setName] = useState(s.name), [ageBand, setAge] = useState<CoeSettings['ageBand']>(s.ageBand), [role, setRole] = useState<CoeSettings['role']>(s.role);
@@ -43,6 +45,8 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
   const [length, setLength] = useState<CoeSettings['length']>(s.length), [tone, setTone] = useState<CoeSettings['tone']>(s.tone);
   const [scale, setScale] = useState(s.scale), [motion, setMotion] = useState<CoeSettings['motion']>(s.motion);
   const [, look] = useState(0);   // the page colour and accent are kept by the look module; this just redraws
+  const [busy, setBusy] = useState(false), [err, setErr] = useState('');
+  const [others, setOthers] = useState<PmcOther[]>([]);   // accounts already used on this device (name, email, picture; never a password)
   const root = useRef<HTMLDivElement>(null);
   const step = STEPS[i];
   const patch = (): Partial<CoeSettings> => ({ name: name.trim().slice(0, 30), ageBand, role, yearOrJob: yearOrJob.trim().slice(0, 60), subjects: subjects.trim().slice(0, 100), length, tone });
@@ -50,6 +54,12 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
   const go = (to: number, d: 'fwd' | 'back') => { setDir(d); setI(Math.max(0, Math.min(STEPS.length - 1, to))); };
   const next = () => (step === 'done' ? finish() : go(i + 1, 'fwd'));
   const back = () => go(i - 1, 'back');
+  /** Leaves for the PMC Account page. Coming back signed in, setup starts again at the first screen, without the account question. */
+  const toPmc = (where: 'signin' | 'create', hint = '') => {
+    setBusy(true); setErr('');
+    const undo = () => setBusy(false);
+    try { startAccountSignIn(where, hint); window.setTimeout(undo, 4000); } catch (e) { undo(); setErr((e as Error).message || 'Could not open the sign-in page.'); }
+  };
 
   // Keep the keyboard inside the setup screens, and start each screen on its first control.
   useEffect(() => { const t = window.setTimeout(() => root.current?.querySelector<HTMLElement>('[data-first]')?.focus({ preventScroll: true }), 60); return () => window.clearTimeout(t); }, [i]);
@@ -67,12 +77,13 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
     return () => { document.body.style.overflow = prev; window.removeEventListener('keydown', key); };
   }, []);
 
+  const signed = !!session(), askAcct = cloudOn && !signed;   // nobody signed in and sign-in is switched on: the first screen is the account
+  useEffect(() => { if (!askAcct) return; let on = true; void loadPmc().then(() => { if (on) setOthers((window.PmcAccount?.others('') ?? []).filter((a) => a.email).slice(0, 2)); }).catch(() => undefined); return () => { on = false; }; }, [askAcct]);
   const filled = step === 'name' ? !!name.trim() : step === 'age' ? !!ageBand : step === 'role' ? !!role : step === 'about' ? !!(yearOrJob.trim() || subjects.trim()) : true;   // the look, feel and style screens always have a choice on them
-  const label = step === 'hi' ? 'Let’s go' : step === 'done' ? 'Start chatting' : filled ? 'Next' : 'Skip this one';
+  const label = step === 'hi' ? (askAcct ? 'Continue as guest' : 'Let’s go') : step === 'done' ? 'Start chatting' : filled ? 'Next' : 'Skip this one';
   const enter = (e: React.KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); next(); } };
   const ageLabel = AGE_OPTIONS.find((o) => o.value === ageBand)?.label, roleLabel = ROLE_OPTIONS.find((o) => o.value === role)?.label;
   const mark = [name.trim(), ageBand ? ageLabel : '', role ? roleLabel : '', yearOrJob.trim(), subjects.trim()].filter(Boolean);
-  const signed = !!session();
   const q = i - 1;   // 0..3 for the four questions
 
   return (
@@ -82,7 +93,7 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
         <span className="isl-b isl-t d"><CoeStar size={22} /></span>
         <h2 className="isl-title d">Setup</h2>
         {q >= 0 && q < ASKS && <span className="isl-b isl-t d" aria-live="polite">{q + 1} of {ASKS}</span>}
-        {step !== 'done' && <button type="button" className="isl-b isl-t d" onClick={finish} title="Leave setup. Anything you entered is kept.">Skip setup</button>}
+        {step !== 'done' && <button type="button" className="isl-b isl-t d" onClick={finish} title="Leave setup for now. Enter setup in Settings, under Profile, brings it back.">Do this later</button>}
       </header>
       <ol className="su-prog" aria-hidden style={{ width: `min(${ASKS * 56}px, 100%)` }}>{Array.from({ length: ASKS }, (_, n) => <li key={n} className={n < q ? 'done' : n === q ? 'now' : ''} />)}</ol>
 
@@ -91,6 +102,28 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
           <div className="su-star"><CoeStar size={150} spin /></div>
           <h1 className="su-h d">Hi. I’m Coe.</h1>
           <p className="su-p tx">A few quick questions so I can help you better. It takes a minute. Skip any you like, and change them later in Settings.</p>
+          {askAcct && <>
+            {err && <p className="si-err tx" role="alert">{err}</p>}
+            <div className="su-acct" role="group" aria-label="Sign in with PMC">
+              <div className="su-side">
+                <i className="ht su-sd" aria-hidden><i /><i /><i /></i>
+                <span className="su-pm" aria-hidden><PmcMark height={16} /></span>
+                <b className="su-st d">Sign in</b>
+              </div>
+              <div className="su-ab">
+                {others.length > 0 ? <ul className="su-rows" aria-label="Accounts on this device">
+                  {others.map((a, n) => (
+                    <li key={a.email}><button type="button" data-first={n === 0 ? '' : undefined} className="su-row" disabled={busy} aria-label={`Sign in as ${a.email}`} onClick={() => toPmc('signin', a.email)}>
+                      <span className="su-av d" aria-hidden>{a.img ? <img src={a.img} alt="" /> : (a.name || a.email).charAt(0)}</span>
+                      <span className="su-who"><b className="d">{(a.name || a.email.split('@')[0]).slice(0, 40)}</b><small className="tx">{a.email}</small></span>
+                    </button></li>
+                  ))}
+                  <li><button type="button" className="su-row add d" disabled={busy} onClick={() => toPmc('signin')}>Use another account</button></li>
+                </ul> : <button type="button" data-first className="btn primary su-btn1" disabled={busy} onClick={() => toPmc('signin')}>{busy ? 'Opening' : 'Sign in'}</button>}
+                <button type="button" className="su-lk tx" disabled={busy} onClick={() => toPmc('create')}>Create an account</button>
+              </div>
+            </div>
+          </>}
         </>}
         {step === 'name' && <>
           <h1 className="su-h d">What should I call you?</h1>
@@ -102,7 +135,7 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
           <div className="su-grid" role="radiogroup" aria-label="Your age group">
             {AGE_OPTIONS.filter((o) => o.value).map((o, n) => <Tile key={o.value} first={n === 0} on={ageBand === o.value} onPick={() => setAge(ageBand === o.value ? '' : o.value)}>{o.label}</Tile>)}
           </div>
-          <p className="pn-info tx"><span className="pn-i" aria-hidden><UiIcon name="tip" size={15} strokeWidth={3.2} /></span><span>Only used to pick the right words for you. Never sold or used for ads. You can leave it empty.</span></p>
+          <p className="su-p tx">It only helps me pick the right words. Skip it if you like.</p>
         </>}
         {step === 'role' && <>
           <h1 className="su-h d">What best fits you?</h1>
@@ -146,14 +179,14 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
           <h1 className="su-h d">{name.trim() ? `Nice to meet you, ${name.trim()}.` : 'All set.'}</h1>
           {mark.length > 0
             ? <ul className="su-chips" aria-label="What you told me">{mark.map((m, n) => <li key={n} className="d" style={{ animationDelay: `${0.1 + n * 0.07}s` }}>{m}</li>)}</ul>
-            : <p className="su-p tx">No worries, you skipped it all. You can add it any time in Settings, under About you.</p>}
+            : <p className="su-p tx">You skipped it all, and that is fine. You can add it any time in Settings, under About you, or run setup again from Profile.</p>}
           <p className="pn-info tx"><span className="pn-i" aria-hidden><UiIcon name="tip" size={15} strokeWidth={3.2} /></span><span>{signed ? 'Saved to your account, so your other devices and Coe Mini already know this.' : cloudOn ? 'Sign in any time to keep this on every device and in Coe Mini.' : 'Saved on this device.'}</span></p>
         </>}
       </main>
 
       <footer className="su-nav">
         {i > 0 ? <button type="button" className="btn su-back" onClick={back}><UiIcon name="left" size={18} />Back</button> : <span />}
-        <button type="button" data-first={step === 'hi' || step === 'done' ? '' : undefined} className={`btn primary su-next${step !== 'hi' && step !== 'done' && !filled ? ' quiet' : ''}`} onClick={next}>{label}<UiIcon name="right" size={18} /></button>
+        <button type="button" data-first={(step === 'hi' && !askAcct) || step === 'done' ? '' : undefined} className={`btn primary su-next${step !== 'hi' && step !== 'done' && !filled ? ' quiet' : ''}`} onClick={next}>{label}<UiIcon name="right" size={18} /></button>
       </footer>
     </div>
   );
