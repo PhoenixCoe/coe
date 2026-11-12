@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en" data-lead="cream">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PMC Press kit</title>
+<link rel="stylesheet" href="pmc-press.css">
+<style>
+  main { max-width: 980px; margin: 0 auto; padding: 28px 18px 60px; display: grid; gap: 30px; position: relative; }
+  .top { position: relative; overflow: hidden; border: 4px solid var(--ink); padding: 22px 24px 26px; background: var(--paper); }
+  .top h1 { position: relative; z-index: 1; font-size: clamp(2.4rem, 7vw, 4.6rem); }
+  .top p { position: relative; z-index: 1; margin-top: 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 24px 20px; }
+  .sw { width: 34px; height: 34px; border: 3px solid var(--ink); padding: 0; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); }
+</style>
+</head>
+<body>
+<main>
+  <div class="top"><div class="ht" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1>PMC Press</h1><p class="tx">The kit: one stylesheet, four leads, any accent. Pick below.</p></div>
+  <section><div class="label" style="margin-bottom:10px">Lead (page colour)</div>
+    <div class="seg" id="lead" role="radiogroup" aria-label="Page colour"><button role="radio" aria-checked="true" data-v="cream">Cream</button><button role="radio" aria-checked="false" data-v="ink">Ink</button><button role="radio" aria-checked="false" data-v="gold">Gold</button><button role="radio" aria-checked="false" data-v="green">Theme</button></div></section>
+  <section><div class="label" style="margin-bottom:10px">Accent</div><div class="row" id="acc"></div></section>
+  <section class="row"><button class="btn primary">Primary</button><button class="btn gold">Accent</button><button class="btn">Ghost</button><button class="btn danger">Delete</button><button class="btn small">Small</button></section>
+  <section class="grid">
+    <button class="plate c0"><span class="plate-t d">Write</span><span class="plate-h">Cream plate.</span></button>
+    <button class="plate c1"><span class="plate-t d">Summarise</span><span class="plate-h">Ink plate.</span></button>
+    <button class="plate c2"><span class="plate-t d">Plan</span><span class="plate-h">Quiet plate.</span></button>
+    <button class="plate c4"><span class="plate-t d">Talk</span><span class="plate-h">Accent plate.</span></button>
+  </section>
+  <section class="row" style="align-items:flex-start;gap:40px">
+    <div style="width:260px"><input type="text" value="A field"></div>
+    <div class="swt on" style="width:260px"><div class="swt-t"><span class="swt-l">Sound</span></div><button class="swt-b" role="switch" aria-checked="true"><i></i></button></div>
+  </section>
+  <section class="cx-code" style="max-width:520px"><div class="cx-code-top"><span>js</span><span class="cx-code-btns"><button>Copy</button></span></div><pre><code>applyAccent('#2B6CB0');</code></pre></section>
+</main>
+<script type="module">
+  import { ACCENTS, applyAccent } from './pmc-press.js';
+  const html = document.documentElement, acc = document.getElementById('acc');
+  ACCENTS.forEach((a) => { const b = document.createElement('button'); b.className = 'sw'; b.style.background = a.hex; b.title = a.name; b.setAttribute('aria-label', a.name); b.onclick = () => applyAccent(a.hex); acc.appendChild(b); });
+  document.getElementById('lead').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; html.dataset.lead = b.dataset.v; e.currentTarget.querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', x === b)); });
+</script>
+</body>
+</html>
