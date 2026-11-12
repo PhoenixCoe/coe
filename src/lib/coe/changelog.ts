@@ -1,10 +1,10 @@
-/** The version of Coe, and what changed. The number reads year, day, month, then a letter: b-2026.12.11.e is the 5th version of 2026, put out on 12 November.
+/** The version of Coe, and what changed. The number reads year, day, month, then a letter: b-2026.12.11.f is the 6th version of 2026, put out on 12 November.
  *  The b- means Beta. The letter counts the versions put out in the whole YEAR (not the day) and starts again at a each 1 January:
  *  a to z, then za to zz, then zza to zzz, then zzza and so on (each z in front adds another 26).
- *  Coe Mini uses the same number and the same list. Browsers only allow numbers in an extension's version, so Coe Mini's manifest says 2026.11.12.5
+ *  Coe Mini uses the same number and the same list. Browsers only allow numbers in an extension's version, so Coe Mini's manifest says 2026.11.12.6
  *  (year, month, day, and the letter counted as a number, which always goes up) and shows the name above as its version name.
  *  Coe is also told this list (see prompts.ts), so it can answer "what is new?" and "what can you do now?". Add the newest version at the top. */
-export const COE_VERSION = 'b-2026.12.11.e';
+export const COE_VERSION = 'b-2026.12.11.f';
 export const COE_DATE = '12 November 2026';
 export const COE_BETA = true;
 
@@ -29,6 +29,20 @@ export interface Release { v: string; date: string; items: Change[]; before: str
 export const RELEASES: Release[] = [
   {
     v: COE_VERSION, date: COE_DATE,
+    items: [
+      { where: 'both', text: 'The account menu. Press your picture and a menu opens, like Google\u2019s: your name and email, Manage your account, Settings, the other accounts used on this device, Add another account and Sign out.' },
+      { where: 'both', text: 'A By PMC button, next to your picture, opens a grid of every PMC site: Studios, Tools, Coe, Coe Mini and Account. The Account page has the same two buttons in its header.' },
+      { where: 'both', text: 'Other accounts. Each account you sign in with on a device is remembered there (name, email and a small picture, never a password or a key). Press one to switch, or the cross to forget it. Switching signs you out safely first, then opens the sign-in page with that email already filled in. You still type the password, because other accounts\u2019 keys are not kept on the device.' },
+      { where: 'both', text: 'Settings moved into the account menu, so the gear at the bottom of the chat list is gone and your name has room again.' },
+    ],
+    before: [
+      'Your picture did nothing, and Settings was a gear at the bottom of the chat list.',
+      'There was no way to see the other PMC sites from Coe, and no list of other accounts.',
+      'Switching account meant signing out and typing the email again.',
+    ],
+  },
+  {
+    v: 'b-2026.12.11.e', date: '12 November 2026',
     items: [
       { where: 'both', text: 'PMC Account. One email and a password you choose, on one sign-in page (accounts.pmcstudios.uk) that Coe and Coe Mini both use. A one-time code by email is only used to check a new address and to reset a forgotten password. There is no Google, Microsoft or GitHub sign-in.' },
       { where: 'both', text: 'Sign in with PMC is the main button in Coe and in Coe Mini. Emailing a code is still there, as a small way in underneath.' },
