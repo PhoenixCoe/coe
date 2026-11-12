@@ -9,7 +9,8 @@ import { deleteConv, loadConv, loadIndex, saveConv } from '@/coe/store';
 import { memory, setMemory } from './links';
 import { mergeStudy, snapshotStudy, type StudyData } from './study';
 import { mergeStyles, stylesOut } from './personas';
-import { loadAvatar, saveAvatar, validAvatar } from './avatar';
+import { forgetAvatar, loadAvatar, saveAvatar, validAvatar } from './avatar';
+import { THEMES, setTheme } from './look';
 import { aboutRecord, loadSettings, markMet, metBy, saveSettings, withAbout, type AboutRecord } from './settings';
 
 const URL_ = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').replace(/\/+$/, '');
@@ -33,22 +34,82 @@ function keep(access: string, refresh: string): Session | null {
   const p = payload(access); if (!p.sub) return null;
   const s: Session = { access, refresh, exp: (p.exp ?? 0) * 1000, email: p.email ?? '', uid: p.sub };
   try { localStorage.setItem(SKEY, JSON.stringify(s)); } catch { /* storage blocked */ }
+  touchApp(s);
   return s;
 }
+const SEEN = 'pmc:coe:seen';
+/** Lets the PMC Account page list Coe among the sites this account has used: a site name and a time, nothing else. At most every six hours, and a failure is quietly ignored (tried again in about an hour). */
+function touchApp(s: Session) {
+  try {
+    if (typeof window === 'undefined' || !URL_) return;
+    const last = JSON.parse(localStorage.getItem(SEEN) || 'null'), H = 3600_000;
+    if (last && last.u === s.uid && Date.now() - last.t < 6 * H) return;
+    const mark = (t: number) => { try { localStorage.setItem(SEEN, JSON.stringify({ u: s.uid, t })); } catch { /* storage blocked */ } };
+    mark(Date.now());
+    void fetch(`${URL_}/rest/v1/app_access?on_conflict=user_id,app`, { method: 'POST', headers: head({ prefer: 'resolution=merge-duplicates,return=minimal' }, s.access), body: JSON.stringify({ app: 'coe', label: 'Coe', pmc: true, last_at: new Date().toISOString() }) })
+      .then((r) => { if (!r.ok) mark(Date.now() - 5 * H); }).catch(() => mark(Date.now() - 5 * H));
+  } catch { /* nothing */ }
+}
 
-/** Coming back from the email link, the tokens are in the address. Takes them, and cleans the address. */
+/** Clears a failed sign-in's message from the address. A sign-in is never taken from a link: anyone could build a link that signs you in to THEIR account, and then what you write would be saved there.
+ *  The only ways in are a code you type, or the PMC Account page's hand-back, which is checked against a one-time value (takeAccount). */
 export function takeLink(): boolean {
   if (!cloudOn) return false;
   try {
     const h = new URLSearchParams(location.hash.replace(/^#/, ''));
-    const a = h.get('access_token'), r = h.get('refresh_token');
     const bad = h.get('error_description') || new URLSearchParams(location.search).get('error_description');
-    if (bad) { try { sessionStorage.setItem(ERRKEY, bad.replace(/\+/g, ' ')); } catch { /* ignore */ } history.replaceState(null, '', location.pathname); }
-    if (!a || !r) return false;
-    history.replaceState(null, '', location.pathname + location.search);
-    return !!keep(a, r);
+    if (bad) { try { sessionStorage.setItem(ERRKEY, bad.replace(/\+/g, ' ').slice(0, 200)); } catch { /* ignore */ } history.replaceState(null, '', location.pathname); }
+    else if (h.get('access_token') || h.get('refresh_token')) history.replaceState(null, '', location.pathname + location.search);   // tokens in a link are thrown away, never used
+    return false;
   } catch { return false; }
 }
+
+// ---------------------------------------------------------------- PMC Account (accounts.pmcstudios.uk)
+/** The PMC Account page. Coe sends you there to sign in with your email and password, and it sends you straight back. */
+export const ACCOUNTS = (process.env.NEXT_PUBLIC_ACCOUNTS_URL ?? 'https://accounts.pmcstudios.uk').trim().replace(/\/+$/, '');
+const ASTATE = 'pmc:coe:acc-state', ANOTE = 'pmc:coe:acc-note';
+const b64u = (a: Uint8Array) => btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const LIVE = 'pmc:coe:acc-live';
+/** Whether the PMC Account page can be reached right now, so Coe never sends you to a page that is not there (for instance before it is switched on). It loads one small picture from the page, which sends nothing about you. The answer is kept for ten minutes, and a slow answer counts as "yes". */
+export function accountsLive(): Promise<boolean> {
+  return new Promise((res) => {
+    try { const c = JSON.parse(sessionStorage.getItem(LIVE) || 'null'); if (c && Date.now() - c.t < 600_000) { res(!!c.ok); return; } } catch { /* no saved answer */ }
+    let done = false;
+    const fin = (ok: boolean, keepIt = true) => { if (done) return; done = true; if (keepIt) { try { sessionStorage.setItem(LIVE, JSON.stringify({ ok, t: Date.now() })); } catch { /* storage blocked */ } } res(ok); };
+    try { const i = new Image(); i.onload = () => fin(true); i.onerror = () => fin(false); setTimeout(() => fin(true, false), 6000); i.src = `${ACCOUNTS}/img/favicon.svg?c=${Date.now()}`; } catch { fin(true, false); }
+  });
+}
+/** Goes to the PMC Account page. A one-time value is made here and kept in this tab; the way back is only accepted if it brings the same value. */
+export function startAccountSignIn(where: '' | 'create' | 'reset' = ''): void {
+  const a = new Uint8Array(24); crypto.getRandomValues(a);
+  const st = b64u(a);
+  try { sessionStorage.setItem(ASTATE, JSON.stringify({ st, at: Date.now() })); } catch { throw new Error('This browser is blocking the storage Coe needs to sign you in safely. Turn off private mode or allow site data, then try again.'); }
+  location.assign(`${ACCOUNTS}/?app=coe&state=${st}${where ? '#' + where : ''}`);
+}
+const same = (x: string, y: string) => { if (x.length !== y.length) return false; let d = 0; for (let i = 0; i < x.length; i++) d |= x.charCodeAt(i) ^ y.charCodeAt(i); return d === 0; };
+/** Coming back from the PMC Account page, the sign-in is in the address. It is taken only if the one-time value matches, the address is cleaned at once, and the refresh token that travelled is swapped for a new one straight away. */
+export async function takeAccount(): Promise<boolean> {
+  if (!cloudOn || typeof location === 'undefined') return false;
+  let h: URLSearchParams; try { h = new URLSearchParams(location.hash.replace(/^#/, '')); } catch { return false; }
+  const st = h.get('pmc_state'); if (!st) return false;
+  const a = h.get('access_token') || '', r = h.get('refresh_token') || '';
+  try { history.replaceState(null, '', location.pathname + location.search); } catch { /* ignore */ }   // out of the address bar and the history before anything else
+  let want: { st?: string; at?: number } | null = null;
+  try { want = JSON.parse(sessionStorage.getItem(ASTATE) || 'null'); sessionStorage.removeItem(ASTATE); } catch { /* ignore */ }
+  const note = (v: string, err = '') => { try { sessionStorage.setItem(ANOTE, v); if (err) sessionStorage.setItem(ERRKEY, err); } catch { /* ignore */ } };
+  if (!want || !want.st || !same(want.st, st) || Date.now() - (want.at ?? 0) > 15 * 60_000 || !a || !r) { note('bad', 'That sign-in did not come from this window, so Coe ignored it. Press Sign in with PMC to try again.'); return false; }
+  let na = a, nr = r;
+  try {
+    const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 4000);
+    const x = await fetch(`${URL_}/auth/v1/token?grant_type=refresh_token`, { method: 'POST', headers: head(), body: JSON.stringify({ refresh_token: r }), signal: ctl.signal }).finally(() => clearTimeout(to));
+    if (!x.ok) { note('bad', 'That sign-in had already been used or had run out. Press Sign in with PMC to try again.'); return false; }
+    const j = await x.json(); na = j.access_token; nr = j.refresh_token;
+  } catch { /* offline or slow: keep what arrived; it is swapped the first time Coe refreshes */ }
+  if (!keep(na, nr)) { note('bad', 'That sign-in did not work. Press Sign in with PMC to try again.'); return false; }
+  note('in'); return true;
+}
+/** What happened on the way back, once: 'in' (signed in), 'bad' (it was refused), or ''. */
+export function takeAccountNote(): 'in' | 'bad' | '' { try { const v = sessionStorage.getItem(ANOTE) || ''; sessionStorage.removeItem(ANOTE); return v === 'in' || v === 'bad' ? v : ''; } catch { return ''; } }
 
 // A newer "sb_publishable_" key is not a token, so on its own it goes in apikey only. A signed-in person's token goes in authorization.
 const head = (extra: Record<string, string> = {}, bearer = KEY) => ({ apikey: KEY, ...(bearer.startsWith('sb_') ? {} : { authorization: `Bearer ${bearer}` }), 'content-type': 'application/json', ...extra });
@@ -210,6 +271,8 @@ export async function signOut() {
   for (const m of await loadIndex()) await deleteConv(m.id);
   try { localStorage.removeItem(SKEY); localStorage.removeItem(SYNCED); } catch { /* ignore */ }
   resetProfileSeen();
+  // Signed out means nobody's look is left behind: the picture goes and the colours go back to normal PMC.
+  forgetAvatar(); setTheme(THEMES[0]);
   return true;
 }
 

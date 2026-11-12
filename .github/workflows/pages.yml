@@ -44,6 +44,24 @@ jobs:
             git commit -m "Move the upload folders into place" || true
             git push || echo "Could not save the tidy-up to the repo. Building anyway."
           fi
+      - name: Make sure no secret key is going on the website
+        env:
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, sys
+          key = os.environ.get("SUPABASE_ANON_KEY", "").strip()
+          bad = key.startswith("sb_secret_")
+          if key.startswith("eyJ"):
+              try:
+                  p = key.split(".")[1]; p += "=" * (-len(p) % 4)
+                  bad = bad or json.loads(base64.urlsafe_b64decode(p)).get("role") == "service_role"
+              except Exception:
+                  pass
+          if bad:
+              print("::error::SUPABASE_ANON_KEY is a SECRET key. It must never go on a website. Use the publishable key (sb_publishable_...) or the anon key, and rotate the secret key in Supabase.")
+              sys.exit(1)
+          PY
       - uses: actions/setup-node@v4
         with:
           node-version: 20

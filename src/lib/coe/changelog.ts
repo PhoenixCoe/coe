@@ -1,11 +1,11 @@
-/** The version of Coe, and what changed. The number reads year, day, month, then a letter: b-2026.11.11.d is the 4th version of 2026, put out on 11 November.
+/** The version of Coe, and what changed. The number reads year, day, month, then a letter: b-2026.12.11.e is the 5th version of 2026, put out on 12 November.
  *  The b- means Beta. The letter counts the versions put out in the whole YEAR (not the day) and starts again at a each 1 January:
  *  a to z, then za to zz, then zza to zzz, then zzza and so on (each z in front adds another 26).
- *  Coe Mini uses the same number and the same list. Browsers only allow numbers in an extension's version, so Coe Mini's manifest says 2026.11.11.4
+ *  Coe Mini uses the same number and the same list. Browsers only allow numbers in an extension's version, so Coe Mini's manifest says 2026.11.12.5
  *  (year, month, day, and the letter counted as a number, which always goes up) and shows the name above as its version name.
  *  Coe is also told this list (see prompts.ts), so it can answer "what is new?" and "what can you do now?". Add the newest version at the top. */
-export const COE_VERSION = 'b-2026.11.11.d';
-export const COE_DATE = '11 November 2026';
+export const COE_VERSION = 'b-2026.12.11.e';
+export const COE_DATE = '12 November 2026';
 export const COE_BETA = true;
 
 /** 1 is a, 26 is z, 27 is za, 52 is zz, 53 is zza: each extra z in front is another 26. */
@@ -29,6 +29,30 @@ export interface Release { v: string; date: string; items: Change[]; before: str
 export const RELEASES: Release[] = [
   {
     v: COE_VERSION, date: COE_DATE,
+    items: [
+      { where: 'both', text: 'PMC Account. One email and a password you choose, on one sign-in page (accounts.pmcstudios.uk) that Coe and Coe Mini both use. A one-time code by email is only used to check a new address and to reset a forgotten password. There is no Google, Microsoft or GitHub sign-in.' },
+      { where: 'both', text: 'Sign in with PMC is the main button in Coe and in Coe Mini. Emailing a code is still there, as a small way in underneath.' },
+      { where: 'both', text: 'Safer sign-in. A link can never sign you in. The PMC Account page hands you back only with a one-time value that your own browser made, and the key that travelled is swapped for a new one at once.' },
+      { where: 'both', text: 'Your PMC Account page (accounts.pmcstudios.uk) is now a small dashboard: your email, the sites and apps you have used (PMC or not), signing out of every other device, and changing your password. Nobody can see your password, not even you, because only a scrambled copy is kept. Changing it asks for your current password and a code sent to your email.' },
+      { where: 'both', text: 'Notifications, only if you allow them. Switch it on in Settings under Look and your browser asks first. When a reply is ready and you are on another tab or app, Coe says “Your reply is ready.” It never shows what the reply says.' },
+      { where: 'both', text: 'If the PMC Account page cannot be reached, Coe and Coe Mini open on the emailed code by themselves, so nobody is stuck.' },
+      { where: 'both', text: 'A bigger icon. The star button now fills the whole icon in a browser tab, on an iPhone home screen, as the app icon and on the Coe Mini toolbar, and keeps its hard green shadow.' },
+      { where: 'both', text: 'Signing out puts the theme back to normal PMC and removes your picture from that device. Both come back when you sign in again.' },
+      { where: 'web', text: 'Text starts smaller on a phone (90%) and an iPad (85%). A size you choose yourself is kept.' },
+      { where: 'both', text: 'The Coe and Coe Mini tabs over your chats are quieter: plain underlined tabs, not boxes.' },
+      { where: 'web', text: 'Coe opens on a phone without needing a refresh or two. Each wait while it starts has a limit, a slow download is no longer thrown away, and if it really is stuck, Reload and Fix and reload sit under the logo and loading bar in the PMC style.' },
+    ],
+    before: [
+      'Coe and Coe Mini signed you in with an emailed code every time, and a link in the address could sign a browser in.',
+      'Signing out left your theme and picture on the device.',
+      'The text was the same size on a phone as on a computer.',
+      'The loading screen buttons looked plain and sat over the middle of the screen.',
+      'The icon was small, with a lot of empty space round the star.',
+      'There was no account page, and no notification when a reply was ready.',
+    ],
+  },
+  {
+    v: 'b-2026.11.11.d', date: '11 November 2026',
     items: [
       { where: 'both', text: '“What Coe did” looks like the summary in Claude Code: one quiet line, and when you open it a plain list with a dot for each step and its result under it.' },
       { where: 'both', text: 'Two tabs over your chats, Coe and Coe Mini, once you have chats from both. A chat from the other one opens on the right tab.' },

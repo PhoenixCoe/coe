@@ -6,8 +6,8 @@ import { useEffect, useState } from 'react';
 import { Row, Select, Slider, Switch } from '@/ui/Controls';
 import { UiIcon } from '@/ui/icons';
 import { PmcPicker } from '@/ui/PmcPicker';
-import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, setLead, setSfx, setTheme, sfxOn, pingOn, setPing, type Lead } from '@/lib/coe/look';
-import { DEFAULTS, type CoeSettings } from '@/lib/coe/settings';
+import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, setLead, setSfx, setTheme, sfxOn, pingOn, setPing, notifyOn, notifyBlocked, notifySupported, setNotify, type Lead } from '@/lib/coe/look';
+import { DEFAULTS, deviceScale, type CoeSettings } from '@/lib/coe/settings';
 import { FEATURES, FEATURE_GROUPS, type FeaturePlan } from '@/lib/coe/features';
 import { loadSettings } from '@/lib/coe/settings';
 import { CoeStar } from '@/ui/Mark';
@@ -22,8 +22,8 @@ type Up = (patch: Partial<CoeSettings>) => void;
 type Icon = Parameters<typeof UiIcon>[0]['name'];
 
 export function LookTab({ s, up }: { s: CoeSettings; up: Up }) {
-  const [lead, setL] = useState<Lead>('cream'), [snd, setSnd] = useState(false), [ping, setPingState] = useState(true), [acc, setAcc] = useState('#337957'), [pk, setPk] = useState(false);
-  useEffect(() => { const f = () => { setL(loadLead()); setSnd(sfxOn()); setPingState(pingOn()); setAcc(loadAccent()); }; f(); window.addEventListener('pmc:coe-look', f); return () => window.removeEventListener('pmc:coe-look', f); }, []);
+  const [lead, setL] = useState<Lead>('cream'), [snd, setSnd] = useState(false), [ping, setPingState] = useState(true), [note, setNote] = useState(false), [noteMsg, setNoteMsg] = useState(''), [acc, setAcc] = useState('#337957'), [pk, setPk] = useState(false);
+  useEffect(() => { const f = () => { setL(loadLead()); setSnd(sfxOn()); setPingState(pingOn()); setNote(notifyOn()); setAcc(loadAccent()); }; f(); window.addEventListener('pmc:coe-look', f); return () => window.removeEventListener('pmc:coe-look', f); }, []);
   return (
     <div className="set-list">
       <div className="cx-fr"><span className="label">Themes</span>
@@ -47,7 +47,7 @@ export function LookTab({ s, up }: { s: CoeSettings; up: Up }) {
         <Select label="Colour" value={lead} onChange={(v) => setLead(v)} options={LEADS.map((l) => ({ value: l.id, label: l.name, hint: l.blurb }))} />
       </Row>
       <Row label="Text size" icon="text" wide>
-        <Slider hideLabel label="Text size" value={s.scale} min={75} max={150} step={5} onChange={(scale) => up({ scale })} format={(n) => `${n}%`}
+        <Slider hideLabel label="Text size" value={s.scale} min={75} max={150} step={5} onChange={(scale) => up({ scale, autoScale: false })} format={(n) => `${n}%`}
           marks={[{ value: 75, label: 'Small' }, { value: 100, label: 'Normal' }, { value: 125, label: 'Large' }, { value: 150, label: 'Huge' }]} />
       </Row>
       <Row label="Animations" icon="play" hint="Slow or stop the movement across Coe.">
@@ -61,10 +61,11 @@ export function LookTab({ s, up }: { s: CoeSettings; up: Up }) {
       <Switch icon="access" label="High contrast" hint="Stronger text and borders." on={s.contrast} onChange={(contrast) => up({ contrast })} />
       <Switch icon="volume" label="Click sounds" hint="Soft sounds when you send and when Coe finishes." on={snd} onChange={(v) => setSfx(v)} />
       <Switch icon="volume" label="Tell me when a reply is ready" hint="A soft chime and a dot in the tab title when Coe finishes while you are on another tab." on={ping} onChange={(v) => setPing(v)} />
+      {notifySupported() && <Switch icon="volume" label="Show a notification when a reply is ready" hint={noteMsg || (notifyBlocked() ? 'Your browser has notifications blocked for Coe. Allow them in the site settings, then switch this on.' : 'Coe asks your browser first. It only shows one when you are on another tab or app, and never says what the reply is.')} on={note} onChange={(v) => { void setNotify(v).then((r) => { setNoteMsg(r === 'blocked' ? 'Your browser did not allow notifications. Allow them for Coe in the site settings, then try again.' : r === 'unsupported' ? 'This browser cannot show notifications.' : ''); setNote(notifyOn()); }); }} />}
       <Row label="Enter key" icon="keyboard" hint="What pressing Enter does in the message box.">
         <Select label="Enter key" value={s.enter} onChange={(enter) => up({ enter })} options={[{ value: 'send', label: 'Sends the message', hint: 'Shift+Enter adds a line' }, { value: 'newline', label: 'Adds a line', hint: 'Ctrl+Enter sends' }]} />
       </Row>
-      <div className="cx-actions"><button type="button" className="btn small" onClick={() => { setAccent('#337957'); setLead('cream'); up({ scale: DEFAULTS.scale, motion: DEFAULTS.motion, compact: false, easy: false, contrast: false }); }}><UiIcon name="refresh" size={15} />Reset the look</button></div>
+      <div className="cx-actions"><button type="button" className="btn small" onClick={() => { setAccent('#337957'); setLead('cream'); up({ scale: deviceScale(), autoScale: true, motion: DEFAULTS.motion, compact: false, easy: false, contrast: false }); }}><UiIcon name="refresh" size={15} />Reset the look</button></div>
     </div>
   );
 }

@@ -55,6 +55,8 @@ export interface CoeSettings {
   motion: 'full' | 'calm' | 'off';
   /** Text size as a percentage. */
   scale: number;
+  /** True until you move the text size yourself: phones and tablets then start smaller than a computer, and scale follows the device. */
+  autoScale: boolean;
   /** Tighter spacing in the chat. */
   compact: boolean;
   /** Roomier, easier-to-read spacing. */
@@ -74,10 +76,20 @@ export interface CoeSettings {
 export const DEFAULTS: CoeSettings = {
   mode: 'server', serverUrl: (process.env.NEXT_PUBLIC_COE_SERVER ?? '').trim().replace(/\/+$/, ''), code: '', provider: 'openai', keys: {}, bases: {}, models: {},
   system: '', about: '', ageBand: '', role: '', yearOrJob: '', subjects: '', profileAt: 0, creativity: 'default', name: '', size: 'normal', enter: 'send',
-  check: 'smart', length: 'balanced', tone: 'friendly', level: 'auto', replyLang: '', effects: true, asks: 'sometimes', motion: 'full', scale: 100, compact: false, easy: false, goal: 10, whileBusy: 'queue', maxWords: 0, contrast: false, timers: true,
+  check: 'smart', length: 'balanced', tone: 'friendly', level: 'auto', replyLang: '', effects: true, asks: 'sometimes', motion: 'full', scale: 100, autoScale: true, compact: false, easy: false, goal: 10, whileBusy: 'queue', maxWords: 0, contrast: false, timers: true,
 };
 export const CREATIVITY: Record<CoeSettings['creativity'], number | undefined> = { default: undefined, precise: 0.2, balanced: 0.7, creative: 1 };
 
+/** How big Coe starts on this device. Computers stay at 100%. Phones start at 90% and tablets at 85%, because the same size looks bigger in the hand.
+ *  The page's own head script (boot.ts) works this out the same way, so the page does not jump when Coe opens. */
+export function deviceScale(): number {
+  try {
+    if (typeof window === 'undefined') return 100;
+    const touch = navigator.maxTouchPoints > 1 || window.matchMedia('(pointer: coarse)').matches;
+    const side = Math.min(window.screen.width || 9999, window.screen.height || 9999);
+    return touch && side <= 1100 ? (side < 600 ? 90 : 85) : 100;
+  } catch { return 100; }
+}
 const KEY = 'pmc:coe:settings';
 export function loadSettings(): CoeSettings {
   try {
@@ -91,8 +103,10 @@ export function loadSettings(): CoeSettings {
       const old = { apiKey: 1, baseUrl: 1 } as Record<string, 1>; for (const k of Object.keys(old)) delete (s as any)[k];
       if (s.mode !== 'key') s.mode = 'server';
       // The old two-step text size became a slider.
-      if (raw.size === 'large' && raw.scale === undefined) { s.scale = 115; s.size = 'normal'; }
-      s.scale = Math.min(150, Math.max(75, Number(s.scale) || 100));
+      if (raw.size === 'large' && raw.scale === undefined) { s.scale = 115; s.size = 'normal'; s.autoScale = false; }
+      // Saved before the device size existed: any size other than 100 was your own choice, so it stays.
+      else if (raw.autoScale === undefined) s.autoScale = raw.scale === undefined || Number(raw.scale) === 100;
+      s.scale = s.autoScale ? deviceScale() : Math.min(150, Math.max(75, Number(s.scale) || 100));
       delete (s as any).tips;
       return s;
     }

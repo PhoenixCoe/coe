@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   twitter: { card: 'summary', title: 'Coe', description: 'A study and writing helper from PMC Studios.', images: ['/icon-512.png'] },
   manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Coe', statusBarStyle: 'black' },
-  icons: { icon: [{ url: '/favicon.ico', sizes: '48x48' }, { url: '/favicon.svg', type: 'image/svg+xml' }], apple: '/apple-touch-icon.png' },
+  icons: { icon: [{ url: '/favicon.ico', sizes: '48x48' }, { url: '/favicon.svg', type: 'image/svg+xml' }], apple: [{ url: '/apple-touch-icon.png?v=2', sizes: '180x180', type: 'image/png' }] },
 };
 export const viewport: Viewport = { themeColor: '#171717', viewportFit: 'cover' };
 

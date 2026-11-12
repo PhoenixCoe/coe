@@ -1,6 +1,6 @@
 /* Coe service worker. It lets the app open without a connection: your chats and study cards already live on this device.
    Pages are fetched fresh whenever you are online, so a new version is never held back. */
-const V = 'coe-5';   // a new name clears every saved copy from older versions the next time Coe opens
+const V = 'coe-7';   // a new name clears every saved copy from older versions the next time Coe opens
 const WAIT = 4500;   // on a weak connection, a saved copy is better than a page that never opens
 const MAX = 220;
 
@@ -22,7 +22,8 @@ self.addEventListener('fetch', (e) => {
   const u = new URL(r.url); if (u.origin !== self.location.origin) return;   // the AI server, the account and other sites are never cached
   if (r.mode === 'navigate') {
     const saved = async () => (await caches.match(r, { ignoreSearch: true })) || (await caches.match('/'));
-    const net = fetch(r).then((res) => { e.waitUntil(keep(r, res.clone())); return res; });
+    // no-cache: ask the server whether the page changed (a short check), so a page the phone kept for ten minutes can never point at files a new version has already replaced
+    const net = fetch(r, { cache: 'no-cache' }).then((res) => { e.waitUntil(keep(r, res.clone())); return res; });
     net.catch(() => {});
     const late = new Promise((ok) => setTimeout(async () => ok(await saved() || null), WAIT));
     e.respondWith(Promise.race([net, late]).then((res) => res || net).catch(async () => (await saved()) || Response.error()));
@@ -35,4 +36,13 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   e.respondWith(fetch(r).then((res) => { e.waitUntil(keep(r, res.clone())); return res; }).catch(async () => (await caches.match(r)) || Response.error()));
+});
+
+/* Pressing a "reply is ready" notification brings Coe to the front (or opens it). */
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((cs) => {
+    for (const c of cs) { if ('focus' in c) return c.focus(); }
+    return self.clients.openWindow('/');
+  }));
 });
