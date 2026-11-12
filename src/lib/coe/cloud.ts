@@ -80,11 +80,13 @@ export function accountsLive(): Promise<boolean> {
   });
 }
 /** Goes to the PMC Account page. A one-time value is made here and kept in this tab; the way back is only accepted if it brings the same value. */
-export function startAccountSignIn(where: '' | 'create' | 'reset' = ''): void {
+export function startAccountSignIn(where: '' | 'create' | 'reset' = '', hint = ''): void {
   const a = new Uint8Array(24); crypto.getRandomValues(a);
   const st = b64u(a);
   try { sessionStorage.setItem(ASTATE, JSON.stringify({ st, at: Date.now() })); } catch { throw new Error('This browser is blocking the storage Coe needs to sign you in safely. Turn off private mode or allow site data, then try again.'); }
-  location.assign(`${ACCOUNTS}/?app=coe&state=${st}${where ? '#' + where : ''}`);
+  // hint: the email to fill in for you, when you pick one of the accounts already used on this device. It is only a convenience: the password is still typed on the PMC Account page.
+  const h = hint.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(hint) ? `&hint=${encodeURIComponent(hint)}` : '';
+  location.assign(`${ACCOUNTS}/?app=coe&state=${st}${h}${where ? '#' + where : ''}`);
 }
 const same = (x: string, y: string) => { if (x.length !== y.length) return false; let d = 0; for (let i = 0; i < x.length; i++) d |= x.charCodeAt(i) ^ y.charCodeAt(i); return d === 0; };
 /** Coming back from the PMC Account page, the sign-in is in the address. It is taken only if the one-time value matches, the address is cleaned at once, and the refresh token that travelled is swapped for a new one straight away. */

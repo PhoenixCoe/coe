@@ -10,7 +10,7 @@ import { CoeError, ask as askModel, stream, type ChatMsg } from '@/lib/coe/clien
 import { couldNot, honest } from '@/lib/coe/honest';
 import { addSidebarRefunds, giveBack, type Spent } from '@/lib/coe/refunds';
 import { COE_MODELS, FILE_TEXT, MAX_REPLY, MAX_WORK, QUOTAS, canUse, fmtTok, modelByKey, type ModelKey } from '@/lib/coe/models';
-import { applyCredits, bumpQuota, countReply, counted, creditsNow, limitNow, onStatus, planInfo, planNow, markBanned, quotaLeft, refreshStatus, status } from '@/lib/coe/account';
+import { applyCredits, bumpQuota, forgetStatus, countReply, counted, creditsNow, limitNow, onStatus, planInfo, planNow, markBanned, quotaLeft, refreshStatus, status } from '@/lib/coe/account';
 import { explain as describeErr, APPEAL_EMAIL, type ErrAct } from '@/lib/coe/errors';
 import { ErrorBox, Notice } from './ErrorBox';
 import { isOwner } from '@/lib/coe/owner';
@@ -54,6 +54,7 @@ import { browserListen, browserListens, canListen, listening, loadPrefs, serverV
 import { accountDone, noteAccountMet, profileSeen, pushProfile, cloudOn, put as cloudPut, remove as cloudRemove, removeAll as cloudRemoveAll, session, sync as cloudSync } from '@/lib/coe/cloud';
 import { knowledgeFor } from './knowledge';
 import { COE_VERSION } from '@/lib/coe/changelog';
+import { attachBy, loadPmc, type PmcMenu } from '@/lib/coe/pmcmenu';
 import { BASE_COE, CHECK_SYSTEM, PAGE_STARTS, REDO_NOTE, STARTERS, greeting, picsNote, todayLine, preferencesPrompt, worthChecking, holdForCheck } from './prompts';
 import { Halftone } from '@/ui/Halftone';
 import { Modal, SettingsPanel, Upgrade, type Tab } from './Panels';
@@ -62,7 +63,7 @@ import { refreshFavicon, setFavicon } from '@/lib/coe/favicon';
 import { redoLeft, redoUsed } from '@/lib/coe/redo';
 import { Clamp } from './Clamp';
 import { filesOf, madeCount } from './Workspace';
-import { putLive as cloudLive, peek as cloudPeek, takeAccountNote } from '@/lib/coe/cloud';
+import { ACCOUNTS, putLive as cloudLive, peek as cloudPeek, signOut as cloudSignOut, startAccountSignIn, takeAccountNote } from '@/lib/coe/cloud';
 import { compactConv, tooLong } from '@/lib/coe/compact';
 import { Feedback } from './Feedback';
 import { ReportChat } from './ReportChat';
@@ -410,6 +411,23 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   useEffect(() => { void refreshStatus(settings); }, [me, settings.serverUrl, settings.code]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [avPic, setAvPic] = useState('');
   useEffect(() => { setAvPic(avatarImg()); return onAvatar(() => setAvPic(avatarImg())); }, []);
+  // The account menu (the picture button in the sidebar footer). The accounts used on this device are remembered here: an email, a name and a tiny picture, never a password or a key.
+  useEffect(() => { if (!me) return; void loadPmc().then(() => window.PmcAccount?.remember({ email: me, name: me.split('@')[0], img: avPic })).catch(() => undefined); }, [me, avPic]);
+  const leave = useCallback(async (then?: () => void) => {
+    if (await cloudSignOut()) { forgetStatus(); setMe(null); void refreshList(); then?.(); }
+    else say('Could not save your chats first. Check your connection and try again.');
+  }, [refreshList, say]);
+  const toPmc = useCallback((hint = '') => { try { startAccountSignIn('', hint); } catch (e) { say((e as Error).message || 'Could not open the sign-in page.'); } }, [say]);
+  const accMenu = (): PmcMenu => ({
+    user: me ? { name: me.split('@')[0], email: me, img: avPic || undefined } : null,
+    others: window.PmcAccount?.others(me ?? '') ?? [],
+    manage: `${ACCOUNTS}/`, privacy: `${ACCOUNTS}/privacy/`,
+    onSettings: () => { setTab('look'); setPanel('settings'); },
+    onSignIn: () => setAcct(true),
+    onAddAccount: () => { void leave(() => toPmc()); },
+    onSwitch: (a) => { if (me) void leave(() => toPmc(a.email)); else toPmc(a.email); },
+    onSignOut: () => { void leave(() => say('Signed out.')); },
+  });
   const plan = planInfo(settings);
   const cr = creditsNow(settings);
   const usedNow = cr ? cr.used : use.today;
@@ -1330,11 +1348,11 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         )}
         <div className="cx-side-foot">
           <div className="cx-me-row">
-            <button type="button" className="cx-me" title={me ? 'Your account' : 'Sign in'} onClick={() => { if (me) { setTab('account'); setPanel('settings'); } else setAcct(true); }}>
+            <button type="button" className="cx-me" title={me ? 'Your account' : 'Sign in'} aria-haspopup="dialog" onClick={(e) => { const b = e.currentTarget, key = e.detail === 0, old = () => { if (me) { setTab('account'); setPanel('settings'); } else setAcct(true); }; if (!cloudOn) { old(); return; } void loadPmc().then(() => window.PmcAccount?.toggle(b, accMenu, key)).catch(old); }}>
               <span className="cx-av d" aria-hidden>{avPic ? <img src={avPic} alt="" /> : me ? me.slice(0, 1).toUpperCase() : <UiIcon name="user" size={18} />}</span>
               <span className="cx-me-t"><b className="d">{me ? me.split('@')[0] : 'Sign in'}</b><small className="tx">{keyOn ? 'No daily limit' : `${fmtTok(Math.max(0, perDay - usedNow))} left today`}</small></span>
             </button>
-            <button type="button" className="cx-fb" title="Settings" aria-label="Settings" onClick={() => { setTab('look'); setPanel('settings'); }}><UiIcon name="gear" size={20} /></button>
+            <button type="button" className="cx-fb cx-by" ref={attachBy} aria-label="More by PMC" />
           </div>
           {!keyOn && <div className={`cx-meter ${toneOf(usedNow, perDay)}`} role="img" aria-label={`${fmtTok(usedNow)} of ${fmtTok(perDay)} tokens used today`}><i style={{ width: `${Math.min(100, (usedNow / perDay) * 100)}%` }} /></div>}
         </div>
