@@ -6,7 +6,7 @@ export interface PmcOther { id: string; name: string; email: string; img?: strin
 export interface PmcMenu {
   user: { name: string; email: string; img?: string } | null;
   others?: PmcOther[]; manage?: string; privacy?: string;
-  onSettings?: () => void; onSignIn?: () => void; onAddAccount?: () => void; onSwitch?: (a: PmcOther) => void; onSignOut?: () => void;
+  onSettings?: () => void; onPicture?: () => void; onSignIn?: () => void; onAddAccount?: () => void; onSwitch?: (a: PmcOther) => void; onSignOut?: () => void;
 }
 interface PmcByApi { attach(button: HTMLElement, fill?: boolean): void }
 interface PmcAccountApi {
