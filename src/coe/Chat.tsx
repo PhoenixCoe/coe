@@ -62,7 +62,7 @@ import { refreshFavicon, setFavicon } from '@/lib/coe/favicon';
 import { redoLeft, redoUsed } from '@/lib/coe/redo';
 import { Clamp } from './Clamp';
 import { filesOf, madeCount } from './Workspace';
-import { putLive as cloudLive, peek as cloudPeek } from '@/lib/coe/cloud';
+import { putLive as cloudLive, peek as cloudPeek, takeAccountNote } from '@/lib/coe/cloud';
 import { compactConv, tooLong } from '@/lib/coe/compact';
 import { Feedback } from './Feedback';
 import { ReportChat } from './ReportChat';
@@ -939,6 +939,8 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // The Coe extension can send a question and its answer into a new chat, and its Settings button opens the Chrome tab.
   useEffect(() => {
     if (location.hash === '#chrome') { setTab('ext'); setPanel('settings'); history.replaceState(null, '', location.pathname + location.search); }
+    // Back from the PMC Account page: say so if it worked, and open the sign-in window with the reason if it was refused.
+    { const back = takeAccountNote(); if (back === 'in') say('Signed in.'); else if (back === 'bad') setAcct(true); }
     // Coe Mini sends people here to sign in or sign up. The sign-in window opens by itself.
     // The same hash can arrive again while this tab is already open (Coe Mini brings the open tab to the front instead of opening a new one).
     const readHash = () => {
@@ -951,7 +953,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
     readHash(); window.addEventListener('hashchange', readHash);
     const offHand = onExtHandoff((t, chat) => { const id = chat ? 'x' + chat.slice(0, 40) : ''; void (async () => { const here = id && ((await loadConv(id)) || liveWork.current.has(id)); setIncoming({ text: t, chat: here ? id : '' }); })(); });   // Coe Mini sent something: it waits for a yes (see Incoming)
     return () => { window.removeEventListener('hashchange', readHash); offHand(); };
-  }, [fresh, startLink]);
+  }, [fresh, startLink, say]);
   useEffect(() => onExtRefunds((items) => addSidebarRefunds(items)), []);
   // Chats made in the Coe Mini sidebar are added to the list here, each one once, and updated if it grows.
   useEffect(() => onExtChats((items) => {

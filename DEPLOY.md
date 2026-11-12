@@ -21,6 +21,28 @@ Do parts 1 to 3 first. Already set up from an earlier zip? You only need to uplo
 7. Supabase > **Settings > API Keys**. Copy the **publishable key** (starts `sb_publishable_`). The Project URL is `https://` + your project's reference ID + `.supabase.co`. The reference ID is the text after `/project/` in the dashboard's address bar (also under Project Settings > General > Reference ID). (If you only see the old keys, the **anon** key works the same.)
 8. GitHub repository > **Settings > Secrets and variables > Actions > Variables** tab > **New repository variable**. Add `SUPABASE_URL` (the Project URL) and `SUPABASE_ANON_KEY` (the publishable or anon key). Add `COE_SERVER` in part 3.
 
+## 2b. PMC Account (the sign-in page at accounts.pmcstudios.uk)
+Do this once. Until it is live, Coe and Coe Mini open on the emailed code by themselves, so nobody is locked out while you set it up.
+
+Supabase:
+1. **SQL Editor** > New query. Paste all of `supabase/setup.sql`. Run. (Running it again is safe. It adds the new list of sites an account has used.)
+2. **Authentication > Sign In / Providers > Email**. Make sure: **Confirm email** is on, **Minimum password length** is `10`, **Require current password when updating** is on, and **Require reauthentication when changing password** is on. Also switch **Google** off (and any other provider that is on): Coe does not use it any more. Save. (If a label is not there, Supabase renamed it: use the search box at the top.)
+3. **Authentication > URL Configuration** > Redirect URLs > add `https://accounts.pmcstudios.uk/**`. Save.
+4. **Authentication > Emails** (Email Templates). For each one, set the Subject, delete the body, paste in the file from `email/`, Save:
+   - **Confirm sign up**: subject `{{ .Token }} is your PMC Account code`, body `confirm-signup.html`
+   - **Reset password**: subject `{{ .Token }} is your PMC Account reset code`, body `reset-code.html`
+   - **Reauthentication**: subject `{{ .Token }} is your PMC Account confirm code`, body `reauth-code.html`
+
+GitHub:
+5. github.com > **New repository**. Name `pmc-accounts`. Public. Tick nothing else. **Create repository**.
+6. Put the files in it: tell Claude "created it" and it uploads them. Or drag the whole `pmc-accounts` folder contents into the repo page (Add file > Upload files), including the `.github` folder, and **Commit**.
+7. Repo > **Settings > Secrets and variables > Actions > Variables > New repository variable**. Add `SUPABASE_URL` (the same Project URL Coe uses) and `SUPABASE_ANON_KEY` (the same publishable key Coe uses). Never the secret key: the publish step stops if it sees one.
+8. Repo > **Settings > Pages** > Source: **GitHub Actions**.
+9. **Actions** tab > **Deploy PMC Account** > **Run workflow**. Wait for the green tick. If it goes red, the message says which setting is wrong.
+10. Where pmcstudios.uk is managed, add a DNS record: type `CNAME`, name `accounts`, value `phoenixcoe.github.io`.
+11. Repo > Settings > Pages > Custom domain: `accounts.pmcstudios.uk` > Save. When it lets you, tick **Enforce HTTPS**. This can take up to an hour.
+12. Check it. In the `pmc-accounts` folder run `node check-setup.mjs`. It reads your live settings and prints what, if anything, still needs fixing. Last, open `accounts.pmcstudios.uk`, make an account, then press **Sign in with PMC** in Coe.
+
 ## 3. The server (Cloudflare Worker)
 1. dash.cloudflare.com > **Workers & Pages** > **Create** (or **Create application**) > **Start with Hello World!** > **Get started**. Name it `coe-server`. Press **Deploy**, then **Continue to project**.
 2. Press **Edit code** (top of the page). Delete everything in the editor, paste all of `worker/worker.js`, press **Deploy**.

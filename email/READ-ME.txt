@@ -1,6 +1,13 @@
-Coe sign-in email (no yap)
+Coe and PMC Account emails (no yap)
 
-Subject heading (both templates):  {{ .Token }} is your Coe code
-Message body (both templates):     paste all of login-code.html
-Templates:                         Confirm sign up, and Magic link or OTP
-The pictures load from https://coe.pmcstudios.uk/email/ (logo.png, title.png, pmc.png), so upload the site first.
+Supabase > Authentication > Emails (Email Templates). Four templates are used:
+
+  Confirm sign up      Subject:  {{ .Token }} is your PMC Account code      Message body: paste all of confirm-signup.html
+  Reset password       Subject:  {{ .Token }} is your PMC Account reset code  Message body: paste all of reset-code.html
+  Reauthentication     Subject:  {{ .Token }} is your PMC Account confirm code  Message body: paste all of reauth-code.html
+                       (asked before a password is changed on the account page)
+  Magic link           Subject:  {{ .Token }} is your Coe code              Message body: paste all of login-code.html
+                       (this one is the small "email me a code instead" way in; Coe and Coe Mini still use it)
+
+The pictures load from https://coe.pmcstudios.uk/email/ (logo.png, title.png, title-confirm.png, title-reset.png, title-reauth.png, pmc.png), so upload the site first.
+Each template needs {{ .Token }} in it and no link: a code is typed, never clicked.

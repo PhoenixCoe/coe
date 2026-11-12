@@ -76,3 +76,18 @@ create or replace function get_share(share_id text) returns jsonb
   as $$ select data from shares where id = share_id limit 1 $$;
 revoke all on function get_share(text) from public;
 grant execute on function get_share(text) to anon, authenticated;
+
+-- PMC Account: which sites and apps have signed in to this account (shown on the account page, accounts.pmcstudios.uk).
+-- Only the owner can see or change their own rows. It holds a site name and two times: nothing else.
+create table if not exists app_access (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  app text not null check (app ~ '^[a-z0-9-]{1,32}$'),
+  label text not null check (char_length(label) between 1 and 40),
+  pmc boolean not null default true,
+  first_at timestamptz not null default now(),
+  last_at timestamptz not null default now(),
+  primary key (user_id, app)
+);
+alter table app_access enable row level security;
+drop policy if exists "own app access" on app_access;
+create policy "own app access" on app_access for all using (user_id = auth.uid()) with check (user_id = auth.uid());

@@ -4,11 +4,11 @@ import { Halftone } from '@/ui/Halftone';
 import { CoeWordmark } from '@/ui/Mark';
 import { PmcMark } from '@/ui/PmcMark';
 import { UiIcon } from '@/ui/icons';
-import { cloudOn, sendCode, takeAuthError, verifyCode } from '@/lib/coe/cloud';
+import { accountsLive, cloudOn, sendCode, startAccountSignIn, takeAuthError, verifyCode } from '@/lib/coe/cloud';
 import { useBackClose } from './back';
 
 /* Same shape as the PMC Apps sign-in: logo on top, one boxed card (big green title | form), ink strip along the bottom.
-   Coe signs in with an emailed code, so there is no password to forget. */
+   The main way in is a PMC Account (email and password, on accounts.pmcstudios.uk). An emailed code stays here as a small way in for when that page cannot be used. */
 const KEY = 'pmc:coe:accounts';
 const read = (): string[] => { try { const v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 4) : []; } catch { return []; } };
 const write = (a: string[]) => { try { localStorage.setItem(KEY, JSON.stringify(a.slice(0, 4))); } catch { /* blocked */ } };
@@ -16,6 +16,8 @@ const write = (a: string[]) => { try { localStorage.setItem(KEY, JSON.stringify(
 export function SignIn({ onClose, onChange }: { onClose: () => void; onChange: (signedIn: boolean) => void }) {
   const [saved, setSaved] = useState<string[]>([]);
   const [other, setOther] = useState(false);
+  const [mode, setMode] = useState<'pmc' | 'code'>('pmc');
+  const [pmcOk, setPmcOk] = useState(true);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'email' | 'code'>('email');
@@ -25,13 +27,18 @@ export function SignIn({ onClose, onChange }: { onClose: () => void; onChange: (
   const first = useRef<HTMLInputElement>(null), codeBox = useRef<HTMLInputElement>(null);
   useBackClose(onClose);
   useEffect(() => { setSaved(read()); }, []);
+  // If the PMC Account page is not reachable (not switched on yet, or no connection to it), this opens on the emailed code by itself, so nobody is stuck.
+  useEffect(() => { if (!cloudOn) return; let on = true; void accountsLive().then((ok) => { if (on && !ok) { setPmcOk(false); setMode('code'); } }); return () => { on = false; }; }, []);
   useEffect(() => { const k = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); }; window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
   useEffect(() => { if (wait <= 0) return; const t = setTimeout(() => setWait((w) => w - 1), 1000); return () => clearTimeout(t); }, [wait]);
   useEffect(() => { document.body.classList.add('si-open'); return () => document.body.classList.remove('si-open'); }, []);
   useEffect(() => { if (step === 'code') codeBox.current?.focus(); }, [step]);
+  // Coming back to this page with the Back button brings it back as it was; the button must not stay stuck.
+  useEffect(() => { const f = (e: PageTransitionEvent) => { if (e.persisted) setBusy(false); }; window.addEventListener('pageshow', f); return () => window.removeEventListener('pageshow', f); }, []);
 
   const showForm = other || saved.length === 0;
   const go = async (f: () => Promise<void>) => { setBusy(true); setErr(''); try { await f(); } catch (e) { setErr((e as Error).message || 'That did not work. Try again.'); } finally { setBusy(false); } };
+  const toPmc = (where: '' | 'create' = '') => go(async () => { startAccountSignIn(where); await new Promise((r) => setTimeout(r, 4000)); });
   const send = (to: string) => go(async () => { await sendCode(to.trim()); setEmail(to.trim()); setCode(''); setStep('code'); setWait(30); });
   const forget = (a: string) => { const n = saved.filter((x) => x !== a); write(n); setSaved(n); };
 
@@ -42,12 +49,22 @@ export function SignIn({ onClose, onChange }: { onClose: () => void; onChange: (
       <header className="si-top"><CoeWordmark height={44} /><i className="beta">Beta</i></header>
       <main className="si-main">
         <section className="si-box">
-          <div className="si-side"><Halftone className="si-side-dots" /><h1 id="si-title" className="d">{step === 'code' ? 'Check your email' : 'Sign in'}</h1></div>
+          <div className="si-side"><Halftone className="si-side-dots" /><h1 id="si-title" className="d">{mode === 'code' && step === 'code' ? 'Check your email' : 'Sign in'}</h1></div>
           <div className="si-body">
             {!cloudOn ? (
               <div className="si-stack">
                 <p className="tx">Sign in is not switched on yet. Your chats are saved on this device.</p>
                 <button type="button" className="btn gold" onClick={onClose}>OK</button>
+              </div>
+            ) : mode === 'pmc' ? (
+              <div className="si-stack">
+                <p className="tx">Use your PMC Account: one email and password for Coe and Coe Mini.</p>
+                {err && <p className="si-err tx" role="alert">{err}</p>}
+                <button type="button" className="btn gold si-pmc" disabled={busy} onClick={() => void toPmc()}>{busy ? 'Opening' : 'Sign in with PMC'}</button>
+                <div className="si-row">
+                  <button type="button" className="si-link tx" disabled={busy} onClick={() => void toPmc('create')}>Create an account</button>
+                  <button type="button" className="si-link tx" onClick={() => { setMode('code'); setErr(''); }}>Email me a code instead</button>
+                </div>
               </div>
             ) : step === 'email' ? (
               <div className="si-stack">
@@ -71,9 +88,10 @@ export function SignIn({ onClose, onChange }: { onClose: () => void; onChange: (
                       <input ref={first} id="si-email" className="cx-in" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} required autoFocus={saved.length === 0} value={email} onChange={(e) => setEmail(e.target.value)} /></div>
                     {err && <p className="si-err tx" role="alert">{err}</p>}
                     <button type="submit" className="btn gold" disabled={busy || !email.trim()}>{busy ? 'Sending' : 'Email me a code'}</button>
-                    <p className="tx si-hint">No password. We email you a code each time.</p>
+                    {pmcOk && <p className="tx si-hint">This signs you in with a code only. It does not use your PMC Account password.</p>}
                   </form>
                 )}
+                {pmcOk && <button type="button" className="si-link tx" onClick={() => { setMode('pmc'); setErr(''); }}>Sign in with PMC instead</button>}
                 {!showForm && err && <p className="si-err tx" role="alert">{err}</p>}
               </div>
             ) : (

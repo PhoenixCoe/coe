@@ -81,9 +81,36 @@ export function setPageTitle(t: string) {
   if (typeof document === 'undefined') return;
   if (baseTitle) { baseTitle = t; document.title = '\u25CF Reply ready \u00B7 ' + t; } else if (document.title !== t) document.title = t;
 }
-/** A reply finished while the person was on another tab: chime, and put a dot in the tab title until they come back. */
+/** Notifications: Coe shows one when a reply is ready and you are on another tab or app, but only after you switch it on and your browser says yes. It never says what the reply is. */
+const NOTE = 'pmc:coe:notify';
+export const notifySupported = () => typeof window !== 'undefined' && 'Notification' in window;
+export const notifyOn = () => { try { return localStorage.getItem(NOTE) === '1' && notifySupported() && Notification.permission === 'granted'; } catch { return false; } };
+/** Whether the browser itself has notifications blocked for Coe (so switching on cannot work until it is allowed in the site settings). */
+export const notifyBlocked = () => notifySupported() && Notification.permission === 'denied';
+async function showNote(title: string, body: string) {
+  try {
+    const opts: NotificationOptions = { body, tag: 'coe-reply', icon: '/icon-192.png', badge: '/icon-192.png' };
+    const reg = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
+    if (reg && typeof reg.showNotification === 'function') await reg.showNotification(title, opts);
+    else { const n = new Notification(title, opts); n.onclick = () => { try { window.focus(); n.close(); } catch { /* nothing */ } }; }
+  } catch { /* the browser would not show it */ }
+}
+/** Switching on asks the browser for permission (it must come from a click). Gives back what happened. */
+export async function setNotify(v: boolean): Promise<'on' | 'off' | 'blocked' | 'unsupported'> {
+  const tell = () => { try { window.dispatchEvent(new CustomEvent('pmc:coe-look')); } catch { /* no window */ } };
+  if (!v) { try { localStorage.setItem(NOTE, '0'); } catch { /* storage blocked */ } tell(); return 'off'; }
+  if (!notifySupported()) return 'unsupported';
+  let p: NotificationPermission = Notification.permission;
+  if (p === 'default') { try { p = await Notification.requestPermission(); } catch { p = 'denied'; } }
+  if (p !== 'granted') { try { localStorage.setItem(NOTE, '0'); } catch { /* storage blocked */ } tell(); return 'blocked'; }
+  try { localStorage.setItem(NOTE, '1'); } catch { /* storage blocked */ }
+  tell(); void showNote('Coe', 'Notifications are on. Coe will tell you here when a reply is ready.'); return 'on';
+}
+/** A reply finished while the person was on another tab: a notification if they asked for one, a chime, and a dot in the tab title until they come back. */
 export function replyReady() {
-  if (typeof document === 'undefined' || !document.hidden || !pingOn()) return;
+  if (typeof document === 'undefined' || !document.hidden) return;
+  if (notifyOn()) void showNote('Coe', 'Your reply is ready.');
+  if (!pingOn()) return;
   try { tone(660, 150, { vol: 0.05 }); tone(880, 260, { at: 0.13, vol: 0.045 }); } catch { /* no sound */ }
   if (baseTitle) return;
   baseTitle = document.title; document.title = '\u25CF Reply ready \u00B7 ' + baseTitle;

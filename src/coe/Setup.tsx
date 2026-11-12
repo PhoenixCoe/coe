@@ -3,14 +3,15 @@ import { useEffect, useRef, useState } from 'react';
 import { UiIcon } from '@/ui/icons';
 import { CoeStar } from '@/ui/Mark';
 import { AGE_OPTIONS, ROLE_OPTIONS, levelWords } from '@/lib/coe/profile';
-import { markMet, type CoeSettings } from '@/lib/coe/settings';
+import { deviceScale, markMet, type CoeSettings } from '@/lib/coe/settings';
 import { cloudOn, noteAccountMet, session } from '@/lib/coe/cloud';
 import { ACCENTS, LEADS, THEMES, fitAccent, loadAccent, loadLead, setAccent, setTheme } from '@/lib/coe/look';
 
 type Step = 'hi' | 'name' | 'age' | 'role' | 'about' | 'look' | 'feel' | 'style' | 'done';
 const STEPS: Step[] = ['hi', 'name', 'age', 'role', 'about', 'look', 'feel', 'style', 'done'];
 const ASKS = 7;
-const SIZES: [number, string][] = [[100, 'Normal'], [115, 'Large'], [130, 'Extra large']];
+/** "Normal" is the size that suits this device (smaller on a phone or tablet); Large and Extra large are steps up from it. */
+const sizes = (): [number, string][] => { const n = deviceScale(), up = (k: number) => Math.round((n * k) / 5) * 5; return [[n, 'Normal'], [up(1.15), 'Large'], [up(1.3), 'Extra large']]; };
 const MOTIONS: [CoeSettings['motion'], string][] = [['full', 'Full'], ['calm', 'Calm'], ['off', 'Off']];
 const LENGTHS: [CoeSettings['length'], string][] = [['short', 'Short'], ['balanced', 'Normal'], ['detailed', 'Detailed']];
 const TONES: [CoeSettings['tone'], string][] = [['friendly', 'Friendly'], ['neutral', 'Neutral'], ['formal', 'Formal'], ['playful', 'Playful']];
@@ -129,7 +130,7 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
         {step === 'feel' && <>
           <h1 className="su-h d">Make it comfortable.</h1>
           <div className="su-grp"><span className="su-gl d">Text size</span>
-            <div className="su-grid sm" role="radiogroup" aria-label="Text size">{SIZES.map(([v, l], n) => <Tile key={v} first={n === 0} on={scale === v} onPick={() => { setScale(v); save({ scale: v }); }}>{l}</Tile>)}</div></div>
+            <div className="su-grid sm" role="radiogroup" aria-label="Text size">{sizes().map(([v, l], n) => <Tile key={v} first={n === 0} on={scale === v} onPick={() => { setScale(v); save({ scale: v, autoScale: n === 0 }); }}>{l}</Tile>)}</div></div>
           <div className="su-grp"><span className="su-gl d">Animation</span>
             <div className="su-grid sm" role="radiogroup" aria-label="Animation">{MOTIONS.map(([v, l]) => <Tile key={v} on={motion === v} onPick={() => { setMotion(v); save({ motion: v }); }}>{l}</Tile>)}</div></div>
         </>}

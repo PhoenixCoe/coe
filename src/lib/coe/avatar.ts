@@ -14,6 +14,11 @@ export function saveAvatar(img: string, at: number = Date.now()) {
   try { localStorage.setItem(KEY, JSON.stringify({ at, img })); } catch { /* storage blocked */ }
   try { window.dispatchEvent(new Event('pmc:coe-avatar')); } catch { /* no window */ }
 }
+/** Signing out takes the picture off this device only. The account keeps it, and it comes back when you sign in again. (Saving an empty picture would count as removing it from the account.) */
+export function forgetAvatar() {
+  try { localStorage.removeItem(KEY); } catch { /* storage blocked */ }
+  try { window.dispatchEvent(new Event('pmc:coe-avatar')); } catch { /* no window */ }
+}
 export const onAvatar = (fn: () => void) => { window.addEventListener('pmc:coe-avatar', fn); return () => window.removeEventListener('pmc:coe-avatar', fn); };
 
 /** Any picture becomes a 192 by 192 square (cropped from the middle), small enough to keep in the account. */

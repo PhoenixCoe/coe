@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light only">
+<title>Reset your password</title>
+</head>
+<body style="margin:0;padding:0;background:#171717;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;">Your reset code is {{ .Token }}. It works once.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#171717" style="background:#171717;">
+  <tr><td align="center" style="padding:28px 14px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;">
+      <!-- header -->
+      <tr><td bgcolor="#171717" style="padding:0 0 18px 0;">
+        <img src="https://coe.pmcstudios.uk/email/logo.png" width="90" height="44" alt="Coe" style="display:block;border:0;">
+      </td></tr>
+      <!-- card -->
+      <tr><td bgcolor="#F2E4CE" style="background:#F2E4CE;border:4px solid #337957;padding:0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr><td bgcolor="#337957" style="background:#337957;padding:16px 26px;font-family:'Arial Black',Impact,Arial,sans-serif;font-size:22px;font-weight:bold;color:#F2E4CE;text-transform:uppercase;"><img src="https://coe.pmcstudios.uk/email/title-reset.png" width="250" height="36" alt="Reset your password" style="display:block;border:0;color:#F2E4CE;font-size:22px;"></td></tr>
+          <tr><td style="padding:26px 26px 8px 26px;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;color:#171717;">
+            Type this code on the <b>PMC Account</b> page, then choose a new password.
+          </td></tr>
+          <tr><td align="center" style="padding:10px 26px 18px 26px;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+              <td bgcolor="#FFFFFF" style="background:#FFFFFF;border:4px solid #171717;border-bottom-width:8px;border-right-width:8px;padding:14px 26px;font-family:'Courier New',Courier,monospace;font-size:36px;font-weight:bold;letter-spacing:8px;white-space:nowrap;color:#171717;">{{ .Token }}</td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:0 26px 26px 26px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1A4934;">
+            The code works once and runs out soon. If you did not ask to reset your password, ignore this email. Your password has not changed.
+          </td></tr>
+        </table>
+      </td></tr>
+      <!-- footer -->
+      <tr><td style="padding:18px 4px 0 4px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;color:#B49A57;"><a href="{{ .SiteURL }}" style="text-decoration:none;"><img src="https://coe.pmcstudios.uk/email/pmc.png" width="64" height="36" alt="PMC Studios" style="display:block;border:0;color:#B49A57;"></a></td></tr>
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>
