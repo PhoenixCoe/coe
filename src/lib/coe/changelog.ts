@@ -37,6 +37,7 @@ export const RELEASES: Release[] = [
       { where: 'both', text: 'Notifications, only if you allow them. Switch it on in Settings under Look and your browser asks first. When a reply is ready and you are on another tab or app, Coe says “Your reply is ready.” It never shows what the reply says.' },
       { where: 'both', text: 'If the PMC Account page cannot be reached, Coe and Coe Mini open on the emailed code by themselves, so nobody is stuck.' },
       { where: 'both', text: 'A bigger icon. The star button now fills the whole icon in a browser tab, on an iPhone home screen, as the app icon and on the Coe Mini toolbar, and keeps its hard green shadow.' },
+      { where: 'both', text: 'The privacy page now explains the PMC Account (what is kept, what is not, and that chats are not end-to-end encrypted) and notifications.' },
       { where: 'both', text: 'Signing out puts the theme back to normal PMC and removes your picture from that device. Both come back when you sign in again.' },
       { where: 'web', text: 'Text starts smaller on a phone (90%) and an iPad (85%). A size you choose yourself is kept.' },
       { where: 'both', text: 'The Coe and Coe Mini tabs over your chats are quieter: plain underlined tabs, not boxes.' },
