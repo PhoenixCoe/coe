@@ -10,14 +10,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { UiIcon } from '@/ui/icons';
 import { Inline } from './Study';
 
-type Item = { n: number; q: string; options: string[]; answer: string; working: string; how: string; unsure: boolean };
+type Item = { n: number; q: string; options: string[]; answer: string; working: string; how: string; unsure: boolean; ok: boolean };
 function parse(code: string): { title: string; kind: string; items: Item[] } | null {
   try {
     const j = JSON.parse(code); const raw = Array.isArray(j) ? j : j?.items; if (!Array.isArray(raw)) return null;
     const items: Item[] = raw.slice(0, 60).map((r: Record<string, unknown>, k: number) => ({
       n: Number(r.n) > 0 ? Number(r.n) : k + 1,
       q: String(r.q ?? r.question ?? '').slice(0, 600), options: Array.isArray(r.options) ? (r.options as unknown[]).slice(0, 8).map((o) => String(o).slice(0, 120)) : [],
-      answer: String(r.answer ?? '').slice(0, 400), working: String(r.working ?? '').slice(0, 900), how: String(r.how ?? '').slice(0, 900), unsure: /^l/i.test(String(r.sure ?? '')),
+      answer: String(r.answer ?? '').slice(0, 400), working: String(r.working ?? '').slice(0, 900), how: String(r.how ?? '').slice(0, 900), unsure: /^l/i.test(String(r.sure ?? '')), ok: r.ok === 1 || r.ok === true,
     })).filter((i: Item) => i.q);
     return items.length ? { title: String(j?.title ?? '').slice(0, 90), kind: String(j?.kind ?? '').slice(0, 24), items } : null;
   } catch { return null; }
@@ -42,7 +42,8 @@ export function QuestionsBlock({ code, closed, id, ask, redo }: { code: string; 
   const total = data.items.length, i = Math.max(0, Math.min(at, total - 1)), it = data.items[i];
   const go = (to: number) => { if (to < 0 || to >= total || to === i) return; setDir(to > i ? 'r' : 'l'); setAt(to); };
   const done = has(s.done, it.n), shown = has(how, it.n), why = it.how || it.working;
-  const stateOf = (k: number) => (has(s.done, data.items[k].n) ? ' done' : data.items[k].answer ? ' ans' : '');
+  const isOk = (x: Item) => x.ok || has(s.right, x.n);   // done with the right answer: Coe Mini saw the page show it, or you pressed Right
+  const stateOf = (k: number) => (has(s.done, data.items[k].n) || data.items[k].ok ? ' done' : data.items[k].answer ? ' ans' : '') + (isOk(data.items[k]) ? ' got' : '');
   return (
     <section className="qz" aria-label="Questions">
       <header className="qz-h">
@@ -52,16 +53,16 @@ export function QuestionsBlock({ code, closed, id, ask, redo }: { code: string; 
         <div className="qz-nav" ref={nav} onKeyDown={(e) => { if (e.key === 'ArrowRight') { e.preventDefault(); go(i + 1); } else if (e.key === 'ArrowLeft') { e.preventDefault(); go(i - 1); } }}>
           <button type="button" className="qz-arw" aria-label="Back" title="Back" disabled={i === 0} onClick={() => go(i - 1)}><UiIcon name="back" size={15} strokeWidth={3.6} /></button>
           <div className="qz-pills" role="group" aria-label="Questions">
-            {data.items.map((x, k) => <button key={k} type="button" className={`qz-pill${k === i ? ' on' : ''}${stateOf(k)}`} aria-current={k === i ? 'true' : undefined} aria-label={`Question ${x.n}${x.answer ? ', answered' : ''}`} onClick={() => go(k)}>{x.n}</button>)}
+            {data.items.map((x, k) => <button key={k} type="button" className={`qz-pill${k === i ? ' on' : ''}${stateOf(k)}`} aria-current={k === i ? 'true' : undefined} aria-label={`Question ${x.n}${isOk(x) ? ', done and right' : x.answer ? ', answered' : ''}`} onClick={() => go(k)}>{isOk(x) ? <UiIcon name="check" size={16} strokeWidth={4} /> : x.n}</button>)}
           </div>
           <button type="button" className="qz-arw" aria-label="Next" title="Next" disabled={i === total - 1} onClick={() => go(i + 1)}><UiIcon name="arrow" size={15} strokeWidth={3.6} /></button>
         </div>
       )}
       <article key={i} className={`qz-c${done ? ' isdone' : ''}${dir ? ` in-${dir}` : ''}`}>
         <div className="qz-t">
-          <span className="qz-n d">{it.n}</span>
+          <span className={`qz-n d${isOk(it) ? ' got' : ''}`} role={isOk(it) ? 'img' : undefined} aria-label={isOk(it) ? `Question ${it.n}, done and right` : undefined}>{isOk(it) ? <UiIcon name="check" size={16} strokeWidth={4} /> : it.n}</span>
           <div className="qz-q tx"><Inline text={it.q} /></div>
-          {done && <span className="qz-done d"><UiIcon name="check" size={13} strokeWidth={3.6} />Done</span>}
+          {done && !isOk(it) && <span className="qz-done d"><UiIcon name="check" size={13} strokeWidth={3.6} />Done</span>}
         </div>
         {it.options.length > 0 && <div className="qz-o">{it.options.map((o) => <span key={o} className={`qz-p${it.answer && o.trim().toLowerCase() === it.answer.trim().toLowerCase() ? ' right' : ''}`}><Inline text={o} /></span>)}</div>}
         {has(s.wrong, it.n) && <div className="qz-r hmm tx"><b className="d">Second try</b><div>Sorry, I got that one wrong. I have asked Coe to work it out again, and it is free.</div></div>}

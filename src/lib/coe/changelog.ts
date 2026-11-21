@@ -4,7 +4,7 @@
  *  Coe Mini uses the same number and the same list. Browsers only allow numbers in an extension's version, so Coe Mini's manifest says 2026.11.12.6
  *  (year, month, day, and the letter counted as a number, which always goes up) and shows the name above as its version name.
  *  Coe is also told this list (see prompts.ts), so it can answer "what is new?" and "what can you do now?". Add the newest version at the top. */
-export const COE_VERSION = 'b-2026.21.11.p';
+export const COE_VERSION = 'b-2026.21.11.q';
 export const COE_DATE = '21 November 2026';
 export const COE_BETA = true;
 
@@ -29,6 +29,16 @@ export interface Release { v: string; date: string; items: Change[]; before: str
 export const RELEASES: Release[] = [
   {
     v: COE_VERSION, date: COE_DATE,
+    items: [
+      { where: 'mini', text: 'When the page shows a question as done and right, Coe Mini turns that question\'s number into a green tick. It only looks at the page and never types or presses anything.' },
+      { where: 'both', text: 'A ticked question stays ticked when you open the chat again, in Coe and in Coe Mini. The question you are on has a black outline, and the green bar under it is gone.' },
+      { where: 'both', text: 'Tidy-up: the Directions button had green words on a green box, and the question header and chosen theme looked different on the website. Both now match Coe Mini.' },
+      { where: 'mini', text: 'Coe Mini\'s Settings are tidier: the Data tab no longer shows its buttons twice, the tab bar no longer covers the intro line, and the switches and dropdowns line up.' },
+      { where: 'web', text: 'On phones, the top bar no longer sits on top of the chat list when you open it.' },
+    ], before: ['The question numbers never showed which questions the page had marked right.', 'Some boxes had the wrong colour or sat too close together, and one Settings tab showed everything twice.'],
+  },
+  {
+    v: 'b-2026.21.11.p', date: '21 November 2026',
     items: [
       { where: 'mini', text: 'Coe Mini no longer mistakes a number pad on the page for the questions. It finds the real question tabs and ignores the keys 0 to 9.' },
       { where: 'mini', text: 'It works each answer out as it reads, so the first one shows in a few seconds, not after the whole page. You can look at the early ones while the rest come in.' },

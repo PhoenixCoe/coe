@@ -82,7 +82,7 @@ const R: Row[] = [
   ['chat', 'bookmark', 'Bookmark answers', 'Mark an answer so you can find it again.', 'free'],
   ['chat', 'list', 'A word limit', 'Choose the longest a reply may be.', 'free'],
   // ---- senses
-  ['senses', 'list', 'Finds the questions on a page', 'Reads a worksheet, or a one-question-at-a-time site like Sparx tab by tab, works each answer out as it goes, and shows one question at a time with Back and Next. The cards stay in the chat.', 'free'],
+  ['senses', 'list', 'Finds the questions on a page', 'Reads a worksheet or a one-question-at-a-time site like Sparx, works each answer out as it goes, shows one at a time with Back and Next, and ticks the ones the page marks right.', 'free'],
   ['chat', 'edit', 'Presses things properly', 'Coe Mini does a full press, checks the page reacted and says when it did not, can press Enter in a box, and will not press through a pop-up.', 'free'],
   ['senses', 'eye', 'Looks at pictures on a page', 'In Coe Mini, ask about a picture, diagram or chart. Name it, count it (\u201cthe second image\u201d) or point (\u201cwhat is this\u201d) and Coe picks the right one. It says so if it cannot read one.', 'free'],
   ['senses', 'globe', 'Browser listening fallback', 'If Coe\'s listening runs out for today, your browser\'s own listening takes over, free.', 'free'],
