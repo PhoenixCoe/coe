@@ -244,6 +244,12 @@ export default {
     const isOwner = !!who && owners.includes(String(who.email || "").toLowerCase());
     const ownerBit = isOwner ? { owner: true } : {};
 
+    // ---- pause switch: while PAUSE_MESSAGE has words in it, nobody but the owner can send anything. People see PAUSE_TITLE (optional) and your reason on Coe and Coe Mini. Empty the variable to switch Coe back on. No deploy needed.
+    const pauseText = String(env.PAUSE_MESSAGE || "").trim().slice(0, 600);
+    if (pauseText && !isOwner && request.method === "POST" && !["/feedback", "/report", "/checkout", "/portal", "/refund", "/account/delete", "/owner", "/stripe"].includes(path)) {
+      return fail(503, (String(env.PAUSE_TITLE || "").trim().slice(0, 80) || "Coe is paused") + "\n" + pauseText, "paused");
+    }
+
     // ---- who counts: the account, or the network for people who are not signed in
     let subjectMemo = null, planMemo = null;
     const subjectOf = async () => (subjectMemo ??= who ? who.id : "ip:" + (await sha((request.headers.get("cf-connecting-ip") || "unknown") + (env.API_KEY || ""))));
@@ -571,7 +577,7 @@ export default {
       if (!billing) return reply(200, { ok: true });
       const plan = (await planOf()).plan, sub = await subjectOf(), key = "app:" + sub;
       try {
-        if ((await spend(key, 1, quotas.app[plan])) < 0) return fail(403, `Free includes ${quotas.app.free} PMC App runs a day in Coe. Pro never runs out. (The apps on apps.pmcstudios.uk stay free to use there.)`, "plan");
+        if ((await spend(key, 1, quotas.app[plan])) < 0) return fail(403, `Free includes ${quotas.app.free} PMC App runs a day in Coe. Pro never runs out. (The apps on tools.pmcstudios.uk stay free to use there.)`, "plan");
         return reply(200, { ok: true, used: await usedToday(key), limit: quotas.app[plan] });
       } catch (e) { return fail(503, "That could not be checked just now. Try again in a moment."); }
     }

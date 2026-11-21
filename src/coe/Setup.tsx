@@ -37,7 +37,7 @@ const ThemeCard = ({ t, on, pick, first }: { t: (typeof THEMES)[number]; on: boo
   );
 };
 
-/** The first time Coe opens: a short run of full screens, one question each. With nobody signed in, the first screen is the account (sign in, create a PMC Account, or carry on as a guest). Every question can be skipped, and the answers follow the account to other devices and to Coe Mini. */
+/** The first time Coe opens: a short run of full screens, one question each. With nobody signed in, the first screen is the account (sign in, create a PMC ID, or carry on as a guest). Every question can be skipped, and the answers follow the account to other devices and to Coe Mini. */
 export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Partial<CoeSettings>) => void; onClose: () => void }) {
   const [i, setI] = useState(0), [dir, setDir] = useState<'fwd' | 'back'>('fwd');
   const [name, setName] = useState(s.name), [ageBand, setAge] = useState<CoeSettings['ageBand']>(s.ageBand), [role, setRole] = useState<CoeSettings['role']>(s.role);
@@ -54,7 +54,7 @@ export function Setup({ s, save, onClose }: { s: CoeSettings; save: (patch: Part
   const go = (to: number, d: 'fwd' | 'back') => { setDir(d); setI(Math.max(0, Math.min(STEPS.length - 1, to))); };
   const next = () => (step === 'done' ? finish() : go(i + 1, 'fwd'));
   const back = () => go(i - 1, 'back');
-  /** Leaves for the PMC Account page. Coming back signed in, setup starts again at the first screen, without the account question. */
+  /** Leaves for the PMC ID page. Coming back signed in, setup starts again at the first screen, without the account question. */
   const toPmc = (where: 'signin' | 'create', hint = '') => {
     setBusy(true); setErr('');
     const undo = () => setBusy(false);

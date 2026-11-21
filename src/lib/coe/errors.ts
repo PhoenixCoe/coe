@@ -18,6 +18,7 @@ export function explain(kind: ErrorKind | undefined, message: string, owner = fa
       : { title: 'Coe is not available', text: 'Coe is not switched on yet. Try again later.', acts: ['retry'], level: 'orange' };
   }
   switch (kind) {
+    case 'paused': { const [t, ...r] = m.split('\n'); return { title: r.length ? t : 'Coe is paused', text: (r.length ? r.join(' ') : m) || 'Coe is paused for now. Try again later.', acts: [], level: 'orange' }; }
     case 'banned': return { title: 'You have been banned', text: `You cannot ask or generate any more responses. To appeal, contact ${APPEAL_EMAIL} for an answer.`, acts: ['appeal'], level: 'red' };
     case 'network': return own ? { title: 'Cannot reach your AI', text: 'Check your internet and the API address. Some companies block keys on web pages.', acts: ['retry', 'settings'], level: 'orange' } : { title: 'Cannot reach Coe', text: 'Check your internet. If it keeps happening, check the server address in Settings.', acts: ['retry', 'settings'], level: 'orange' };
     case 'server': return { title: 'Coe had a problem', text: m || 'Something went wrong on the server. Try again in a moment.', acts: ['retry'], level: 'red' };

@@ -7,7 +7,7 @@ export interface Pic { type: string; data: string }   // data is base64, with no
 export interface ChatMsg { role: 'user' | 'assistant'; text: string; images?: Pic[] }
 export interface Reply { text: string; inTokens?: number; outTokens?: number; stopped: boolean; cut: boolean; credits?: { used: number; limit: number; plan: string; tokens?: number; receipt?: string } }
 
-export type ErrorKind = 'banned' | 'setup' | 'refused' | 'limit' | 'credits' | 'plan' | 'signin' | 'network' | 'server' | 'bad';
+export type ErrorKind = 'banned' | 'paused' | 'setup' | 'refused' | 'limit' | 'credits' | 'plan' | 'signin' | 'network' | 'server' | 'bad';
 export class CoeError extends Error { constructor(public kind: ErrorKind, message: string) { super(message); } }
 
 interface Request { model: ModelKey; system?: string; messages: ChatMsg[]; maxTokens?: number; signal?: AbortSignal; redo?: boolean; work?: boolean; step?: boolean; check?: boolean; call?: string }
@@ -88,6 +88,7 @@ async function explain(res: Response): Promise<CoeError> {
   let message = '', code = '';
   try { const j = await res.json(); message = j?.error?.message ?? j?.message ?? ''; code = j?.error?.code ?? ''; } catch { /* not JSON */ }
   if (code === 'banned') return new CoeError('banned', message);
+  if (code === 'paused') return new CoeError('paused', message);
   if (res.status === 402 || code === 'credits') return new CoeError('credits', message);
   if (code === 'plan') return new CoeError('plan', message);
   if (res.status === 401 && code === 'signin') return new CoeError('signin', message);

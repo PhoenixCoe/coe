@@ -1,11 +1,11 @@
 /**
- * PMC Apps inside the chat. An app opens in a frame (apps.pmcstudios.uk/<name>?embed=1) and is worked by messages:
+ * PMC Apps inside the chat. An app opens in a frame (tools.pmcstudios.uk/<name>?embed=1) and is worked by messages:
  * fill in fields, press buttons, load a drawing, add files, read what it shows. Files it makes come back as files in the chat.
  * The other side of this is src/lib/embed.ts in the PMC Apps project.
  */
 import catalog from './apps-catalog.json';
 
-export const APPS_URL = (process.env.NEXT_PUBLIC_APPS_URL ?? 'https://apps.pmcstudios.uk').trim().replace(/\/+$/, '');
+export const APPS_URL = (process.env.NEXT_PUBLIC_APPS_URL ?? 'https://tools.pmcstudios.uk').trim().replace(/\/+$/, '');
 let appsOrigin = ''; try { appsOrigin = new URL(APPS_URL).origin; } catch { /* a bad address: no frames */ }
 export const APPS_ORIGIN = appsOrigin;
 

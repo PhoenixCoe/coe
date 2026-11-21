@@ -412,18 +412,18 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   const [avPic, setAvPic] = useState('');
   useEffect(() => { setAvPic(avatarImg()); return onAvatar(() => setAvPic(avatarImg())); }, []);
   // The account menu (the picture button in the sidebar footer). The accounts used on this device are remembered here: an email, a name and a tiny picture, never a password or a key.
-  useEffect(() => { if (!me) return; void loadPmc().then(() => window.PmcAccount?.remember({ email: me, name: me.split('@')[0], img: avPic })).catch(() => undefined); }, [me, avPic]);
+  useEffect(() => { if (!me) return; void loadPmc().then(() => window.PmcAccount?.remember({ email: me, name: settings.name?.trim() || me.split('@')[0], img: avPic })).catch(() => undefined); }, [me, avPic, settings.name]);
   const leave = useCallback(async (then?: () => void) => {
     if (await cloudSignOut()) { forgetStatus(); setMe(null); void refreshList(); then?.(); }
     else say('Could not save your chats first. Check your connection and try again.');
   }, [refreshList, say]);
   const toPmc = useCallback((hint = '') => { try { startAccountSignIn('', hint); } catch (e) { say((e as Error).message || 'Could not open the sign-in page.'); } }, [say]);
   const accMenu = (): PmcMenu => ({
-    user: me ? { name: me.split('@')[0], email: me, img: avPic || undefined } : null,
+    user: me ? { name: settings.name?.trim() || me.split('@')[0], email: me, img: avPic || undefined } : null,
     others: window.PmcAccount?.others(me ?? '') ?? [],
     manage: `${ACCOUNTS}/`, privacy: `${ACCOUNTS}/privacy/`,
     onSettings: () => { setTab('look'); setPanel('settings'); },
-    onPicture: () => { setTab('you'); setPanel('settings'); },
+    onPicture: () => { window.open(`${ACCOUNTS}/#profile`, '_blank', 'noopener'); },
     onSignIn: () => setAcct(true),
     onAddAccount: () => { void leave(() => toPmc()); },
     onSwitch: (a) => { if (me) void leave(() => toPmc(a.email)); else toPmc(a.email); },
@@ -958,7 +958,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // The Coe extension can send a question and its answer into a new chat, and its Settings button opens the Chrome tab.
   useEffect(() => {
     if (location.hash === '#chrome') { setTab('ext'); setPanel('settings'); history.replaceState(null, '', location.pathname + location.search); }
-    // Back from the PMC Account page: say so if it worked, and open the sign-in window with the reason if it was refused.
+    // Back from the PMC ID page: say so if it worked, and open the sign-in window with the reason if it was refused.
     { const back = takeAccountNote(); if (back === 'in') say('Signed in.'); else if (back === 'bad') setAcct(true); }
     // Coe Mini sends people here to sign in or sign up. The sign-in window opens by itself.
     // The same hash can arrive again while this tab is already open (Coe Mini brings the open tab to the front instead of opening a new one).

@@ -6,6 +6,7 @@ The design system of every PMC app (edition 2, the app edition). This file is th
 
 - `pmc-press.css`: fonts, tokens, the four leads, base rules and every component. One `<link>` and an `<html data-lead="cream">` is enough.
 - `pmc-press.js`: `fitAccent`, `accentCss`, `applyAccent`, the ten accents and the eight looks. Plain JavaScript, no dependencies.
+- `pmc-feel.js`: the drag for toggles. Pull a toggle and it pulls back unless you mean it; click it and it springs across. Add it once per page: `<script src="./pmc-feel.js"></script>`, then it works on every toggle.
 - `tokens.json`: every token with its usage note (colours per lead, type styles, spacing, radius, shadows, frames).
 - `fonts/`: PMC Header, PMC Font (and Upright), PMC Symbols L2 and L4, JetBrains Mono (OFL licence beside it), and the two open fallbacks (Big Shoulders Display, IBM Plex Mono).
 - `logos/`: Coe star, wordmark, favicon, iOS icon, PMC mark (ink and cream).
@@ -15,7 +16,7 @@ Source of truth: Coe's `src/app/globals.css` and `src/lib/coe/look.ts`. If they 
 
 ---
 
-PMC Press is the design system of every PMC app: Coe, Coe Mini, the PMC Account site, and whatever comes next. It looks like flat ink on paper: solid blocks of colour, square corners, heavy frames, and a hard offset shadow under everything that can be pressed, like a print that is slightly out of register. The name is that look. Coe's own stylesheet is the source; when this book and Coe disagree, Coe is right and this book is wrong.
+PMC Press is the design system of every PMC app: Coe, Coe Mini, the PMC ID site, and whatever comes next. It looks like flat ink on paper: solid blocks of colour, square corners, heavy frames, and a hard offset shadow under everything that can be pressed, like a print that is slightly out of register. The name is that look. Coe's own stylesheet is the source; when this book and Coe disagree, Coe is right and this book is wrong.
 
 PMC Press has two editions. **Edition 2, the app edition, is this book.** Edition 1 is the pmcstudios.uk website, which shares the fonts, the green and the cream but moves bigger on hover (the box jumps up and left, the shadow grows from 7px to 11px) and has its own guide.
 
@@ -41,7 +42,7 @@ Do these in order. Each takes minutes.
 - Errors say what went wrong in plain words and offer the fix on a button. No codes in the sentence; the code can sit in a smaller line under it.
 - No emoji. Icons are drawn (see Iconography). Keep exclamation marks out of interface copy.
 - Numbers use the units the person knows ("2 of 5", "42%").
-- Names: write **PMC Header** and **PMC Font** for the two fonts, **PMC Account** for the sign-in, **Coe Mini** for the browser extension.
+- Names: write **PMC Header** and **PMC Font** for the two fonts, **PMC ID** for the sign-in, **Coe Mini** for the browser extension.
 
 ## Visual foundations
 
@@ -349,3 +350,9 @@ Files in `logos/`. Copy them as they are; never redraw, recolour or add a shadow
 - `pmc-mark-cream.svg`: the PMC mark, single ink `#F2E4CE`. Use on `ink`, `green` and accent grounds.
 
 Single-ink files cannot inherit `currentColor` through `<img>`; pick the file that matches the ground.
+
+## Toggles and sliders
+- Green means on, red means off, in every look. A toggle that cannot be used is grey.
+- Toggle: 58 x 32, 3px ink border, hard 3px shadow, a 22px knob that stretches to 28px when pressed. Spring easing `cubic-bezier(.34,1.5,.64,1)`, 0.5s.
+- Slider: green fill, gold handle with a hard shadow. The fill and handle follow one number (`--f`, 0 to 1) that glides to each new value. Set `--f` from your code when the value changes.
+- Dragging a toggle moves the knob 6px for every 10px you drag. Let go past the middle, or flick it, and it switches.

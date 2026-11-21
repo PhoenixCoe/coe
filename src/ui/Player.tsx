@@ -73,7 +73,7 @@ export function PmcPlayer({ src, title, peaks, seconds, save, className = '' }: 
         {bars && <div className="pmp-bars" aria-hidden>{bars.map((h, i) => <i key={i} className={(i + 0.5) / bars.length <= at ? 'on' : ''} style={{ height: `${Math.round(h * 100)}%` }} />)}</div>}
         {bars && <i className="pmp-head" aria-hidden />}
         <input id={`${uid}-s`} type="range" className={bars ? 'pmp-range' : 'sld-in'} min={0} max={known ? len : 1} step={0.1} value={known ? Math.min(now, len) : 0} disabled={!known} aria-label="Position" aria-valuetext={`${clock(now)} of ${clock(len)}`}
-          style={{ ['--p' as string]: `${at * 100}%` }}
+          style={{ ['--p' as string]: `${at * 100}%`, ['--f' as string]: at }}
           onPointerDown={() => { scrub.current = true; }} onPointerUp={() => { scrub.current = false; }} onBlur={() => { scrub.current = false; }}
           onChange={(e) => seek(Number(e.target.value))} />
       </div>
@@ -82,7 +82,7 @@ export function PmcPlayer({ src, title, peaks, seconds, save, className = '' }: 
         <button type="button" className="pmp-b" onClick={() => jump(10)} aria-label="Forward 10 seconds"><span>10</span><UiIcon name="fast" size={17} /></button>
         <button type="button" className="pmp-b" onClick={faster} aria-label={`Speed ${speed} times. Press for the next speed`}><span>{speed}×</span></button>
         <span className="pmp-vol"><button type="button" className="pmp-b" onClick={hush} aria-pressed={muted} aria-label={muted ? 'Unmute' : 'Mute'}><UiIcon name={muted || vol === 0 ? 'mute' : 'volume'} size={18} /></button>
-          <input type="range" className="sld-in pmp-vr" min={0} max={1} step={0.05} value={muted ? 0 : vol} aria-label="Volume" style={{ ['--p' as string]: `${(muted ? 0 : vol) * 100}%` }} onChange={(e) => loud(Number(e.target.value))} /></span>
+          <input type="range" className="sld-in pmp-vr" min={0} max={1} step={0.05} value={muted ? 0 : vol} aria-label="Volume" style={{ ['--p' as string]: `${(muted ? 0 : vol) * 100}%`, ['--f' as string]: muted ? 0 : vol }} onChange={(e) => loud(Number(e.target.value))} /></span>
         {save && <a className="pmp-b save" href={src} download={save}><UiIcon name="download" size={16} /><span>Save</span></a>}
       </div>
     </div>

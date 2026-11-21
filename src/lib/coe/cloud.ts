@@ -38,7 +38,7 @@ function keep(access: string, refresh: string): Session | null {
   return s;
 }
 const SEEN = 'pmc:coe:seen';
-/** Lets the PMC Account page list Coe among the sites this account has used: a site name and a time, nothing else. At most every six hours, and a failure is quietly ignored (tried again in about an hour). */
+/** Lets the PMC ID page list Coe among the sites this account has used: a site name and a time, nothing else. At most every six hours, and a failure is quietly ignored (tried again in about an hour). */
 function touchApp(s: Session) {
   try {
     if (typeof window === 'undefined' || !URL_) return;
@@ -52,7 +52,7 @@ function touchApp(s: Session) {
 }
 
 /** Clears a failed sign-in's message from the address. A sign-in is never taken from a link: anyone could build a link that signs you in to THEIR account, and then what you write would be saved there.
- *  The only ways in are a code you type, or the PMC Account page's hand-back, which is checked against a one-time value (takeAccount). */
+ *  The only ways in are a code you type, or the PMC ID page's hand-back, which is checked against a one-time value (takeAccount). */
 export function takeLink(): boolean {
   if (!cloudOn) return false;
   try {
@@ -64,13 +64,13 @@ export function takeLink(): boolean {
   } catch { return false; }
 }
 
-// ---------------------------------------------------------------- PMC Account (accounts.pmcstudios.uk)
-/** The PMC Account page. Coe sends you there to sign in with your email and password, and it sends you straight back. */
-export const ACCOUNTS = (process.env.NEXT_PUBLIC_ACCOUNTS_URL ?? 'https://accounts.pmcstudios.uk').trim().replace(/\/+$/, '');
+// ---------------------------------------------------------------- PMC ID (id.pmcstudios.uk)
+/** The PMC ID page. Coe sends you there to sign in with your email and password, and it sends you straight back. */
+export const ACCOUNTS = (process.env.NEXT_PUBLIC_ACCOUNTS_URL ?? 'https://id.pmcstudios.uk').trim().replace(/\/+$/, '');
 const ASTATE = 'pmc:coe:acc-state', ANOTE = 'pmc:coe:acc-note';
 const b64u = (a: Uint8Array) => btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const LIVE = 'pmc:coe:acc-live';
-/** Whether the PMC Account page can be reached right now, so Coe never sends you to a page that is not there (for instance before it is switched on). It loads one small picture from the page, which sends nothing about you. The answer is kept for ten minutes, and a slow answer counts as "yes". */
+/** Whether the PMC ID page can be reached right now, so Coe never sends you to a page that is not there (for instance before it is switched on). It loads one small picture from the page, which sends nothing about you. The answer is kept for ten minutes, and a slow answer counts as "yes". */
 export function accountsLive(): Promise<boolean> {
   return new Promise((res) => {
     try { const c = JSON.parse(sessionStorage.getItem(LIVE) || 'null'); if (c && Date.now() - c.t < 600_000) { res(!!c.ok); return; } } catch { /* no saved answer */ }
@@ -79,17 +79,17 @@ export function accountsLive(): Promise<boolean> {
     try { const i = new Image(); i.onload = () => fin(true); i.onerror = () => fin(false); setTimeout(() => fin(true, false), 6000); i.src = `${ACCOUNTS}/img/favicon.svg?c=${Date.now()}`; } catch { fin(true, false); }
   });
 }
-/** Goes to the PMC Account page. A one-time value is made here and kept in this tab; the way back is only accepted if it brings the same value. */
+/** Goes to the PMC ID page. A one-time value is made here and kept in this tab; the way back is only accepted if it brings the same value. */
 export function startAccountSignIn(where: '' | 'create' | 'reset' | 'signin' = '', hint = ''): void {
   const a = new Uint8Array(24); crypto.getRandomValues(a);
   const st = b64u(a);
   try { sessionStorage.setItem(ASTATE, JSON.stringify({ st, at: Date.now() })); } catch { throw new Error('This browser is blocking the storage Coe needs to sign you in safely. Turn off private mode or allow site data, then try again.'); }
-  // hint: the email to fill in for you, when you pick one of the accounts already used on this device. It is only a convenience: the password is still typed on the PMC Account page.
+  // hint: the email to fill in for you, when you pick one of the accounts already used on this device. It is only a convenience: the password is still typed on the PMC ID page.
   const h = hint.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(hint) ? `&hint=${encodeURIComponent(hint)}` : '';
-  location.assign(`${ACCOUNTS}/?app=coe&state=${st}${h}${where ? '#' + where : ''}`);
+  location.assign(`${ACCOUNTS}/${where === 'create' ? 'create/name' : where === 'reset' ? 'reset' : 'signin'}/?app=coe&state=${st}${h}`);
 }
 const same = (x: string, y: string) => { if (x.length !== y.length) return false; let d = 0; for (let i = 0; i < x.length; i++) d |= x.charCodeAt(i) ^ y.charCodeAt(i); return d === 0; };
-/** Coming back from the PMC Account page, the sign-in is in the address. It is taken only if the one-time value matches, the address is cleaned at once, and the refresh token that travelled is swapped for a new one straight away. */
+/** Coming back from the PMC ID page, the sign-in is in the address. It is taken only if the one-time value matches, the address is cleaned at once, and the refresh token that travelled is swapped for a new one straight away. */
 export async function takeAccount(): Promise<boolean> {
   if (!cloudOn || typeof location === 'undefined') return false;
   let h: URLSearchParams; try { h = new URLSearchParams(location.hash.replace(/^#/, '')); } catch { return false; }

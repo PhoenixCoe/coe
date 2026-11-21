@@ -77,7 +77,7 @@ create or replace function get_share(share_id text) returns jsonb
 revoke all on function get_share(text) from public;
 grant execute on function get_share(text) to anon, authenticated;
 
--- PMC Account: which sites and apps have signed in to this account (shown on the account page, accounts.pmcstudios.uk).
+-- PMC ID: which sites and apps have signed in to this account (shown on the account page, accounts.pmcstudios.uk).
 -- Only the owner can see or change their own rows. It holds a site name and two times: nothing else.
 create table if not exists app_access (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -187,3 +187,22 @@ begin
 end $$;
 revoke all on function pmc_redeem(text, text, text) from public;
 grant execute on function pmc_redeem(text, text, text) to anon, authenticated;
+
+-- 6. "Delete my PMC ID" on the PMC ID page: removes the person and everything saved against them, in one step.
+--    It stops if a paid Pro plan is still running (cancel it in Coe first), so nobody is charged for an account that is gone.
+create or replace function pmc_delete_me() returns void
+  language plpgsql security definer set search_path = public as $$
+declare uid uuid := auth.uid();
+begin
+  if uid is null then raise exception 'Sign in first.'; end if;
+  if exists (select 1 from subs where user_id = uid and status in ('active', 'trialing', 'past_due', 'unpaid')) then
+    raise exception 'Cancel your Pro plan first.';
+  end if;
+  delete from chats where user_id = uid;
+  delete from profiles where user_id = uid;
+  delete from shares where user_id = uid;
+  delete from usage where subject = uid::text or subject like '%' || uid::text;
+  delete from auth.users where id = uid;
+end $$;
+revoke all on function pmc_delete_me() from public, anon;
+grant execute on function pmc_delete_me() to authenticated;

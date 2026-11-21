@@ -4,8 +4,8 @@
  *  Coe Mini uses the same number and the same list. Browsers only allow numbers in an extension's version, so Coe Mini's manifest says 2026.11.12.6
  *  (year, month, day, and the letter counted as a number, which always goes up) and shows the name above as its version name.
  *  Coe is also told this list (see prompts.ts), so it can answer "what is new?" and "what can you do now?". Add the newest version at the top. */
-export const COE_VERSION = 'b-2026.12.11.g';
-export const COE_DATE = '12 November 2026';
+export const COE_VERSION = 'b-2026.21.11.p';
+export const COE_DATE = '21 November 2026';
 export const COE_BETA = true;
 
 /** 1 is a, 26 is z, 27 is za, 52 is zz, 53 is zza: each extra z in front is another 26. */
@@ -30,15 +30,86 @@ export const RELEASES: Release[] = [
   {
     v: COE_VERSION, date: COE_DATE,
     items: [
-      { where: 'both', text: 'Setup starts with a Sign in with PMC box on its first screen: pick an account already used on this device, sign in, make a PMC Account, or carry on as a guest. Then it goes on to the same full-screen questions as before.' },
+      { where: 'mini', text: 'Coe Mini no longer mistakes a number pad on the page for the questions. It finds the real question tabs and ignores the keys 0 to 9.' },
+      { where: 'mini', text: 'It works each answer out as it reads, so the first one shows in a few seconds, not after the whole page. You can look at the early ones while the rest come in.' },
+      { where: 'both', text: 'Questions show one at a time, with a back arrow, a numbered box for each question and a next arrow, not one long list. The cards are the same in Coe and in Coe Mini.' },
+      { where: 'both', text: 'The working now lives under How I got it. The separate Working button is gone.' },
+      { where: 'both', text: 'Open a chat that answered a page and the question cards come back, not plain text. A chat made in Coe Mini shows the cards on the website, and the other way round.' },
+    ], before: ['A number pad\'s keys were read as questions, and its digits were typed into the answer box.', 'Every answer arrived in one long list after the whole page was read, and a chat that had them came back as plain text.'],
+  },
+  {
+    v: 'b-2026.21.11.o', date: '21 November 2026',
+    items: [
+      { where: 'mini', text: 'Coe Mini now reads every question tab, 8 of 8 and not 6. A slow or locked question gets its own card with Try again, and Coe tries a few times before it gives up.' },
+      { where: 'mini', text: 'It stays on the window and tab you started in. Go to another tab and it warns you. Go to another browser window and it carries on, using the right one.' },
+      { where: 'mini', text: 'Screenshots are only for Coe to look at, so they are no longer shown on the answers.' },
+      { where: 'mini', text: 'Fewer notices: one slim line at a time, a run of locked questions is one card, and the header stays on one line.' },
+      { where: 'mini', text: 'Resizing is smoother: the blocks glide to their new places as you drag the sidebar edge, instead of jumping.' },
+    ], before: ['It read only 6 of 8 Sparx questions, showed screenshots on the answers, and could pick up the wrong browser window.', 'Several grey notices stacked above the answers, and a locked question got a card each.'],
+  },
+  {
+    v: 'b-2026.21.11.n', date: '21 November 2026',
+    items: [
+      { where: 'both', text: 'Menus now open out of their own button: down from one at the top, up from one at the bottom (Coe Mini\'s profile and apps buttons). The scroll has a comic-book dot edge, in every PMC app.' },
+      { where: 'mini', text: 'Coe Mini shows each answer big, with the question it answers above it, so you can read it at a glance. Answers with parts (a, b, c) get a row each.' },
+      { where: 'mini', text: 'Coe Mini has a minimum width. Narrower than that, it asks you to drag the sidebar wider, and that message now fades in and out instead of popping.' },
+      { where: 'mini', text: 'It reads Sparx-style pages more reliably: plain Q1 to Q8 boxes count as tabs, and slides that are slid out of view are ignored.' },
+    ], before: ['Menus always rolled down, even from a button at the bottom, and the expand-the-sidebar message popped in.', 'Answers were small and did not show which question they belonged to.'],
+  },
+  {
+    v: 'b-2026.21.11.m', date: '21 November 2026',
+    items: [
+      { where: 'mini', text: 'Coe Mini now handles sites that show one question at a time, like Sparx. It opens each question tab, takes a screenshot, and answers only what is on screen, so nothing is made up.' },
+      { where: 'mini', text: 'It ignores anything a person cannot see (hidden, faded or off-screen text, tabs, logos), so the 8 questions of a homework are found as 8, not 20.' },
+    ], before: ['On Sparx it counted the logo, the Q1 to Q8 tabs and hidden text as questions, then made up questions and answers for them.'],
+  },
+  {
+    v: 'b-2026.20.11.l', date: '20 November 2026',
+    items: [
+      { where: 'both', text: 'The apps menu and the account menu now roll out like a scroll and roll back up, the same in every PMC app (Coe, Coe Mini, PMC ID and PMC Tools). The apps menu is a bordered grid that turns black where you point, with Privacy Policy and Terms of Service underneath.' },
+    ], before: ['The apps and account menus popped up and faded, and each PMC app did it a little differently.'],
+  },
+  {
+    v: 'b-2026.20.11.k', date: '20 November 2026',
+    items: [
+      { where: 'mini', text: 'Coe Mini now reads a homework or worksheet page properly. It follows the numbers 1, 2, 3 down the page, so 8 questions are found as 8 (not 20, and not the instructions or a list inside a question). Multiple choice is spotted however the choices are written (a, b, c or A, B, C, on separate lines or one line, tick boxes, or a lettered list), and (a) and (b) parts stay with their question and are all answered. Each question gets its own diagram, and Coe Mini also takes a screenshot of each question and reads that as well as the text, so it sees the numbering, the choices and the diagram the way you do. If the browser has not allowed screenshots yet there is one Allow screenshots button, and it works on every site after that.' },
+    ], before: ['Coe Mini could count an instruction line as a question, or find 20 where there were 8.', 'It treated (a) and (b) parts as multiple choice, missed real multiple choice, and gave questions no diagram, so it said it could not see one.'],
+  },
+  {
+    v: 'b-2026.20.11.j', date: '20 November 2026',
+    items: [
+      { where: 'mini', text: 'Coe Mini presses buttons properly now. It does a full press where a person would (so search buttons, Save buttons and menus on pages like YouTube respond), checks that the page really reacted, tries another way if it did not, and says so in the job card if it still did not work, instead of ticking it off. It can also press Enter in a box (after typing in a search bar), types into rich editors, and finds buttons inside the page\u2019s hidden boxes. If a bar or pop-up is in the way it says so and does not press through it.' },
+    ], before: ['Coe Mini moved to a button, said it had pressed it, and ticked the step even when nothing happened (a YouTube search, a Save button).', 'It only ever did a single quick click, which many pages ignore.'],
+  },
+  {
+    v: 'b-2026.20.11.i', date: '20 November 2026',
+    items: [
+      { where: 'mini', text: 'Coe Mini now finds the right picture on a page. Name it (\u201cthe lake photo\u201d), count it (\u201cthe second image\u201d, \u201cthe last chart\u201d) or point (\u201cwhat is this\u201d, and it looks at what you can see). It skips logos, adverts, icons and banners behind words, and it reads pictures that are drawn as an inline SVG, a canvas, a video frame or a CSS background, or sit inside a frame, as well as ordinary images. Ask about all of them and it looks at up to six. If no picture on the page can be read, it says so and does not guess.' },
+    ], before: ['Coe Mini looked at the biggest pictures on the page, which were often a banner or a logo and not the one you meant.', 'Pictures drawn as a background, a chart or inside a frame were missed.'],
+  },
+  {
+    v: 'b-2026.14.11.h', date: '14 November 2026',
+    items: [
+      { where: 'both', text: 'PMC Account is now PMC ID, and lives at accounts.pmcstudios.uk. Everything works the same; only the name and the address changed.' },
+      { where: 'both', text: 'Change your name and picture on PMC ID itself. It opens right there (no trip to Coe\u2019s settings), and Coe and Coe Mini show the new name and picture. The picture in the account menu opens it too.' },
+      { where: 'web', text: 'PMC ID can now download all your data in one file, and delete your PMC ID and everything saved with it (it asks you to type your email first, and stops if a Pro plan is still running).' },
+      { where: 'web', text: 'PMC ID has a Sign in with PMC page for developers: add a site, copy the button and the code. The \u201cGet the code\u201d and \u201cHow to add the button\u201d links now go there.' },
+      { where: 'mini', text: 'Coe Mini can look at pictures on a page. Ask about a picture, diagram, figure or chart and Coe looks at the biggest ones (up to four), even ones further down the page, and reads their descriptions and captions too. Nothing else on the page is moved.' },
+      { where: 'both', text: 'The account menu shows the name you chose in PMC ID or About you, not the start of your email.' },
+    ], before: ['Changing your name or picture on the PMC ID page sent you to Coe\u2019s settings.', 'Developer links on PMC ID led nowhere.'],
+  },
+  {
+    v: 'b-2026.12.11.g', date: '12 November 2026',
+    items: [
+      { where: 'both', text: 'Setup starts with a Sign in with PMC box on its first screen: pick an account already used on this device, sign in, make a PMC ID, or carry on as a guest. Then it goes on to the same full-screen questions as before.' },
       { where: 'both', text: 'Do this later leaves setup at once, and Enter setup in Settings, under Profile, brings it back any time.' },
       { where: 'both', text: 'Settings\u2019 account tab is now Profile and only holds what you need there: your picture, your plan, Enter setup and Delete my account. Sign out lives in the account menu.' },
       { where: 'both', text: 'When the account menu opens, the rest of the screen dims and a soft halftone dot glow comes out from behind the menu. It fades in and out with the menu.' },
       { where: 'both', text: 'Tab titles follow one rule on every PMC site: the home page is PMC Coe, and every other page is Page name - PMC Coe. In a chat it is the chat\u2019s name first.' },
-      { where: 'both', text: 'The account menu and the By PMC apps menu look like Google\u2019s: a green card with your picture, name and email, your accounts under it, a red Sign out, Manage your PMC Account and Settings. The pencil on your picture opens your picture settings. By PMC is a grid of big tiles that says You are here on the one you are on.' },
-      { where: 'web', text: 'Your PMC Account page is simpler: a menu down the side (Your account, Password, Devices, Data and privacy, For developers). Your account shows your picture, name and email, a button to change them in Coe, and the apps and sites you use, PMC or not. Nothing is on it just to fill space. A device remembers the accounts it used, so Sign in lists them.' },
+      { where: 'both', text: 'The account menu and the By PMC apps menu look like Google\u2019s: a green card with your picture, name and email, your accounts under it, a red Sign out, Manage your PMC ID and Settings. The pencil on your picture opens your picture settings. By PMC is a grid of big tiles that says You are here on the one you are on.' },
+      { where: 'web', text: 'Your PMC ID page is simpler: a menu down the side (Your account, Password, Devices, Data and privacy, For developers). Your account shows your picture, name and email, a button to change them in Coe, and the apps and sites you use, PMC or not. Nothing is on it just to fill space. A device remembers the accounts it used, so Sign in lists them.' },
       { where: 'mini', text: 'Coe Mini only reads the page you are on when your message is about it (this, the page, my answer, question 4, Look at the screen and the buttons under the chat). A general question like what does camisa mean never touches the site. If it turns out to need the page, Coe reads it then. Right after a page answer, a short follow-up keeps the page.' },
-      { where: 'web', text: 'The PMC Account page remembers the accounts used on a device (email, first name and a small picture, never a password or key). With one saved, Sign in lists it to pick and has Use another account; with none saved it opens on Create account.' },
+      { where: 'web', text: 'The PMC ID page remembers the accounts used on a device (email, first name and a small picture, never a password or key). With one saved, Sign in lists it to pick and has Use another account; with none saved it opens on Create account.' },
     ],
     before: [
       'Setup went straight to the questions and did not ask about your account.',
@@ -47,7 +118,7 @@ export const RELEASES: Release[] = [
     ],
   },
   {
-    v: 'b-2026.12.11.f', date: COE_DATE,
+    v: 'b-2026.12.11.f', date: '12 November 2026',
     items: [
       { where: 'both', text: 'The account menu. Press your picture and a menu opens, like Google\u2019s: your name and email, Manage your account, Settings, the other accounts used on this device, Add another account and Sign out.' },
       { where: 'both', text: 'A By PMC button, next to your picture, opens a grid of every PMC site: Studios, Tools, Coe, Coe Mini and Account. The Account page has the same two buttons in its header.' },
@@ -63,14 +134,14 @@ export const RELEASES: Release[] = [
   {
     v: 'b-2026.12.11.e', date: '12 November 2026',
     items: [
-      { where: 'both', text: 'PMC Account. One email and a password you choose, on one sign-in page (accounts.pmcstudios.uk) that Coe and Coe Mini both use. A one-time code by email is only used to check a new address and to reset a forgotten password. There is no Google, Microsoft or GitHub sign-in.' },
+      { where: 'both', text: 'PMC ID. One email and a password you choose, on one sign-in page (accounts.pmcstudios.uk) that Coe and Coe Mini both use. A one-time code by email is only used to check a new address and to reset a forgotten password. There is no Google, Microsoft or GitHub sign-in.' },
       { where: 'both', text: 'Sign in with PMC is the main button in Coe and in Coe Mini. Emailing a code is still there, as a small way in underneath.' },
-      { where: 'both', text: 'Safer sign-in. A link can never sign you in. The PMC Account page hands you back only with a one-time value that your own browser made, and the key that travelled is swapped for a new one at once.' },
-      { where: 'both', text: 'Your PMC Account page (accounts.pmcstudios.uk) is now a small dashboard: your email, the sites and apps you have used (PMC or not), signing out of every other device, and changing your password. Nobody can see your password, not even you, because only a scrambled copy is kept. Changing it asks for your current password and a code sent to your email.' },
+      { where: 'both', text: 'Safer sign-in. A link can never sign you in. The PMC ID page hands you back only with a one-time value that your own browser made, and the key that travelled is swapped for a new one at once.' },
+      { where: 'both', text: 'Your PMC ID page (accounts.pmcstudios.uk) is now a small dashboard: your email, the sites and apps you have used (PMC or not), signing out of every other device, and changing your password. Nobody can see your password, not even you, because only a scrambled copy is kept. Changing it asks for your current password and a code sent to your email.' },
       { where: 'both', text: 'Notifications, only if you allow them. Switch it on in Settings under Look and your browser asks first. When a reply is ready and you are on another tab or app, Coe says “Your reply is ready.” It never shows what the reply says.' },
-      { where: 'both', text: 'If the PMC Account page cannot be reached, Coe and Coe Mini open on the emailed code by themselves, so nobody is stuck.' },
+      { where: 'both', text: 'If the PMC ID page cannot be reached, Coe and Coe Mini open on the emailed code by themselves, so nobody is stuck.' },
       { where: 'both', text: 'A bigger icon. The star button now fills the whole icon in a browser tab, on an iPhone home screen, as the app icon and on the Coe Mini toolbar, and keeps its hard green shadow.' },
-      { where: 'both', text: 'The privacy page now explains the PMC Account (what is kept, what is not, and that chats are not end-to-end encrypted) and notifications.' },
+      { where: 'both', text: 'The privacy page now explains the PMC ID (what is kept, what is not, and that chats are not end-to-end encrypted) and notifications.' },
       { where: 'both', text: 'Signing out puts the theme back to normal PMC and removes your picture from that device. Both come back when you sign in again.' },
       { where: 'web', text: 'Text starts smaller on a phone (90%) and an iPad (85%). A size you choose yourself is kept.' },
       { where: 'both', text: 'The Coe and Coe Mini tabs over your chats are quieter: plain underlined tabs, not boxes.' },

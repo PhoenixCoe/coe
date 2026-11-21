@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { UiIcon } from './icons';
+import { startPmcFeel } from '../lib/pmcFeel';
 
 type IconName = Parameters<typeof UiIcon>[0]['name'];
 
@@ -100,7 +101,7 @@ export function Slider({ value, min, max, step = 1, onChange, label, format, mar
   return (
     <div className={`sld${disabled ? ' off' : ''}`}>
       <div className="sld-top"><label htmlFor={uid} className={`sld-l${hideLabel ? ' sr' : ''}`}>{icon && <UiIcon name={icon} size={17} />}{label}</label><output htmlFor={uid} className="sld-v">{show}</output></div>
-      <input id={uid} type="range" className="sld-in" min={min} max={max} step={step} value={value} disabled={disabled} style={{ ['--p' as string]: `${pct}%` }} aria-valuetext={show} onChange={(e) => onChange(Number(e.target.value))} />
+      <input id={uid} type="range" className="sld-in" min={min} max={max} step={step} value={value} disabled={disabled} style={{ ['--p' as string]: `${pct}%`, ['--f' as string]: pct / 100 }} aria-valuetext={show} onChange={(e) => onChange(Number(e.target.value))} />
       {marks && marks.length > 0 && (
         <div className="sld-marks" aria-hidden>{marks.map((m) => <button key={m.value} type="button" tabIndex={-1} style={{ left: `${((m.value - min) / (max - min)) * 100}%` }} onClick={() => !disabled && onChange(m.value)}>{m.label}</button>)}</div>
       )}
@@ -112,6 +113,7 @@ export function Slider({ value, min, max, step = 1, onChange, label, format, mar
 // ---------------------------------------------------------------- switch
 export function Switch({ on, onChange, label, hint, icon, disabled = false }: { on: boolean; onChange: (v: boolean) => void; label: string; hint?: string; icon?: IconName; disabled?: boolean }) {
   const uid = useId();
+  useEffect(() => { startPmcFeel(); }, []); // lets the switch be dragged as well as clicked
   return (
     <div className={`swt${on ? ' on' : ''}${disabled ? ' off' : ''}`}>
       <div className="swt-t">{icon && <span className="swt-ic" aria-hidden><UiIcon name={icon} size={19} /></span>}<div><label htmlFor={uid} className="swt-l">{label}</label>{hint && <p className="swt-h tx">{hint}</p>}</div></div>

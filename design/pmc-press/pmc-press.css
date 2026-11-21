@@ -178,30 +178,56 @@ textarea { resize: vertical; min-height: 160px; line-height: 1.5; }
 .swt-t { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .swt-l { font-family: var(--d); text-transform: uppercase; font-size: 1.12rem; line-height: 1.05; cursor: pointer; }
 .swt-h { margin: 3px 0 0; font-size: 0.88rem; line-height: 1.4; opacity: 0.8; }
-.swt-b { flex: none; position: relative; width: 58px; height: 32px; border: 3px solid var(--ink); background: var(--paper); box-shadow: 3px 3px 0 var(--ink); cursor: pointer; transition: background 0.16s; }
-.swt-b i { position: absolute; top: 2px; left: 2px; width: 22px; height: 22px; background: var(--ink); transition: transform 0.2s var(--x), background 0.16s; }
-.swt.on .swt-b { background: var(--g1); }
-.swt.on .swt-b i { transform: translateX(26px); background: var(--cream); }
-.swt.off { opacity: 0.5; }
-.swt-b:focus-visible { outline: 4px solid var(--g1); outline-offset: 3px; }
-.swt-b:active { box-shadow: 1px 1px 0 var(--ink); }
 
 /* ---------- Slider ---------- */
 .sld { display: grid; gap: 6px; width: 100%; }
-.sld.off { opacity: 0.5; }
 .sld-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .sld-l { display: inline-flex; align-items: center; gap: 7px; font-family: var(--d); text-transform: uppercase; font-size: 1.1rem; line-height: 1; }
 .sld-v { margin-left: auto; font-family: var(--d); text-transform: uppercase; font-size: 1rem; padding: 3px 8px; background: var(--ink); color: var(--cream); white-space: nowrap; }
-.sld-in { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; margin: 0; background: transparent; cursor: pointer; touch-action: pan-y; }
-.sld-in:disabled { cursor: not-allowed; }
-.sld-in::-webkit-slider-runnable-track { height: 14px; border: 3px solid var(--ink); background: linear-gradient(to right, var(--g1) 0 var(--p), var(--paper) var(--p) 100%); }
-.sld-in::-moz-range-track { height: 8px; border: 3px solid var(--ink); background: var(--paper); }
-.sld-in::-moz-range-progress { height: 8px; background: var(--g1); }
-.sld-in::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 30px; margin-top: -8px; background: var(--gold); border: 3px solid var(--ink); border-radius: 0; box-shadow: 3px 3px 0 var(--ink); }
-.sld-in::-moz-range-thumb { width: 16px; height: 24px; background: var(--gold); border: 3px solid var(--ink); border-radius: 0; box-shadow: 3px 3px 0 var(--ink); }
-.sld-in:active::-webkit-slider-thumb { background: var(--cream); }
-.sld-in:active::-moz-range-thumb { background: var(--cream); }
-.sld-in:focus-visible { outline: 4px solid var(--g1); outline-offset: 3px; }
+/* Toggles and sliders (same as Coe): green on, red off, grey disabled, elastic. Add pmc-feel.js for the drag. */
+@property --kx{syntax:'<number>';inherits:true;initial-value:0}
+@property --kw{syntax:'<number>';inherits:true;initial-value:22}
+
+/* Toggle: PMC green when on, PMC red when off, in every theme. Drag it (it pulls back unless you mean it) or click it. */
+button.swt-b{--kx:0;--kw:22;touch-action:pan-y;-webkit-user-select:none;user-select:none;transition:--kx .5s cubic-bezier(.34,1.5,.64,1),--kw .16s cubic-bezier(.3,.9,.3,1)}
+button.swt-b[aria-checked='true']{--kx:26}
+button.swt-b:active:not(:disabled){--kw:28}
+button.swt-b.pmc-drag{transition:none}
+
+button.swt-b{flex:none;position:relative;width:58px;height:32px;padding:0;border:3px solid var(--ink);border-radius:0;background:#A33A2B;background:color-mix(in srgb,#337957 clamp(0%,var(--kx) * 3.846%,100%),#A33A2B);box-shadow:3px 3px 0 var(--ink);cursor:pointer;transition:box-shadow .14s cubic-bezier(.3,.9,.3,1),--kx .5s cubic-bezier(.34,1.5,.64,1),--kw .16s cubic-bezier(.3,.9,.3,1)}
+button.swt-b.pmc-drag{transition:none}
+button.swt-b:hover:not(:disabled){box-shadow:4px 4px 0 var(--ink)}
+button.swt-b:active:not(:disabled){box-shadow:1px 1px 0 var(--ink)}
+button.swt-b i{position:absolute;top:2px;left:2px;height:22px;background-color:#FBF6EC;background-repeat:no-repeat;background-position:center;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M3.5 10.5L8 15L16.5 5' fill='none' stroke='%23337957' stroke-width='4.4' stroke-linecap='square'/%3E%3C/svg%3E"),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4.5 4.5L15.5 15.5M15.5 4.5L4.5 15.5' fill='none' stroke='%23A33A2B' stroke-width='4.4' stroke-linecap='square'/%3E%3C/svg%3E");background-size:calc(clamp(0,(var(--kx) - 6) / 14,1) * 12px) calc(clamp(0,(var(--kx) - 6) / 14,1) * 12px),calc(clamp(0,(20 - var(--kx)) / 14,1) * 12px) calc(clamp(0,(20 - var(--kx)) / 14,1) * 12px);width:calc(var(--kw) * 1px);transform:translateX(calc((var(--kx) - (var(--kw) - 22) * var(--kx) / 26) * 1px));will-change:transform;transition:none}
+button.swt-b:focus-visible{outline:4px solid var(--g1);outline-offset:3px}
+button.swt-b:disabled,.swt.off button.swt-b{cursor:not-allowed;background:#A29E94;border-color:#76726A;box-shadow:3px 3px 0 #76726A}
+button.swt-b:disabled i,.swt.off button.swt-b i{background-color:#E6E2D8;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M3.5 10.5L8 15L16.5 5' fill='none' stroke='%238A867C' stroke-width='4.4' stroke-linecap='square'/%3E%3C/svg%3E"),url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4.5 4.5L15.5 15.5M15.5 4.5L4.5 15.5' fill='none' stroke='%238A867C' stroke-width='4.4' stroke-linecap='square'/%3E%3C/svg%3E")}
+.swt.off{opacity:.7}
+@media (prefers-reduced-motion:reduce){button.swt-b{transition:none}}
+
+/* Slider: the fill and the handle follow one number (--f, 0 to 1) that glides to each new value. */
+@property --f{syntax:'<number>';inherits:false;initial-value:0}
+@property --lift{syntax:'<number>';inherits:false;initial-value:0}
+@property --sh{syntax:'<number>';inherits:false;initial-value:3}
+.sld-in{-webkit-appearance:none;appearance:none;display:block;box-sizing:border-box;width:100%;height:36px;margin:-2px 0;padding:0 5px 0 0;border:0;border-radius:0;background-color:transparent;cursor:pointer;touch-action:pan-y;-webkit-tap-highlight-color:transparent;--f:0;--lift:0;--sh:3;--s-ink:var(--ink);--s-gold:var(--gold);--s-fill:var(--g1);--s-bed:var(--paper);
+  background-repeat:no-repeat;
+  background-origin:content-box,content-box,content-box,border-box,border-box,border-box;
+  background-image:linear-gradient(var(--s-gold),var(--s-gold)),linear-gradient(var(--s-ink),var(--s-ink)),linear-gradient(var(--s-ink),var(--s-ink)),linear-gradient(var(--s-fill),var(--s-fill)),linear-gradient(var(--s-bed),var(--s-bed)),linear-gradient(var(--s-ink),var(--s-ink));
+  background-size:16px 24px,22px 30px,22px 30px,calc((100% - 27px) * var(--f) + 8px) 8px,calc(100% - 6px) 8px,100% 14px;
+  background-position:calc(var(--f) * 100% - var(--f) * 6px + 3px) calc(50% - var(--lift) * 1px),calc(var(--f) * 100%) calc(50% - var(--lift) * 1px),calc(var(--f) * 100% + var(--sh) * 1px) calc(50% - var(--lift) * 1px + var(--sh) * 1px),3px 50%,3px 50%,0 50%;
+  transition:--f .16s cubic-bezier(.2,.8,.2,1),--lift .14s cubic-bezier(.3,.9,.3,1),--sh .14s cubic-bezier(.3,.9,.3,1)}
+.sld-in:hover:not(:disabled){--lift:2;--sh:5}
+.sld-in:active:not(:disabled){--lift:-1;--sh:1;transition-duration:.07s,.05s,.05s}
+.sld-in:focus-visible{outline:4px solid var(--g1);outline-offset:3px}
+.sld-in:disabled{cursor:not-allowed;--s-ink:#76726A;--s-gold:#E6E2D8;--s-fill:#A29E94;--s-bed:#E6E2D8}
+.sld-in::-webkit-slider-runnable-track{height:36px;border:0;background:transparent}
+.sld-in::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:30px;margin-top:3px;border:0;border-radius:0;background:transparent;box-shadow:none}
+.sld-in::-moz-range-track{height:36px;border:0;background:transparent}
+.sld-in::-moz-range-progress{background:transparent}
+.sld-in::-moz-range-thumb{width:22px;height:30px;border:0;border-radius:0;background:transparent;box-shadow:none}
+@media (prefers-reduced-motion:reduce){.sld-in,.sld-in:active{transition:none}}
+html[data-motion='calm'] .sld-in{transition:none}
+
 .sld-marks { position: relative; height: 22px; margin: -2px 11px 0; }
 .sld-marks button { position: absolute; transform: translateX(-50%); font-family: var(--t); font-size: 0.78rem; line-height: 1; padding: 3px 2px; color: var(--ink); opacity: 0.7; white-space: nowrap; }
 .sld-marks button:hover { opacity: 1; text-decoration: underline; }

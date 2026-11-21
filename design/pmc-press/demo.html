@@ -40,5 +40,6 @@
   ACCENTS.forEach((a) => { const b = document.createElement('button'); b.className = 'sw'; b.style.background = a.hex; b.title = a.name; b.setAttribute('aria-label', a.name); b.onclick = () => applyAccent(a.hex); acc.appendChild(b); });
   document.getElementById('lead').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; html.dataset.lead = b.dataset.v; e.currentTarget.querySelectorAll('button').forEach((x) => x.setAttribute('aria-checked', x === b)); });
 </script>
+<script src="./pmc-feel.js"></script>
 </body>
 </html>
