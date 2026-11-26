@@ -52,7 +52,7 @@ function touchApp(s: Session) {
 }
 
 /** Clears a failed sign-in's message from the address. A sign-in is never taken from a link: anyone could build a link that signs you in to THEIR account, and then what you write would be saved there.
- *  The only ways in are a code you type, or the PMC ID page's hand-back, which is checked against a one-time value (takeAccount). */
+ *  The only way in is the PMC ID page's hand-back, which is checked against a one-time value (takeAccount). */
 export function takeLink(): boolean {
   if (!cloudOn) return false;
   try {
@@ -116,17 +116,6 @@ export function takeAccountNote(): 'in' | 'bad' | '' { try { const v = sessionSt
 // A newer "sb_publishable_" key is not a token, so on its own it goes in apikey only. A signed-in person's token goes in authorization.
 const head = (extra: Record<string, string> = {}, bearer = KEY) => ({ apikey: KEY, ...(bearer.startsWith('sb_') ? {} : { authorization: `Bearer ${bearer}` }), 'content-type': 'application/json', ...extra });
 const fail = async (r: Response) => { let m = ''; try { const j = await r.json(); m = j.msg || j.message || j.error_description || j.error || ''; } catch { /* no body */ } return new Error(m || `Request failed (${r.status})`); };
-
-export async function sendCode(email: string) {
-  const r = await fetch(`${URL_}/auth/v1/otp?redirect_to=${encodeURIComponent(location.origin + '/')}`, { method: 'POST', headers: head(), body: JSON.stringify({ email, create_user: true }) });
-  if (!r.ok) throw await fail(r);
-}
-export async function verifyCode(email: string, code: string) {
-  const r = await fetch(`${URL_}/auth/v1/verify`, { method: 'POST', headers: head(), body: JSON.stringify({ type: 'email', email, token: code.trim() }) });
-  if (!r.ok) throw await fail(r);
-  const j = await r.json();
-  if (!keep(j.access_token, j.refresh_token)) throw new Error('That sign-in did not work. Try again.');
-}
 
 /** A token that is still good, refreshed when it is nearly out of date. */
 export async function token(): Promise<string | null> {

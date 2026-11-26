@@ -63,7 +63,7 @@ import { refreshFavicon, setFavicon } from '@/lib/coe/favicon';
 import { redoLeft, redoUsed } from '@/lib/coe/redo';
 import { Clamp } from './Clamp';
 import { filesOf, madeCount } from './Workspace';
-import { ACCOUNTS, putLive as cloudLive, peek as cloudPeek, signOut as cloudSignOut, startAccountSignIn, takeAccountNote } from '@/lib/coe/cloud';
+import { ACCOUNTS, putLive as cloudLive, peek as cloudPeek, signOut as cloudSignOut, startAccountSignIn, takeAccountNote, takeAuthError } from '@/lib/coe/cloud';
 import { compactConv, tooLong } from '@/lib/coe/compact';
 import { Feedback } from './Feedback';
 import { ReportChat } from './ReportChat';
@@ -958,9 +958,9 @@ export function Chat({ initialList, initialConv }: ChatProps) {
   // The Coe extension can send a question and its answer into a new chat, and its Settings button opens the Chrome tab.
   useEffect(() => {
     if (location.hash === '#chrome') { setTab('ext'); setPanel('settings'); history.replaceState(null, '', location.pathname + location.search); }
-    // Back from the PMC ID page: say so if it worked, and open the sign-in window with the reason if it was refused.
-    { const back = takeAccountNote(); if (back === 'in') say('Signed in.'); else if (back === 'bad') setAcct(true); }
-    // Coe Mini sends people here to sign in or sign up. The sign-in window opens by itself.
+    // Back from the PMC ID page: say so if it worked, and say the reason if it was refused.
+    { const back = takeAccountNote(); if (back === 'in') say('Signed in.'); else if (back === 'bad') say(takeAuthError() || 'That sign-in did not work. Press Sign in to try again.'); }
+    // Coe Mini sends people here to sign in or sign up. They go straight on to PMC ID.
     // The same hash can arrive again while this tab is already open (Coe Mini brings the open tab to the front instead of opening a new one).
     const readHash = () => {
       const ch = /^#chat=([\w-]{1,60})(?:&doc=([\w-]{1,60}))?$/.exec(location.hash);   // a link from Coe Mini: this chat, and the document in it
@@ -1698,7 +1698,7 @@ export function Chat({ initialList, initialConv }: ChatProps) {
         );
       })()}
 
-      {acct && <Account onClose={() => setAcct(false)} onChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} />}
+      {acct && <Account onClose={() => setAcct(false)} say={say} onChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} />}
       {upgrade && <Upgrade note={upgrade} onClose={() => setUpgrade('')} />}
       {meet && !panel && !acct && !upgrade && <Setup s={settings} save={(p) => setSettings({ ...loadSettings(), ...p })} onClose={() => { setMeet(false); if (session()) void pushProfile().catch(() => {}); }} />}
       {panel === 'settings' && <SettingsPanel owner={owner} onClearFiles={() => { const next = { ...convRef.current, files: {} }; setConv(next); void persist(next); }} settings={settings} set={setSettings} tab={tab} setTab={setTab} convCount={list.length} used={usedNow} limit={perDay} onSignIn={() => setAcct(true)} onSetup={() => { setPanel(null); setMeet(true); }} onAccountChange={(inn) => { setMe(inn ? session()?.email ?? null : null); if (inn) { say('Signed in.'); void doSync(); } else void refreshList(); }} onExport={exportEvery} onImport={importFile} onDeleteAll={wipe} onClose={() => setPanel(null)} />}
